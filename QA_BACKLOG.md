@@ -1,0 +1,10 @@
+# QA Backlog
+
+| BUG ID | Severity | Location | Steps to Reproduce | Expected Result | Actual Result | Status |
+|---|---|---|---|---|---|---|
+| BUG-001 | High | `unit_service.dart`, `sync_engine.dart` | 1. Register new user.<br>2. Create new unit.<br>3. `SyncEngine` queues `UPDATE` for `users`.<br>4. App pulls `loadProfile()` immediately. | Profile loads with the newly created `unitId` | Profile loads with `unitId = null` because the background sync hasn't finished yet. (Race Condition) | Fixed (Direct Supabase update implemented) |
+| BUG-002 | High | `database_provider_web.dart` | 1. Login with a unit.<br>2. Logout.<br>3. Local DB clears.<br>4. Login with a new user. | New user sees an empty equipment list and schedule. | If the browser wasn't refreshed, the new user sees no catalog because `seed()` only runs on app reload. If it was refreshed, it seeds the mock data. | Fixed (equipment added to `clear()` and auto-seed mechanism adjusted, but needs architectural fix) |
+| BUG-003 | Medium | `mock_database_repository.dart` | 1. User joins an existing unit.<br>2. `fetchFromCloud('users')` runs.<br>3. Local DB populates with cloud users.<br>4. User logs out.<br>5. `db.clear()` runs. | All previous user data should be wiped. | Certain tables (like equipment) were protected from wiping, causing data bleed to the next user logging in on the same browser. | Fixed (added missing tables to `clear()`) |
+| BUG-004 | Low | `meditest_screen.dart` | 1. Open Meditest.<br>2. Add many questions. | Screen should scroll gracefully. | "BOTTOM OVERFLOWED" error due to missing ScrollView/Expanded. | Fixed |
+| BUG-005 | Medium | `hopal_timeline.dart` | 1. Tap a timeline item. | Item should mark as done. | Syntax error preventing compilation. | Fixed |
+| BUG-006 | Critical | Architecture (`MockDatabaseRepository` vs `Supabase`) | 1. Use the app in production. | Data should be perfectly consistent across devices. | `SyncEngine` and local SQLite/Mock DB create a split-brain scenario. Updates fail silently or overwrite cloud data with outdated local data. | OPEN (Pending Refactor) |

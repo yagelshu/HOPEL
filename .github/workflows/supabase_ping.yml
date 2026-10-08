@@ -1,0 +1,14 @@
+name: Supabase Ping
+
+on:
+  schedule:
+    - cron: '0 0 */3 * *' # Runs every 3 days at midnight
+  workflow_dispatch: # Allows manual trigger
+
+jobs:
+  ping_supabase:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Supabase API
+        run: |
+          curl -I https://ffnrvjoswyphsduvmhbe.supabase.co
