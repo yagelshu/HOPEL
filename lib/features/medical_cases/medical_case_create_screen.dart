@@ -20,6 +20,8 @@ import 'package:chopel_app/core/ai/medical_copilot_service.dart';
 import 'package:chopel_app/models/medical_case.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:chopel_app/core/database/draft_service.dart';
+import 'package:chopel_app/models/soldier.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class MedicalCaseCreateScreen extends ConsumerStatefulWidget {
   final MedicalCase? existingCase;
@@ -219,6 +221,169 @@ class _MedicalCaseCreateScreenState extends ConsumerState<MedicalCaseCreateScree
     );
   }
 
+  void _openSoldierSearchSheet(List<Soldier> soldiers) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AppTheme.backgroundSecondary,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (context) {
+        String searchQuery = '';
+        String selectedPlatoon = 'הכל';
+
+        final platoons = <String>['הכל'];
+        for (final s in soldiers) {
+          if (s.platoon != null && s.platoon!.trim().isNotEmpty && !platoons.contains(s.platoon!.trim())) {
+            platoons.add(s.platoon!.trim());
+          }
+        }
+
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            final q = searchQuery.trim().toLowerCase();
+            final filtered = soldiers.where((s) {
+              final matchesQuery = q.isEmpty ||
+                  s.name.toLowerCase().contains(q) ||
+                  (s.personalNumber != null && s.personalNumber!.contains(q)) ||
+                  (s.phoneNumber != null && s.phoneNumber!.contains(q)) ||
+                  (s.platoon != null && s.platoon!.toLowerCase().contains(q));
+              final matchesPlatoon = selectedPlatoon == 'הכל' || s.platoon?.trim() == selectedPlatoon;
+              return matchesQuery && matchesPlatoon;
+            }).toList();
+            filtered.sort((a, b) => a.name.compareTo(b.name));
+
+            return Container(
+              height: MediaQuery.of(context).size.height * 0.75,
+              padding: EdgeInsets.only(
+                top: AppTheme.spacing16,
+                left: AppTheme.spacing16,
+                right: AppTheme.spacing16,
+                bottom: MediaQuery.of(context).viewInsets.bottom + AppTheme.spacing16,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text('בחירת חייל מהפלוגה',
+                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppTheme.textPrimary)),
+                      TextButton.icon(
+                        icon: const Icon(LucideIcons.userPlus, size: 16),
+                        label: const Text('חייל חדש'),
+                        onPressed: () {
+                          Navigator.pop(context);
+                          _showAddSoldierDialog();
+                        },
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    autofocus: true,
+                    style: TextStyle(color: AppTheme.textPrimary),
+                    onChanged: (val) => setModalState(() => searchQuery = val),
+                    decoration: InputDecoration(
+                      hintText: 'הקלד שם, מספר אישי או מחלקה...',
+                      prefixIcon: Icon(LucideIcons.search, color: AppTheme.textSecondary),
+                      filled: true,
+                      fillColor: AppTheme.backgroundTertiary,
+                      border: OutlineInputBorder(borderRadius: AppTheme.radiusMd, borderSide: BorderSide.none),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    ),
+                  ),
+                  if (platoons.length > 2) ...[
+                    const SizedBox(height: 8),
+                    SizedBox(
+                      height: 40,
+                      child: ListView.separated(
+                        scrollDirection: Axis.horizontal,
+                        itemCount: platoons.length,
+                        separatorBuilder: (_, __) => const SizedBox(width: 8),
+                        itemBuilder: (ctx, i) {
+                          final p = platoons[i];
+                          final isSel = selectedPlatoon == p;
+                          return ChoiceChip(
+                            label: Text(p),
+                            selected: isSel,
+                            onSelected: (_) => setModalState(() => selectedPlatoon = p),
+                            selectedColor: AppTheme.primaryGreen.withValues(alpha: 0.2),
+                            backgroundColor: AppTheme.backgroundTertiary,
+                            labelStyle: TextStyle(
+                              color: isSel ? AppTheme.primaryGreen : AppTheme.textSecondary,
+                              fontWeight: isSel ? FontWeight.bold : FontWeight.normal,
+                              fontSize: 12,
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 12),
+                  Expanded(
+                    child: filtered.isEmpty
+                        ? Center(
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(LucideIcons.userX, size: 40, color: AppTheme.textSecondary),
+                                const SizedBox(height: 8),
+                                Text('לא נמצא חייל תואם', style: TextStyle(color: AppTheme.textSecondary)),
+                                const SizedBox(height: 12),
+                                ElevatedButton.icon(
+                                  style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primaryGreen),
+                                  onPressed: () {
+                                    Navigator.pop(context);
+                                    _showAddSoldierDialog();
+                                  },
+                                  icon: const Icon(LucideIcons.userPlus, size: 16, color: Colors.white),
+                                  label: const Text('הוסף חייל חדש עכשיו', style: TextStyle(color: Colors.white)),
+                                ),
+                              ],
+                            ),
+                          )
+                        : ListView.separated(
+                            itemCount: filtered.length,
+                            separatorBuilder: (_, __) => const Divider(height: 1),
+                            itemBuilder: (context, index) {
+                              final s = filtered[index];
+                              final hasPn = s.personalNumber != null && s.personalNumber!.isNotEmpty;
+                              final hasPlatoon = s.platoon != null && s.platoon!.isNotEmpty;
+
+                              return ListTile(
+                                leading: CircleAvatar(
+                                  backgroundColor: AppTheme.primaryGreen.withValues(alpha: 0.15),
+                                  child: Icon(LucideIcons.user, color: AppTheme.primaryGreen),
+                                ),
+                                title: Text(s.name,
+                                    style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.bold)),
+                                subtitle: Text(
+                                  [
+                                    if (hasPn) 'מ.א: ${s.personalNumber}',
+                                    if (hasPlatoon) 'מחלקה ${s.platoon}',
+                                    if (s.phoneNumber != null) s.phoneNumber!,
+                                  ].join(' • '),
+                                  style: TextStyle(color: AppTheme.textSecondary, fontSize: 12),
+                                ),
+                                onTap: () {
+                                  setState(() => _selectedSoldierId = s.id);
+                                  Navigator.pop(context);
+                                },
+                              );
+                            },
+                          ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
   Future<void> _runCopilot() async {
     final complaint = _descController.text.trim();
     if (complaint.isEmpty) {
@@ -379,68 +544,154 @@ class _MedicalCaseCreateScreenState extends ConsumerState<MedicalCaseCreateScree
             sliver: SliverList(
               delegate: SliverChildListDelegate([
                 HopalFormSection(
-                  title: 'בחירת חייל',
+                  title: 'חייל מטופל',
                   children: [
                     soldiersAsync.when(
                       data: (soldiers) {
-                        return LayoutBuilder(
-                          builder: (context, constraints) {
-                            return Row(
-                                children: [
-                                  Expanded(
-                                    child: DropdownMenu<String>(
-                                      width: constraints.maxWidth - 60,
-                                      hintText: 'הקלד לחיפוש או בחר חייל...',
-                                      enableFilter: true,
-                                      enableSearch: true,
-                                      initialSelection: _selectedSoldierId,
-                                      textStyle: TextStyle(color: AppTheme.textPrimary),
-                                      menuStyle: MenuStyle(
-                                        backgroundColor: WidgetStateProperty.all(AppTheme.backgroundSecondary),
-                                      ),
-                                      inputDecorationTheme: InputDecorationTheme(
-                                        filled: true,
-                                        fillColor: AppTheme.backgroundSecondary,
-                                        border: OutlineInputBorder(
-                                          borderRadius: AppTheme.radiusMd,
-                                          borderSide: BorderSide(color: AppTheme.borderSubtle),
-                                        ),
-                                        enabledBorder: OutlineInputBorder(
-                                          borderRadius: AppTheme.radiusMd,
-                                          borderSide: BorderSide(color: AppTheme.borderSubtle),
-                                        ),
-                                      ),
-                                      onSelected: (val) {
-                                        if (val != null) {
-                                          setState(() => _selectedSoldierId = val);
-                                        }
-                                      },
-                                      dropdownMenuEntries: soldiers.map((s) {
-                                        return DropdownMenuEntry<String>(
-                                          value: s.id,
-                                          label: s.displayLabel,
-                                          style: MenuItemButton.styleFrom(
-                                            foregroundColor: AppTheme.textPrimary,
+                        final soldier = soldiers.where((s) => s.id == _selectedSoldierId).firstOrNull;
+
+                        if (soldier != null) {
+                          final hasPhone = soldier.phoneNumber != null && soldier.phoneNumber!.trim().isNotEmpty;
+                          return Container(
+                            padding: const EdgeInsets.all(AppTheme.spacing16),
+                            decoration: BoxDecoration(
+                              color: AppTheme.backgroundSecondary,
+                              borderRadius: AppTheme.radiusMd,
+                              border: Border.all(color: AppTheme.primaryGreen.withValues(alpha: 0.4)),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    CircleAvatar(
+                                      radius: 20,
+                                      backgroundColor: AppTheme.primaryGreen.withValues(alpha: 0.2),
+                                      child: Icon(LucideIcons.userCheck, color: AppTheme.primaryGreen),
+                                    ),
+                                    const SizedBox(width: AppTheme.spacing12),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(soldier.name,
+                                              style: TextStyle(
+                                                  fontSize: 16, fontWeight: FontWeight.bold, color: AppTheme.textPrimary)),
+                                          const SizedBox(height: 4),
+                                          Wrap(
+                                            spacing: 8,
+                                            children: [
+                                              if (soldier.personalNumber != null)
+                                                Container(
+                                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                                  decoration: BoxDecoration(
+                                                    color: AppTheme.backgroundTertiary,
+                                                    borderRadius: BorderRadius.circular(4),
+                                                  ),
+                                                  child: Text('מ.א: ${soldier.personalNumber}',
+                                                      style: TextStyle(fontSize: 11, color: AppTheme.textSecondary)),
+                                                ),
+                                              if (soldier.platoon != null && soldier.platoon!.isNotEmpty)
+                                                Container(
+                                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                                  decoration: BoxDecoration(
+                                                    color: AppTheme.primaryGreen.withValues(alpha: 0.1),
+                                                    borderRadius: BorderRadius.circular(4),
+                                                  ),
+                                                  child: Text('מחלקה ${soldier.platoon}',
+                                                      style: TextStyle(fontSize: 11, color: AppTheme.primaryGreen, fontWeight: FontWeight.bold)),
+                                                ),
+                                            ],
                                           ),
-                                        );
-                                      }).toList(),
+                                        ],
+                                      ),
                                     ),
-                                  ),
-                                  const SizedBox(width: AppTheme.spacing8),
-                                  Container(
-                                    decoration: BoxDecoration(
-                                      color: AppTheme.primaryGreen.withValues(alpha: 0.1),
-                                      borderRadius: AppTheme.radiusMd,
+                                    IconButton(
+                                      icon: Icon(LucideIcons.refreshCw, color: AppTheme.textSecondary, size: 18),
+                                      tooltip: 'החלף חייל',
+                                      onPressed: () => _openSoldierSearchSheet(soldiers),
                                     ),
-                                    child: IconButton(
-                                      icon: Icon(LucideIcons.userPlus, color: AppTheme.primaryGreen),
-                                      onPressed: _showAddSoldierDialog,
-                                      tooltip: 'הוסף חייל חדש',
+                                    IconButton(
+                                      icon: Icon(LucideIcons.x, color: AppTheme.criticalRed, size: 18),
+                                      tooltip: 'נקה בחירה',
+                                      onPressed: () => setState(() => _selectedSoldierId = null),
                                     ),
+                                  ],
+                                ),
+                                if (hasPhone) ...[
+                                  const SizedBox(height: 12),
+                                  Divider(color: AppTheme.borderSubtle, height: 1),
+                                  const SizedBox(height: 8),
+                                  Row(
+                                    children: [
+                                      Icon(LucideIcons.phone, size: 14, color: AppTheme.textSecondary),
+                                      const SizedBox(width: 6),
+                                      Text(soldier.phoneNumber!,
+                                          style: TextStyle(color: AppTheme.textSecondary, fontSize: 13)),
+                                      const Spacer(),
+                                      TextButton.icon(
+                                        style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
+                                        icon: Icon(LucideIcons.phoneCall, size: 14, color: AppTheme.primaryGreen),
+                                        label: Text('חייג', style: TextStyle(color: AppTheme.primaryGreen, fontSize: 12)),
+                                        onPressed: () async {
+                                          final uri = Uri.parse('tel:${soldier.phoneNumber!.replaceAll(RegExp(r'\D'), '')}');
+                                          if (await canLaunchUrl(uri)) await launchUrl(uri);
+                                        },
+                                      ),
+                                      TextButton.icon(
+                                        style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
+                                        icon: Icon(LucideIcons.messageCircle, size: 14, color: AppTheme.successGreen),
+                                        label: Text('WhatsApp', style: TextStyle(color: AppTheme.successGreen, fontSize: 12)),
+                                        onPressed: () async {
+                                          var phone = soldier.phoneNumber!.replaceAll(RegExp(r'\D'), '');
+                                          if (phone.startsWith('0')) phone = '972${phone.substring(1)}';
+                                          final uri = Uri.parse('https://wa.me/$phone');
+                                          if (await canLaunchUrl(uri)) await launchUrl(uri);
+                                        },
+                                      ),
+                                    ],
                                   ),
                                 ],
-                              );
-                          },
+                              ],
+                            ),
+                          );
+                        }
+
+                        return InkWell(
+                          onTap: () => _openSoldierSearchSheet(soldiers),
+                          borderRadius: AppTheme.radiusMd,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: AppTheme.spacing16, vertical: AppTheme.spacing16),
+                            decoration: BoxDecoration(
+                              color: AppTheme.backgroundSecondary,
+                              borderRadius: AppTheme.radiusMd,
+                              border: Border.all(color: AppTheme.borderSubtle),
+                            ),
+                            child: Row(
+                              children: [
+                                CircleAvatar(
+                                  radius: 20,
+                                  backgroundColor: AppTheme.primaryGreen.withValues(alpha: 0.1),
+                                  child: Icon(LucideIcons.userSearch, color: AppTheme.primaryGreen),
+                                ),
+                                const SizedBox(width: AppTheme.spacing16),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text('בחר חייל מהפלוגה...',
+                                          style: TextStyle(
+                                              fontSize: 15, fontWeight: FontWeight.bold, color: AppTheme.textPrimary)),
+                                      const SizedBox(height: 2),
+                                      Text('חיפוש מהיר לפי שם, מספר אישי או מחלקה (${soldiers.length} חיילים זמינים)',
+                                          style: TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
+                                    ],
+                                  ),
+                                ),
+                                Icon(LucideIcons.chevronDown, color: AppTheme.textSecondary),
+                              ],
+                            ),
+                          ),
                         );
                       },
                       loading: () => const Center(child: CircularProgressIndicator()),

@@ -9,6 +9,7 @@ import 'package:chopel_app/core/auth/auth_service.dart';
 import 'package:chopel_app/models/soldier.dart';
 import 'package:chopel_app/features/medical_cases/providers.dart';
 import 'package:chopel_app/features/profile/soldiers_import_screen.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class SoldiersManagementScreen extends ConsumerStatefulWidget {
   const SoldiersManagementScreen({super.key});
@@ -19,6 +20,7 @@ class SoldiersManagementScreen extends ConsumerStatefulWidget {
 
 class _SoldiersManagementScreenState extends ConsumerState<SoldiersManagementScreen> {
   String _query = '';
+  String _selectedPlatoon = 'הכל';
 
   /// Add (soldier == null) or edit.
   void _showSoldierDialog([Soldier? soldier]) {
@@ -154,8 +156,17 @@ class _SoldiersManagementScreenState extends ConsumerState<SoldiersManagementScr
     return Scaffold(
       backgroundColor: AppTheme.backgroundPrimary,
       appBar: AppBar(
-        title: Text('ניהול חיילים',
-            style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.bold, fontSize: 18)),
+        title: Column(
+          children: [
+            Text('מצבת פלוגה',
+                style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.bold, fontSize: 18)),
+            soldiersAsync.maybeWhen(
+              data: (list) => Text('${list.length} חיילים רשומים',
+                  style: TextStyle(color: AppTheme.textSecondary, fontSize: 12)),
+              orElse: () => const SizedBox.shrink(),
+            ),
+          ],
+        ),
         backgroundColor: AppTheme.backgroundPrimary,
         elevation: 0,
         centerTitle: true,
@@ -166,7 +177,7 @@ class _SoldiersManagementScreenState extends ConsumerState<SoldiersManagementScr
         actions: [
           IconButton(
             key: const Key('soldiers_import_button'),
-            tooltip: 'ייבוא מאקסל',
+            tooltip: 'ייבוא מאקסל / CSV',
             icon: Icon(LucideIcons.fileSpreadsheet, color: AppTheme.primaryGreen),
             onPressed: _openImport,
           ),
@@ -174,10 +185,24 @@ class _SoldiersManagementScreenState extends ConsumerState<SoldiersManagementScr
       ),
       body: soldiersAsync.when(
         data: (all) {
+          final platoons = <String>['הכל'];
+          for (final s in all) {
+            if (s.platoon != null && s.platoon!.trim().isNotEmpty && !platoons.contains(s.platoon!.trim())) {
+              platoons.add(s.platoon!.trim());
+            }
+          }
+
           final q = _query.trim().toLowerCase();
-          final soldiers = q.isEmpty
-              ? [...all]
-              : all.where((s) => s.displayLabel.toLowerCase().contains(q)).toList();
+          final soldiers = all.where((s) {
+            final matchesQuery = q.isEmpty ||
+                s.name.toLowerCase().contains(q) ||
+                (s.personalNumber != null && s.personalNumber!.contains(q)) ||
+                (s.phoneNumber != null && s.phoneNumber!.contains(q)) ||
+                (s.platoon != null && s.platoon!.toLowerCase().contains(q));
+
+            final matchesPlatoon = _selectedPlatoon == 'הכל' || s.platoon?.trim() == _selectedPlatoon;
+            return matchesQuery && matchesPlatoon;
+          }).toList();
           soldiers.sort((a, b) => a.name.compareTo(b.name));
 
           return Column(
@@ -188,7 +213,7 @@ class _SoldiersManagementScreenState extends ConsumerState<SoldiersManagementScr
                   onChanged: (v) => setState(() => _query = v),
                   style: TextStyle(color: AppTheme.textPrimary),
                   decoration: InputDecoration(
-                    hintText: 'חיפוש לפי שם או מספר אישי (${all.length} חיילים)',
+                    hintText: 'חיפוש לפי שם, מ.א, טלפון או מחלקה...',
                     prefixIcon: Icon(LucideIcons.search, color: AppTheme.textSecondary),
                     filled: true,
                     fillColor: AppTheme.backgroundSecondary,
@@ -196,45 +221,100 @@ class _SoldiersManagementScreenState extends ConsumerState<SoldiersManagementScr
                   ),
                 ),
               ),
+              if (platoons.length > 2)
+                Container(
+                  height: 48,
+                  margin: const EdgeInsets.only(top: 8),
+                  child: ListView.separated(
+                    scrollDirection: Axis.horizontal,
+                    padding: const EdgeInsets.symmetric(horizontal: AppTheme.spacing16),
+                    itemCount: platoons.length,
+                    separatorBuilder: (_, __) => const SizedBox(width: 8),
+                    itemBuilder: (context, i) {
+                      final p = platoons[i];
+                      final isSelected = _selectedPlatoon == p;
+                      return ChoiceChip(
+                        label: Text(p),
+                        selected: isSelected,
+                        onSelected: (_) => setState(() => _selectedPlatoon = p),
+                        selectedColor: AppTheme.primaryGreen.withValues(alpha: 0.2),
+                        backgroundColor: AppTheme.backgroundSecondary,
+                        labelStyle: TextStyle(
+                          color: isSelected ? AppTheme.primaryGreen : AppTheme.textSecondary,
+                          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                        ),
+                      );
+                    },
+                  ),
+                ),
               Expanded(
                 child: all.isEmpty
                     ? _buildEmpty()
-                    : ListView.separated(
-                        padding: const EdgeInsets.fromLTRB(AppTheme.spacing16, AppTheme.spacing8, AppTheme.spacing16, 96),
-                        itemCount: soldiers.length,
-                        separatorBuilder: (context, index) => const Divider(),
-                        itemBuilder: (context, index) {
-                          final soldier = soldiers[index];
-                          final details = [
-                            if (soldier.personalNumber != null) 'מ.א ${soldier.personalNumber}',
-                            if (soldier.phoneNumber != null && soldier.phoneNumber!.isNotEmpty) soldier.phoneNumber!,
-                            if (soldier.platoon != null && soldier.platoon!.isNotEmpty) 'מחלקה ${soldier.platoon}',
-                          ].join(' • ');
-                          return ListTile(
-                            leading: CircleAvatar(
-                              backgroundColor: AppTheme.primaryGreen.withValues(alpha: 0.1),
-                              child: Icon(LucideIcons.user, color: AppTheme.primaryGreen),
-                            ),
-                            title: Text(soldier.name,
-                                style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.bold)),
-                            subtitle: Text(details.isEmpty ? 'אין פרטים נוספים' : details,
-                                style: TextStyle(color: AppTheme.textSecondary, fontSize: 12)),
-                            trailing: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                IconButton(
-                                  icon: Icon(LucideIcons.edit2, color: AppTheme.infoBlue, size: 20),
-                                  onPressed: () => _showSoldierDialog(soldier),
+                    : soldiers.isEmpty
+                        ? Center(
+                            child: Text('לא נמצאו חיילים תואמים לחיפוש',
+                                style: TextStyle(color: AppTheme.textSecondary)),
+                          )
+                        : ListView.separated(
+                            padding: const EdgeInsets.fromLTRB(AppTheme.spacing16, AppTheme.spacing8, AppTheme.spacing16, 96),
+                            itemCount: soldiers.length,
+                            separatorBuilder: (context, index) => const Divider(),
+                            itemBuilder: (context, index) {
+                              final soldier = soldiers[index];
+                              final hasPhone = soldier.phoneNumber != null && soldier.phoneNumber!.trim().isNotEmpty;
+                              final details = [
+                                if (soldier.personalNumber != null) 'מ.א ${soldier.personalNumber}',
+                                if (soldier.platoon != null && soldier.platoon!.isNotEmpty) 'מחלקה ${soldier.platoon}',
+                                if (hasPhone) soldier.phoneNumber!,
+                              ].join(' • ');
+
+                              return ListTile(
+                                leading: CircleAvatar(
+                                  backgroundColor: AppTheme.primaryGreen.withValues(alpha: 0.1),
+                                  child: Icon(LucideIcons.user, color: AppTheme.primaryGreen),
                                 ),
-                                IconButton(
-                                  icon: Icon(LucideIcons.trash2, color: AppTheme.criticalRed, size: 20),
-                                  onPressed: () => _deleteSoldier(soldier),
+                                title: Text(soldier.name,
+                                    style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.bold)),
+                                subtitle: Text(details.isEmpty ? 'אין פרטים נוספים' : details,
+                                    style: TextStyle(color: AppTheme.textSecondary, fontSize: 12)),
+                                trailing: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    if (hasPhone) ...[
+                                      IconButton(
+                                        icon: Icon(LucideIcons.phone, color: AppTheme.primaryGreen, size: 18),
+                                        tooltip: 'התקשר',
+                                        onPressed: () async {
+                                          final uri = Uri.parse('tel:${soldier.phoneNumber!.replaceAll(RegExp(r'\D'), '')}');
+                                          if (await canLaunchUrl(uri)) await launchUrl(uri);
+                                        },
+                                      ),
+                                      IconButton(
+                                        icon: Icon(LucideIcons.messageCircle, color: AppTheme.successGreen, size: 18),
+                                        tooltip: 'שלח WhatsApp',
+                                        onPressed: () async {
+                                          var phone = soldier.phoneNumber!.replaceAll(RegExp(r'\D'), '');
+                                          if (phone.startsWith('0')) phone = '972${phone.substring(1)}';
+                                          final uri = Uri.parse('https://wa.me/$phone');
+                                          if (await canLaunchUrl(uri)) await launchUrl(uri);
+                                        },
+                                      ),
+                                    ],
+                                    IconButton(
+                                      icon: Icon(LucideIcons.edit2, color: AppTheme.infoBlue, size: 18),
+                                      tooltip: 'ערוך',
+                                      onPressed: () => _showSoldierDialog(soldier),
+                                    ),
+                                    IconButton(
+                                      icon: Icon(LucideIcons.trash2, color: AppTheme.criticalRed, size: 18),
+                                      tooltip: 'מחק',
+                                      onPressed: () => _deleteSoldier(soldier),
+                                    ),
+                                  ],
                                 ),
-                              ],
-                            ),
-                          );
-                        },
-                      ),
+                              );
+                            },
+                          ),
               ),
             ],
           );

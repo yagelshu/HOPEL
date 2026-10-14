@@ -8,7 +8,7 @@ Future<DatabaseRepository> getPlatformDatabase() async {
   String path = join(await getDatabasesPath(), 'hopal_app.db');
   final db = await openDatabase(
     path,
-    version: 14, 
+    version: 15, 
     onCreate: _onCreate,
     onUpgrade: _onUpgrade,
   );
@@ -30,6 +30,7 @@ Future<void> _onCreate(Database db, int version) async {
   if (version >= 12) await _migrationV12(db);
   if (version >= 13) await _migrationV13(db);
   if (version >= 14) await _migrationV14(db);
+  if (version >= 15) await _migrationV15(db);
   
   // Seed data after ALL migrations are complete so all columns exist
   await _seedDevelopmentData(db);
@@ -49,6 +50,7 @@ Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
   if (oldVersion < 12) await _migrationV12(db);
   if (oldVersion < 13) await _migrationV13(db);
   if (oldVersion < 14) await _migrationV14(db);
+  if (oldVersion < 15) await _migrationV15(db);
 }
 
 Future<void> _migrationV1(Database db) async {
@@ -77,6 +79,7 @@ Future<void> _migrationV1(Database db) async {
     CREATE TABLE soldiers (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
+      personal_number TEXT,
       platoon TEXT,
       phone_number TEXT,
       unit_id TEXT,
@@ -400,5 +403,11 @@ Future<void> _migrationV13(Database db) async {
 Future<void> _migrationV14(Database db) async {
   try {
     await db.execute('ALTER TABLE users ADD COLUMN is_on_standby INTEGER DEFAULT 1;');
+  } catch (_) {}
+}
+
+Future<void> _migrationV15(Database db) async {
+  try {
+    await db.execute('ALTER TABLE soldiers ADD COLUMN personal_number TEXT;');
   } catch (_) {}
 }

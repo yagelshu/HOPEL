@@ -171,24 +171,28 @@ class SoldierImportService {
         } else {
           cell.write(ch);
         }
-      } else if (ch == '"') {
+      } else if (ch == '"' && cell.isEmpty) {
         inQuotes = true;
       } else if (ch == sep) {
-        row.add(cell.toString());
+        row.add(cell.toString().trim());
         cell.clear();
       } else if (ch == '\n' || ch == '\r') {
         if (ch == '\r' && i + 1 < text.length && text[i + 1] == '\n') i++;
-        row.add(cell.toString());
+        row.add(cell.toString().trim());
         cell.clear();
-        rows.add(row);
+        if (row.any((c) => c.isNotEmpty)) {
+          rows.add(row);
+        }
         row = <String>[];
       } else {
         cell.write(ch);
       }
     }
     if (cell.isNotEmpty || row.isNotEmpty) {
-      row.add(cell.toString());
-      rows.add(row);
+      row.add(cell.toString().trim());
+      if (row.any((c) => c.isNotEmpty)) {
+        rows.add(row);
+      }
     }
     return rows;
   }

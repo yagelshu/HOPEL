@@ -32,15 +32,15 @@ class _SoldiersImportScreenState extends ConsumerState<SoldiersImportScreen> {
       _mapping.contains(SoldierField.lastName);
 
   Future<void> _pickFile() async {
-    final res = await FilePicker.pickFiles(
+    final files = await FilePicker.pickFiles(
       type: FileType.custom,
       allowedExtensions: ['xlsx', 'csv'],
-      withData: true,
     );
-    final file = res?.files.firstOrNull;
-    if (file == null || file.bytes == null) return;
+    final file = files.firstOrNull;
+    if (file == null) return;
     try {
-      final table = SoldierImportService.parse(file.bytes!, file.name);
+      final bytes = await file.readAsBytes();
+      final table = SoldierImportService.parse(bytes, file.name);
       setState(() {
         _table = table;
         _fileName = file.name;

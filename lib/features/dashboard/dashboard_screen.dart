@@ -27,6 +27,7 @@ import 'package:chopel_app/features/medical_cases/medical_case_create_screen.dar
 import 'package:chopel_app/features/equipment/equipment_list_screen.dart';
 import 'package:chopel_app/features/equipment/equipment_scanner_screen.dart';
 import 'package:chopel_app/screens/profile_screen.dart';
+import 'package:chopel_app/features/profile/soldiers_management_screen.dart';
 import 'package:chopel_app/features/learning/trivia_screen.dart';
 import 'package:chopel_app/features/onboarding/walkthrough_dialog.dart';
 import 'package:chopel_app/core/database/database_service.dart';
@@ -508,38 +509,74 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
   Widget _buildQuickActions() {
     return Padding(
       padding: const EdgeInsets.fromLTRB(AppTheme.spacing16, AppTheme.spacing32, AppTheme.spacing16, 0),
-      child: Row(
+      child: Column(
         children: [
-          Expanded(
-            child: HopalButton(
-              label: 'פנייה חדשה',
-              icon: LucideIcons.plusCircle,
-              isExpanded: true,
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => const MedicalCaseCreateScreen(),
-                  ),
-                );
-              },
-            ),
+          Row(
+            children: [
+              Expanded(
+                flex: 3,
+                child: HopalButton(
+                  label: 'פנייה חדשה',
+                  icon: LucideIcons.plusCircle,
+                  isExpanded: true,
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const MedicalCaseCreateScreen(),
+                      ),
+                    );
+                  },
+                ),
+              ),
+              const SizedBox(width: AppTheme.spacing12),
+              Expanded(
+                flex: 2,
+                child: HopalButton(
+                  label: 'מצבת פלוגה',
+                  icon: LucideIcons.users,
+                  isExpanded: true,
+                  variant: HopalButtonVariant.secondary,
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const SoldiersManagementScreen(),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
           ),
-          const SizedBox(width: AppTheme.spacing12),
-          Expanded(
-            child: HopalButton(
-              label: 'תרגול יומי',
-              icon: LucideIcons.brain,
-              isExpanded: true,
-              variant: HopalButtonVariant.secondary,
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => const TriviaScreen(),
-                  ),
-                );
-              },
+          const SizedBox(height: AppTheme.spacing12),
+          InkWell(
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const TriviaScreen(),
+                ),
+              );
+            },
+            borderRadius: AppTheme.radiusMd,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: AppTheme.spacing16, vertical: 10),
+              decoration: BoxDecoration(
+                color: AppTheme.backgroundSecondary,
+                borderRadius: AppTheme.radiusMd,
+                border: Border.all(color: AppTheme.borderSubtle),
+              ),
+              child: Row(
+                children: [
+                  Icon(LucideIcons.brain, color: AppTheme.primaryGreen, size: 18),
+                  const SizedBox(width: 10),
+                  Text('תרגול יומי לחובש (טריוויה רפואית)',
+                      style: TextStyle(color: AppTheme.textPrimary, fontSize: 13, fontWeight: FontWeight.w600)),
+                  const Spacer(),
+                  Icon(LucideIcons.chevronLeft, color: AppTheme.textSecondary, size: 16),
+                ],
+              ),
             ),
           ),
         ],
@@ -548,6 +585,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
   }
 
   Widget _buildOperationalStatus(DashboardMetrics metrics) {
+    final soldiersCount = ref.watch(soldiersProvider).maybeWhen(data: (s) => s.length, orElse: () => 0);
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(AppTheme.spacing16, AppTheme.spacing32, AppTheme.spacing16, 0),
       child: Column(
@@ -558,13 +597,27 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
           Row(
             children: [
               Expanded(child: _buildStatusCard('פניות פתוחות', '${metrics.activeMedicalCases}', LucideIcons.activity)),
-              const SizedBox(width: AppTheme.spacing16),
+              const SizedBox(width: AppTheme.spacing8),
               Expanded(
                 child: _buildStatusCard(
-                  'חובשים בכוננות', 
+                  'בכוננות', 
                   '${metrics.activeMedics.where((m) => m['standby']).length}/${metrics.activeMedics.length}', 
-                  LucideIcons.users,
+                  LucideIcons.shieldCheck,
                   onTap: () => _showMedicsBottomSheet(context, metrics.activeMedics),
+                ),
+              ),
+              const SizedBox(width: AppTheme.spacing8),
+              Expanded(
+                child: _buildStatusCard(
+                  'מצבת פלוגה', 
+                  '$soldiersCount', 
+                  LucideIcons.users,
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => const SoldiersManagementScreen()),
+                    );
+                  },
                 ),
               ),
             ],
