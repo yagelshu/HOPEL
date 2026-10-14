@@ -3,11 +3,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:chopel_app/theme/app_theme.dart';
-import 'package:chopel_app/theme/components/hopal_button.dart';
 import 'package:chopel_app/theme/components/hopal_text_field.dart';
 import 'package:chopel_app/theme/components/hopal_feedback.dart';
+import 'package:chopel_app/core/auth/auth_service.dart';
 import 'package:chopel_app/models/soldier.dart';
 import 'package:chopel_app/features/medical_cases/providers.dart';
+import 'package:chopel_app/features/profile/soldiers_import_screen.dart';
 
 class SoldiersManagementScreen extends ConsumerStatefulWidget {
   const SoldiersManagementScreen({super.key});
@@ -17,31 +18,45 @@ class SoldiersManagementScreen extends ConsumerStatefulWidget {
 }
 
 class _SoldiersManagementScreenState extends ConsumerState<SoldiersManagementScreen> {
-  void _showAddSoldierDialog() {
-    final nameController = TextEditingController();
-    final phoneController = TextEditingController();
+  String _query = '';
+
+  /// Add (soldier == null) or edit.
+  void _showSoldierDialog([Soldier? soldier]) {
+    final nameController = TextEditingController(text: soldier?.name ?? '');
+    final pnController = TextEditingController(text: soldier?.personalNumber ?? '');
+    final phoneController = TextEditingController(text: soldier?.phoneNumber ?? '');
+    final platoonController = TextEditingController(text: soldier?.platoon ?? '');
+    final isEdit = soldier != null;
 
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: AppTheme.backgroundSecondary,
-        title: Text('הוספת חייל', style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.bold)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            HopalTextField(
-              controller: nameController,
-              hint: 'שם מלא (לדוגמה: ישראל ישראלי (1234567))',
-              icon: LucideIcons.user,
-            ),
-            const SizedBox(height: AppTheme.spacing16),
-            HopalTextField(
-              controller: phoneController,
-              hint: 'טלפון (אופציונלי)',
-              icon: LucideIcons.phone,
-              keyboardType: TextInputType.phone,
-            ),
-          ],
+        title: Text(isEdit ? 'עריכת חייל' : 'הוספת חייל',
+            style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.bold)),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              HopalTextField(controller: nameController, hint: 'שם מלא', icon: LucideIcons.user),
+              const SizedBox(height: AppTheme.spacing16),
+              HopalTextField(
+                controller: pnController,
+                hint: 'מספר אישי',
+                icon: LucideIcons.hash,
+                keyboardType: TextInputType.number,
+              ),
+              const SizedBox(height: AppTheme.spacing16),
+              HopalTextField(
+                controller: phoneController,
+                hint: 'טלפון (אופציונלי)',
+                icon: LucideIcons.phone,
+                keyboardType: TextInputType.phone,
+              ),
+              const SizedBox(height: AppTheme.spacing16),
+              HopalTextField(controller: platoonController, hint: 'מחלקה (אופציונלי)', icon: LucideIcons.users),
+            ],
+          ),
         ),
         actions: [
           TextButton(
@@ -54,94 +69,38 @@ class _SoldiersManagementScreenState extends ConsumerState<SoldiersManagementScr
                 HopalFeedback.showError(context, 'שם החייל לא יכול להיות ריק');
                 return;
               }
-
+              String? orNull(String v) => v.trim().isEmpty ? null : v.trim();
+              final data = {
+                'name': nameController.text.trim(),
+                'personal_number': orNull(pnController.text.replaceAll(RegExp(r'\D'), '')),
+                'phone_number': orNull(phoneController.text),
+                'platoon': orNull(platoonController.text),
+              };
               try {
-                final user = Supabase.instance.client.auth.currentUser;
-                final userData = await Supabase.instance.client.from('users').select('unit_id').eq('id', user!.id).single();
-                
-                await Supabase.instance.client.from('soldiers').insert({
-                  'name': nameController.text.trim(),
-                  'phone_number': phoneController.text.trim(),
-                  'unit_id': userData['unit_id'],
-                });
-                
+                final client = Supabase.instance.client;
+                if (isEdit) {
+                  await client.from('soldiers').update(data).eq('id', soldier.id);
+                } else {
+                  final unitId = AuthService().currentUser?.unitId;
+                  if (unitId == null) throw Exception('לא נמצאה פלוגה למשתמש');
+                  await client.from('soldiers').insert({...data, 'unit_id': unitId});
+                }
                 if (context.mounted) {
                   ref.invalidate(soldiersProvider);
                   Navigator.pop(context);
-                  HopalFeedback.showSuccess(context, 'החייל התווסף בהצלחה');
+                  HopalFeedback.showSuccess(context, isEdit ? 'פרטי החייל עודכנו' : 'החייל נוסף בהצלחה');
+                }
+              } on PostgrestException catch (e) {
+                if (context.mounted) {
+                  final msg = e.code == '23505' ? 'כבר קיים חייל עם המספר האישי הזה' : e.message;
+                  HopalFeedback.showError(context, 'שגיאה: $msg');
                 }
               } catch (e) {
-                if (context.mounted) {
-                  HopalFeedback.showError(context, 'שגיאה בהוספת החייל: $e');
-                }
+                if (context.mounted) HopalFeedback.showError(context, 'שגיאה: $e');
               }
             },
-            child: Text('הוסף', style: TextStyle(color: AppTheme.primaryGreen, fontWeight: FontWeight.bold)),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showEditSoldierDialog(Soldier soldier) {
-    final nameController = TextEditingController(text: soldier.name);
-    final phoneController = TextEditingController(text: soldier.phoneNumber ?? '');
-
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: AppTheme.backgroundSecondary,
-        title: Text('עריכת חייל', style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.bold)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            HopalTextField(
-              controller: nameController,
-              hint: 'שם מלא (לדוגמה: ישראל ישראלי (1234567))',
-              icon: LucideIcons.user,
-            ),
-            const SizedBox(height: AppTheme.spacing16),
-            HopalTextField(
-              controller: phoneController,
-              hint: 'טלפון (אופציונלי)',
-              icon: LucideIcons.phone,
-              keyboardType: TextInputType.phone,
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text('ביטול', style: TextStyle(color: AppTheme.textSecondary)),
-          ),
-          TextButton(
-            onPressed: () async {
-              if (nameController.text.trim().isEmpty) {
-                HopalFeedback.showError(context, 'שם החייל לא יכול להיות ריק');
-                return;
-              }
-
-              try {
-                await Supabase.instance.client
-                    .from('soldiers')
-                    .update({
-                      'name': nameController.text.trim(),
-                      'phone_number': phoneController.text.trim(),
-                    })
-                    .eq('id', soldier.id);
-                
-                if (context.mounted) {
-                  ref.invalidate(soldiersProvider);
-                  Navigator.pop(context);
-                  HopalFeedback.showSuccess(context, 'פרטי החייל עודכנו בהצלחה');
-                }
-              } catch (e) {
-                if (context.mounted) {
-                  HopalFeedback.showError(context, 'שגיאה בעדכון החייל: $e');
-                }
-              }
-            },
-            child: Text('שמור שינויים', style: TextStyle(color: AppTheme.primaryGreen, fontWeight: FontWeight.bold)),
+            child: Text(isEdit ? 'שמור שינויים' : 'הוסף',
+                style: TextStyle(color: AppTheme.primaryGreen, fontWeight: FontWeight.bold)),
           ),
         ],
       ),
@@ -184,6 +143,10 @@ class _SoldiersManagementScreenState extends ConsumerState<SoldiersManagementScr
     }
   }
 
+  void _openImport() {
+    Navigator.push(context, MaterialPageRoute(builder: (_) => const SoldiersImportScreen()));
+  }
+
   @override
   Widget build(BuildContext context) {
     final soldiersAsync = ref.watch(soldiersProvider);
@@ -191,7 +154,8 @@ class _SoldiersManagementScreenState extends ConsumerState<SoldiersManagementScr
     return Scaffold(
       backgroundColor: AppTheme.backgroundPrimary,
       appBar: AppBar(
-        title: Text('ניהול חיילים', style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.bold, fontSize: 18)),
+        title: Text('ניהול חיילים',
+            style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.bold, fontSize: 18)),
         backgroundColor: AppTheme.backgroundPrimary,
         elevation: 0,
         centerTitle: true,
@@ -199,52 +163,120 @@ class _SoldiersManagementScreenState extends ConsumerState<SoldiersManagementScr
           icon: Icon(LucideIcons.arrowRight, color: AppTheme.textPrimary),
           onPressed: () => Navigator.pop(context),
         ),
+        actions: [
+          IconButton(
+            key: const Key('soldiers_import_button'),
+            tooltip: 'ייבוא מאקסל',
+            icon: Icon(LucideIcons.fileSpreadsheet, color: AppTheme.primaryGreen),
+            onPressed: _openImport,
+          ),
+        ],
       ),
       body: soldiersAsync.when(
-        data: (soldiers) {
-          if (soldiers.isEmpty) {
-            return Center(
-              child: Text('לא נמצאו חיילים בפלוגה', style: TextStyle(color: AppTheme.textSecondary)),
-            );
-          }
+        data: (all) {
+          final q = _query.trim().toLowerCase();
+          final soldiers = q.isEmpty
+              ? [...all]
+              : all.where((s) => s.displayLabel.toLowerCase().contains(q)).toList();
+          soldiers.sort((a, b) => a.name.compareTo(b.name));
 
-          return ListView.separated(
-            padding: const EdgeInsets.all(AppTheme.spacing16),
-            itemCount: soldiers.length,
-            separatorBuilder: (context, index) => const Divider(),
-            itemBuilder: (context, index) {
-              final soldier = soldiers[index];
-              return ListTile(
-                leading: CircleAvatar(
-                  backgroundColor: AppTheme.primaryGreen.withOpacity(0.1),
-                  child: Icon(LucideIcons.user, color: AppTheme.primaryGreen),
+          return Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(AppTheme.spacing16, AppTheme.spacing8, AppTheme.spacing16, 0),
+                child: TextField(
+                  onChanged: (v) => setState(() => _query = v),
+                  style: TextStyle(color: AppTheme.textPrimary),
+                  decoration: InputDecoration(
+                    hintText: 'חיפוש לפי שם או מספר אישי (${all.length} חיילים)',
+                    prefixIcon: Icon(LucideIcons.search, color: AppTheme.textSecondary),
+                    filled: true,
+                    fillColor: AppTheme.backgroundSecondary,
+                    border: OutlineInputBorder(borderRadius: AppTheme.radiusMd, borderSide: BorderSide.none),
+                  ),
                 ),
-                title: Text(soldier.name, style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.bold)),
-                subtitle: Text(soldier.phoneNumber ?? 'ללא מספר טלפון', style: TextStyle(color: AppTheme.textSecondary, fontSize: 12)),
-                trailing: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    IconButton(
-                      icon: Icon(LucideIcons.edit2, color: AppTheme.infoBlue, size: 20),
-                      onPressed: () => _showEditSoldierDialog(soldier),
-                    ),
-                    IconButton(
-                      icon: Icon(LucideIcons.trash2, color: AppTheme.criticalRed, size: 20),
-                      onPressed: () => _deleteSoldier(soldier),
-                    ),
-                  ],
-                ),
-              );
-            },
+              ),
+              Expanded(
+                child: all.isEmpty
+                    ? _buildEmpty()
+                    : ListView.separated(
+                        padding: const EdgeInsets.fromLTRB(AppTheme.spacing16, AppTheme.spacing8, AppTheme.spacing16, 96),
+                        itemCount: soldiers.length,
+                        separatorBuilder: (context, index) => const Divider(),
+                        itemBuilder: (context, index) {
+                          final soldier = soldiers[index];
+                          final details = [
+                            if (soldier.personalNumber != null) 'מ.א ${soldier.personalNumber}',
+                            if (soldier.phoneNumber != null && soldier.phoneNumber!.isNotEmpty) soldier.phoneNumber!,
+                            if (soldier.platoon != null && soldier.platoon!.isNotEmpty) 'מחלקה ${soldier.platoon}',
+                          ].join(' • ');
+                          return ListTile(
+                            leading: CircleAvatar(
+                              backgroundColor: AppTheme.primaryGreen.withValues(alpha: 0.1),
+                              child: Icon(LucideIcons.user, color: AppTheme.primaryGreen),
+                            ),
+                            title: Text(soldier.name,
+                                style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.bold)),
+                            subtitle: Text(details.isEmpty ? 'אין פרטים נוספים' : details,
+                                style: TextStyle(color: AppTheme.textSecondary, fontSize: 12)),
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(
+                                  icon: Icon(LucideIcons.edit2, color: AppTheme.infoBlue, size: 20),
+                                  onPressed: () => _showSoldierDialog(soldier),
+                                ),
+                                IconButton(
+                                  icon: Icon(LucideIcons.trash2, color: AppTheme.criticalRed, size: 20),
+                                  onPressed: () => _deleteSoldier(soldier),
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
+              ),
+            ],
           );
         },
         loading: () => Center(child: CircularProgressIndicator(color: AppTheme.primaryGreen)),
-        error: (err, stack) => Center(child: Text('שגיאה: $err', style: TextStyle(color: AppTheme.criticalRed))),
+        error: (err, stack) => Center(
+          child: Padding(
+            padding: const EdgeInsets.all(AppTheme.spacing24),
+            child: Text('שגיאה: $err', style: TextStyle(color: AppTheme.criticalRed)),
+          ),
+        ),
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: _showAddSoldierDialog,
+        key: const Key('soldiers_add_button'),
+        onPressed: () => _showSoldierDialog(),
         backgroundColor: AppTheme.primaryGreen,
-        child: Icon(LucideIcons.plus, color: Colors.white),
+        child: const Icon(LucideIcons.plus, color: Colors.white),
+      ),
+    );
+  }
+
+  Widget _buildEmpty() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(AppTheme.spacing24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(LucideIcons.users, size: 56, color: AppTheme.textSecondary),
+            const SizedBox(height: AppTheme.spacing16),
+            Text('עדיין אין חיילים בפלוגה', style: TextStyle(color: AppTheme.textPrimary, fontSize: 16)),
+            const SizedBox(height: AppTheme.spacing8),
+            Text('הכי מהיר: ייבוא רשימה מאקסל', style: TextStyle(color: AppTheme.textSecondary)),
+            const SizedBox(height: AppTheme.spacing16),
+            ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primaryGreen),
+              onPressed: _openImport,
+              icon: const Icon(LucideIcons.fileSpreadsheet, color: Colors.white),
+              label: const Text('ייבוא מאקסל', style: TextStyle(color: Colors.white)),
+            ),
+          ],
+        ),
       ),
     );
   }

@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' hide User;
 import 'package:chopel_app/models/medical_case.dart';
+import 'package:chopel_app/models/soldier.dart';
 import 'package:chopel_app/core/network/sync_engine.dart';
 import 'package:chopel_app/theme/app_theme.dart';
 import 'package:chopel_app/theme/components/hopal_card.dart';
@@ -51,18 +52,21 @@ class _MedicalCaseDetailScreenState extends ConsumerState<MedicalCaseDetailScree
       final sb = Supabase.instance.client;
       final soldierRes = await sb
           .from('soldiers')
-          .select('name, platoon, phone_number, unit:units(name)')
+          .select('*, unit:units(name)')
           .eq('id', widget.medicalCase.soldierId)
           .maybeSingle();
           
       if (soldierRes != null) {
         final unitName = (soldierRes['unit'] as Map<String, dynamic>?)?['name'] ?? 'יחידה לא ידועה';
+        final soldier = Soldier.fromMap(soldierRes);
         
         if (mounted) {
           setState(() {
-            _soldierName = soldierRes['name'];
-            _soldierContext = '$unitName • מחלקה ${soldierRes['platoon']}';
-            _soldierPhone = soldierRes['phone_number'] ?? '';
+            _soldierName = soldier.name;
+            _soldierContext = soldier.personalNumber != null
+                ? '$unitName • מ.א ${soldier.personalNumber}'
+                : unitName;
+            _soldierPhone = soldier.phoneNumber ?? '';
           });
         }
       } else {

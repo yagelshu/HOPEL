@@ -247,8 +247,8 @@ class _MedicalCasesListScreenState extends ConsumerState<MedicalCasesListScreen>
                       children: [
                         Text(soldier.name, style: Theme.of(context).textTheme.titleMedium),
                         const SizedBox(height: 2),
-                        if (soldier.platoon != null && soldier.platoon!.isNotEmpty)
-                          Text('מחלקה: ${soldier.platoon}', style: TextStyle(color: AppTheme.textSecondary, fontSize: 13)),
+                        if (soldier.personalNumber != null)
+                          Text('מ.א: ${soldier.personalNumber}', style: TextStyle(color: AppTheme.textSecondary, fontSize: 13)),
                       ],
                     ),
                   ),

@@ -44,37 +44,46 @@ final dashboardMetricsProvider = FutureProvider<DashboardMetrics>((ref) async {
     );
   }
 
+  // Each section is isolated: one failing table must not blank the whole home screen.
+  Future<T> safe<T>(Future<T> Function() f, T fallback) async {
+    try {
+      return await f();
+    } catch (e) {
+      // ignore: avoid_print
+      print('dashboard section failed: $e');
+      return fallback;
+    }
+  }
+
   // Medical Metrics (filtered by active deployment if available, else unit)
   int activeCases = 0;
   int attentionCases = 0;
   
   if (user.activeDeploymentId != null) {
-    final activeCasesRes = await sb
+    activeCases = await safe(() async => (await sb
         .from('medical_cases')
         .select('id')
         .eq('deployment_id', user.activeDeploymentId!)
-        .not('status', 'in', ['CLOSED', 'COMPLETED']);
-    activeCases = activeCasesRes.length;
+        .not('status', 'in', ['CLOSED', 'COMPLETED'])).length, 0);
     
-    final attentionCasesRes = await sb
+    attentionCases = await safe(() async => (await sb
         .from('medical_cases')
         .select('id')
         .eq('deployment_id', user.activeDeploymentId!)
-        .eq('status', 'REQUIRES_ATTENTION');
-    attentionCases = attentionCasesRes.length;
+        .eq('status', 'REQUIRES_ATTENTION')).length, 0);
   }
 
   // Equipment Metrics
-  final missingEqRes = await sb
+  final missingEqRes = await safe(() => sb
       .from('equipment')
       .select('id, quantity, minimum_required, status')
-      .eq('unit_id', user.unitId!);
+      .eq('unit_id', user.unitId!), <Map<String, dynamic>>[]);
   
   int missingEq = 0;
   int expiringEq = 0; // Requires date parsing, keeping logic simple for now
   
   for (final eq in missingEqRes) {
-    if (eq['status'] == 'MISSING' || (eq['quantity'] as int) < (eq['minimum_required'] as int)) {
+    if (eq['status'] == 'MISSING' || ((eq['quantity'] ?? 0) as int) < ((eq['minimum_required'] ?? 0) as int)) {
       missingEq++;
     }
     if (eq['status'] == 'EXPIRING_SOON') {
@@ -83,38 +92,38 @@ final dashboardMetricsProvider = FutureProvider<DashboardMetrics>((ref) async {
   }
 
   // Readiness Metrics
-  // Since we don't have equipment_assignments populated for the unit easily mapped to medic_id, 
-  // we do a raw query equivalent via Supabase:
-  final assignmentsRes = await sb
+  final assignmentsRes = await safe(() => sb
       .from('equipment_assignments')
       .select('medic_id')
-      .eq('verification_status', 'PENDING');
+      .eq('verification_status', 'PENDING'), <Map<String, dynamic>>[]);
       
   final uniquePendingMedics = assignmentsRes.map((r) => r['medic_id']).toSet();
-  // Filter only those in this unit
   final unverified = uniquePendingMedics.length; 
 
-  // Timeline Events Generator
-  final scheduleRes = await sb.from('daily_schedule').select().eq('unit_id', user.unitId!);
+  // Daily schedule
+  final scheduleRes = await safe(() => sb.from('daily_schedule').select().eq('unit_id', user.unitId!), <Map<String, dynamic>>[]);
   final timeline = scheduleRes.map((s) {
-    return {
+    return <String, dynamic>{
       'id': s['id'],
-      'time': s['time'],
+      'time': (s['time'] ?? '').toString(),
       'title': s['title'],
+      'actor': s['actor'],
+      'icon': s['icon'],
       'is_done': s['is_done'] == true || s['is_done'] == 1,
     };
   }).toList();
   timeline.sort((a, b) => (a['time'] as String).compareTo(b['time'] as String));
 
   // Medics
-  final usersRecords = await sb.from('users').select().eq('unit_id', user.unitId!);
+  final usersRecords = await safe(() => sb.from('users').select().eq('unit_id', user.unitId!), <Map<String, dynamic>>[]);
   final medics = usersRecords
       .where((u) => u['role'] == 'COMBAT_MEDIC' || u['role'] == 'COMPANY_MEDIC')
       .map((u) {
-    return {
+    return <String, dynamic>{
       'id': u['id'],
       'name': u['name'],
       'role': u['role'],
+      'is_manual': u['is_manual'] == true,
       'standby': u['is_on_standby'] == true || u['is_on_standby'] == 1,
     };
   }).toList();

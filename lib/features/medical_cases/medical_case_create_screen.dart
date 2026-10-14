@@ -187,14 +187,11 @@ class _MedicalCaseCreateScreenState extends ConsumerState<MedicalCaseCreateScree
               final user = AuthService().currentUser;
               final soldierId = const Uuid().v4();
               final personalNum = idController.text.trim();
-              final fullName = personalNum.isNotEmpty 
-                  ? '${nameController.text.trim()} ($personalNum)'
-                  : nameController.text.trim();
               
               final payload = {
                 'id': soldierId,
-                'name': fullName,
-                'platoon': '1', // Default
+                'name': nameController.text.trim(),
+                'personal_number': personalNum,
                 'unit_id': user?.unitId,
                 'phone_number': phoneController.text.trim(),
               };
@@ -421,7 +418,7 @@ class _MedicalCaseCreateScreenState extends ConsumerState<MedicalCaseCreateScree
                                       dropdownMenuEntries: soldiers.map((s) {
                                         return DropdownMenuEntry<String>(
                                           value: s.id,
-                                          label: s.name,
+                                          label: s.displayLabel,
                                           style: MenuItemButton.styleFrom(
                                             foregroundColor: AppTheme.textPrimary,
                                           ),

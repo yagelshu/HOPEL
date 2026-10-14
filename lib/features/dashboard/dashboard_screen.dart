@@ -598,7 +598,91 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
     );
   }
 
-  void _showMedicsBottomSheet(BuildContext context, List<Map<String, dynamic>> medics) {
+  void _showMedicsBottomSheet(BuildContext context, List<Map<String, dynamic>> initialMedics) {
+    final medics = initialMedics.map((m) => Map<String, dynamic>.from(m)).toList();
+    final currentUserId = AuthService().currentUser?.id;
+
+    Future<void> addMedic(StateSetter setModalState) async {
+      final nameController = TextEditingController();
+      final name = await showDialog<String>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: AppTheme.backgroundSecondary,
+          title: Text('הוספת חובש', style: TextStyle(color: AppTheme.textPrimary)),
+          content: TextField(
+            controller: nameController,
+            autofocus: true,
+            style: TextStyle(color: AppTheme.textPrimary),
+            decoration: InputDecoration(labelText: 'שם החובש', labelStyle: TextStyle(color: AppTheme.textSecondary)),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: Text('ביטול', style: TextStyle(color: AppTheme.textSecondary))),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, nameController.text.trim()),
+              child: Text('הוסף', style: TextStyle(color: AppTheme.primaryGreen, fontWeight: FontWeight.bold)),
+            ),
+          ],
+        ),
+      );
+      if (name == null || name.isEmpty) return;
+      try {
+        final row = await Supabase.instance.client
+            .from('users')
+            .insert({
+              'id': const Uuid().v4(),
+              'name': name,
+              'role': 'COMBAT_MEDIC',
+              'unit_id': AuthService().currentUser?.unitId,
+              'is_on_standby': true,
+              'is_manual': true,
+            })
+            .select()
+            .single();
+        setModalState(() => medics.add({
+              'id': row['id'],
+              'name': row['name'],
+              'role': row['role'],
+              'is_manual': true,
+              'standby': true,
+            }));
+        ref.invalidate(dashboardMetricsProvider);
+      } catch (e) {
+        if (context.mounted) HopalFeedback.showError(context, 'שגיאה בהוספת חובש: $e');
+      }
+    }
+
+    Future<void> removeMedic(StateSetter setModalState, Map<String, dynamic> medic) async {
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: AppTheme.backgroundSecondary,
+          title: Text('הסרת חובש', style: TextStyle(color: AppTheme.textPrimary)),
+          content: Text('להסיר את ${medic['name']} מרשימת החובשים?', style: TextStyle(color: AppTheme.textSecondary)),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text('ביטול', style: TextStyle(color: AppTheme.textSecondary))),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: Text('הסר', style: TextStyle(color: AppTheme.criticalRed, fontWeight: FontWeight.bold)),
+            ),
+          ],
+        ),
+      );
+      if (ok != true) return;
+      try {
+        final users = Supabase.instance.client.from('users');
+        if (medic['is_manual'] == true) {
+          await users.delete().eq('id', medic['id']);
+        } else {
+          // Real app user: detach from the company instead of deleting the account.
+          await users.update({'unit_id': null, 'is_on_standby': false}).eq('id', medic['id']);
+        }
+        setModalState(() => medics.remove(medic));
+        ref.invalidate(dashboardMetricsProvider);
+      } catch (e) {
+        if (context.mounted) HopalFeedback.showError(context, 'שגיאה בהסרת חובש: $e');
+      }
+    }
+
     HopalBottomSheet.show(
       context: context,
       title: 'חובשים בכוננות',
@@ -607,20 +691,31 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
           return Column(
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
+              if (medics.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.all(AppTheme.spacing16),
+                  child: Text('אין חובשים ברשימה', style: TextStyle(color: AppTheme.textSecondary)),
+                ),
               ...medics.map((medic) {
+                final isMe = medic['id'] == currentUserId;
                 return Material(
                   type: MaterialType.transparency,
                   child: ListTile(
-                    title: Text(medic['name'], style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.w500)),
+                    leading: isMe
+                        ? null
+                        : IconButton(
+                            tooltip: 'הסר חובש',
+                            icon: Icon(LucideIcons.userMinus, color: AppTheme.criticalRed, size: 20),
+                            onPressed: () => removeMedic(setModalState, medic),
+                          ),
+                    title: Text(isMe ? '${medic['name']} (אני)' : medic['name'] ?? '',
+                        style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.w500)),
                     trailing: CupertinoSwitch(
-                      value: medic['standby'],
-                      activeColor: AppTheme.successGreen,
-                      trackColor: AppTheme.backgroundTertiary,
+                      value: medic['standby'] == true,
+                      activeTrackColor: AppTheme.successGreen,
+                      inactiveTrackColor: AppTheme.backgroundTertiary,
                       onChanged: (bool value) async {
-                        setModalState(() {
-                          medic['standby'] = value;
-                        });
-                        
+                        setModalState(() => medic['standby'] = value);
                         try {
                           await Supabase.instance.client
                               .from('users')
@@ -628,10 +723,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
                               .eq('id', medic['id']);
                           ref.invalidate(dashboardMetricsProvider);
                         } catch (e) {
-                          setModalState(() {
-                            medic['standby'] = !value;
-                          });
-                          HopalFeedback.showError(context, 'שגיאה בעדכון כוננות');
+                          setModalState(() => medic['standby'] = !value);
+                          if (context.mounted) HopalFeedback.showError(context, 'שגיאה בעדכון כוננות: $e');
                         }
                       },
                     ),
@@ -643,16 +736,26 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
               Material(
                 type: MaterialType.transparency,
                 child: ListTile(
-                  leading: Icon(LucideIcons.share, color: AppTheme.primaryGreen),
-                  title: Text('הזמן חובשים נוספים לפלוגה', style: TextStyle(color: AppTheme.primaryGreen, fontWeight: FontWeight.bold)),
-                  subtitle: Text('כדי להוסיף חובשים לכוננות, הם צריכים להצטרף לפלוגה באפליקציה.', style: TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
+                  key: const Key('add_medic_tile'),
+                  leading: Icon(LucideIcons.userPlus, color: AppTheme.primaryGreen),
+                  title: Text('הוסף חובש לכוננות', style: TextStyle(color: AppTheme.primaryGreen, fontWeight: FontWeight.bold)),
+                  onTap: () => addMedic(setModalState),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 0, vertical: 4),
+                ),
+              ),
+              Material(
+                type: MaterialType.transparency,
+                child: ListTile(
+                  leading: Icon(LucideIcons.share, color: AppTheme.textSecondary),
+                  title: Text('שלח קוד פלוגה לחובש', style: TextStyle(color: AppTheme.textSecondary)),
+                  subtitle: Text('כך החובש יוכל להתחבר לאפליקציה בעצמו', style: TextStyle(fontSize: 12, color: AppTheme.textMuted)),
                   onTap: () {
                     final code = AuthService().currentUser?.unitJoinCode ?? '';
                     if (code.isNotEmpty) {
                       Share.share('היי, קוד הפלוגה שלנו באפליקציית חופ"ל הוא:\n$code');
                     }
                   },
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 0, vertical: 8),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 0, vertical: 4),
                 ),
               ),
             ],
@@ -787,62 +890,66 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
   }
 
   void _showEditTimelineBottomSheet(BuildContext context, DashboardMetrics metrics) {
+    // Kept outside the builder so edits survive rebuilds.
+    final events = metrics.timelineEvents.map((e) => Map<String, dynamic>.from(e)).toList();
+    final schedule = Supabase.instance.client.from('daily_schedule');
+
+    void sortEvents() => events.sort((a, b) => (a['time'] ?? '').toString().compareTo((b['time'] ?? '').toString()));
+
     HopalBottomSheet.show(
       context: context,
       title: 'עריכת לו"ז יומי',
       child: StatefulBuilder(
         builder: (context, setModalState) {
-          final events = List<Map<String, dynamic>>.from(metrics.timelineEvents);
-          
           return Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               if (events.isEmpty)
                 Padding(
-                  padding: EdgeInsets.all(AppTheme.spacing16),
+                  padding: const EdgeInsets.all(AppTheme.spacing16),
                   child: Text('הלו"ז ריק. השתמש בכפתור למטה כדי להוסיף משימות.', style: TextStyle(color: AppTheme.textSecondary)),
                 ),
               ...events.map((event) {
                 return CheckboxListTile(
-                  title: Text(event['title'] ?? ''),
-                  subtitle: Text(event['time'] ?? ''),
+                  title: Text(event['title'] ?? '', style: TextStyle(color: AppTheme.textPrimary)),
+                  subtitle: Text(event['time'] ?? '', style: TextStyle(color: AppTheme.textSecondary)),
                   value: event['is_done'] == true,
                   activeColor: AppTheme.primaryGreen,
                   onChanged: (val) async {
-                    setModalState(() {
-                      event['is_done'] = val;
-                    });
+                    setModalState(() => event['is_done'] = val == true);
                     try {
-                      await Supabase.instance.client.from('daily_schedule').update({'is_done': val == true}).eq('id', event['id']);
+                      await schedule.update({'is_done': val == true}).eq('id', event['id']);
                       ref.invalidate(dashboardMetricsProvider);
                     } catch (e) {
-                      setModalState(() {
-                        event['is_done'] = !val!;
-                      });
+                      setModalState(() => event['is_done'] = val != true);
+                      if (context.mounted) HopalFeedback.showError(context, 'שגיאה בעדכון: $e');
                     }
                   },
                   secondary: IconButton(
                     icon: Icon(LucideIcons.trash2, color: AppTheme.criticalRed),
                     onPressed: () async {
-                      setModalState(() {
-                        events.remove(event);
-                      });
-                      await Supabase.instance.client.from('daily_schedule').delete().eq('id', event['id']);
-                      ref.invalidate(dashboardMetricsProvider);
+                      try {
+                        await schedule.delete().eq('id', event['id']);
+                        setModalState(() => events.remove(event));
+                        ref.invalidate(dashboardMetricsProvider);
+                      } catch (e) {
+                        if (context.mounted) HopalFeedback.showError(context, 'שגיאה במחיקה: $e');
+                      }
                     },
                   ),
                 );
               }),
               const SizedBox(height: AppTheme.spacing16),
               HopalButton(
+                key: const Key('schedule_add_task'),
                 label: 'הוסף משימה',
                 icon: LucideIcons.plus,
                 variant: HopalButtonVariant.secondary,
                 onPressed: () async {
-                  String? newTime;
-                  String? newTitle;
-                  final timeController = TextEditingController(text: "${DateTime.now().hour.toString().padLeft(2, '0')}:${DateTime.now().minute.toString().padLeft(2, '0')}");
+                  final now = DateTime.now();
+                  final timeController = TextEditingController(
+                      text: '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}');
                   final titleController = TextEditingController();
 
                   final result = await showDialog<bool>(
@@ -860,6 +967,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
                           ),
                           TextField(
                             controller: titleController,
+                            autofocus: true,
                             style: TextStyle(color: AppTheme.textPrimary),
                             decoration: InputDecoration(labelText: 'שם המשימה', labelStyle: TextStyle(color: AppTheme.textSecondary)),
                           ),
@@ -868,36 +976,35 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
                       actions: [
                         TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text('ביטול', style: TextStyle(color: AppTheme.textSecondary))),
                         TextButton(
-                          onPressed: () {
-                            newTime = timeController.text;
-                            newTitle = titleController.text;
-                            Navigator.pop(ctx, true);
-                          },
+                          onPressed: () => Navigator.pop(ctx, true),
                           child: Text('הוסף', style: TextStyle(color: AppTheme.primaryGreen)),
                         ),
                       ],
                     ),
                   );
-                  
-                  if (result == true && newTitle != null && newTitle!.isNotEmpty) {
-                    final newEvent = {
-                      'unit_id': AuthService().currentUser!.unitId,
-                      'time': newTime ?? '00:00',
-                      'title': newTitle,
-                      'icon': 'clock',
-                      'is_done': false,
-                      'actor': AuthService().currentUser?.name ?? 'חופ"ל',
-                    };
-                    
+
+                  final title = titleController.text.trim();
+                  if (result != true || title.isEmpty) return;
+
+                  try {
+                    final saved = await schedule
+                        .insert({
+                          'unit_id': AuthService().currentUser!.unitId,
+                          'time': timeController.text.trim().isEmpty ? '00:00' : timeController.text.trim(),
+                          'title': title,
+                          'icon': 'clock',
+                          'is_done': false,
+                          'actor': AuthService().currentUser?.name ?? 'חופ"ל',
+                        })
+                        .select()
+                        .single();
                     setModalState(() {
-                      // We don't have the ID yet, but we add it optimistically to UI
-                      final optimisticEvent = Map<String, dynamic>.from(newEvent)..['id'] = 'temp';
-                      events.add(optimisticEvent);
-                      events.sort((a, b) => (a['time'] as String).compareTo(b['time'] as String));
+                      events.add({...saved, 'is_done': saved['is_done'] == true, 'time': (saved['time'] ?? '').toString()});
+                      sortEvents();
                     });
-                    
-                    await Supabase.instance.client.from('daily_schedule').insert(newEvent);
                     ref.invalidate(dashboardMetricsProvider);
+                  } catch (e) {
+                    if (context.mounted) HopalFeedback.showError(context, 'המשימה לא נשמרה: $e');
                   }
                 },
               ),
@@ -917,4 +1024,3 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
     );
   }
 }
-
