@@ -17,6 +17,7 @@ import 'package:chopel_app/core/auth/auth_service.dart';
 import 'package:chopel_app/theme/components/hopal_button.dart';
 import 'package:chopel_app/theme/components/hopal_bottom_sheet.dart';
 import 'package:chopel_app/theme/components/hopal_feedback.dart';
+import 'package:chopel_app/core/database/database_service.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 class EquipmentListScreen extends ConsumerStatefulWidget {
@@ -133,15 +134,42 @@ class _EquipmentListScreenState extends ConsumerState<EquipmentListScreen> {
                         icon: LucideIcons.trash2,
                         variant: HopalButtonVariant.destructive,
                         onPressed: () async {
-                          await Supabase.instance.client
-                              .from('equipment')
-                              .delete()
-                              .eq('id', item!.id);
-                          ref.read(equipmentProvider.notifier).refresh();
-                          ref.invalidate(dashboardMetricsProvider);
-                          if (!context.mounted) return;
-                          Navigator.pop(context);
-                          HopalFeedback.showSuccess(context, 'הפריט נמחק בהצלחה');
+                          final confirm = await showDialog<bool>(
+                            context: context,
+                            builder: (ctx) => AlertDialog(
+                              backgroundColor: AppTheme.backgroundSecondary,
+                              title: Text('מחיקת פריט', style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.bold)),
+                              content: Text('האם למחוק את הפריט "$name"? פעולה זו אינה הפיכה.', style: TextStyle(color: AppTheme.textSecondary)),
+                              actions: [
+                                TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text('ביטול', style: TextStyle(color: AppTheme.textSecondary))),
+                                TextButton(
+                                  onPressed: () => Navigator.pop(ctx, true),
+                                  child: Text('מחק', style: TextStyle(color: AppTheme.criticalRed, fontWeight: FontWeight.bold)),
+                                ),
+                              ],
+                            ),
+                          );
+                          if (confirm != true) return;
+
+                          try {
+                            await Supabase.instance.client
+                                .from('equipment')
+                                .delete()
+                                .eq('id', item!.id);
+
+                            try {
+                              final db = await DatabaseService().database;
+                              await db.delete('equipment', where: 'id = ?', whereArgs: [item!.id]);
+                            } catch (_) {}
+
+                            ref.read(equipmentProvider.notifier).refresh();
+                            ref.invalidate(dashboardMetricsProvider);
+                            if (!context.mounted) return;
+                            Navigator.pop(context);
+                            HopalFeedback.showSuccess(context, 'הפריט נמחק בהצלחה');
+                          } catch (e) {
+                            if (context.mounted) HopalFeedback.showError(context, 'שגיאה במחיקת פריט: $e');
+                          }
                         },
                       ),
                     ),
@@ -153,33 +181,61 @@ class _EquipmentListScreenState extends ConsumerState<EquipmentListScreen> {
                       label: 'שמור שינויים',
                       icon: LucideIcons.check,
                       onPressed: () async {
-                        if (name.trim().isEmpty) return;
+                        if (name.trim().isEmpty) {
+                          HopalFeedback.showError(context, 'נא להזין שם פריט');
+                          return;
+                        }
                         final String id = isEditing ? item!.id : const Uuid().v4();
                         final int minReq = isEditing ? item!.minimumRequired : currentQuantity; 
                         
-                        final payload = {
+                        final user = AuthService().currentUser;
+                        final unitId = user?.unitId ?? item?.unitId;
+
+                        // Only include columns that exist in the Supabase equipment table
+                        final payload = <String, dynamic>{
                           'id': id,
-                          'name': name,
+                          'name': name.trim(),
                           'category': category,
                           'item_type': itemType,
                           'quantity': currentQuantity,
                           'minimum_required': minReq,
-                          'status': currentQuantity >= minReq ? 'READY' : 'MISSING',
-                          'image_path': imagePath,
+                          'status': currentQuantity >= minReq ? 'IN_STOCK' : 'MISSING',
                         };
-                        
-                        final user = AuthService().currentUser;
-                        if (user?.unitId != null) {
-                          payload['unit_id'] = user!.unitId!;
-                          await Supabase.instance.client.from('equipment').upsert(payload);
+                        if (unitId != null) {
+                          payload['unit_id'] = unitId;
                         }
-                        
-                        ref.read(equipmentProvider.notifier).refresh();
-                        ref.invalidate(dashboardMetricsProvider);
-                        
-                        if (!context.mounted) return;
-                        Navigator.pop(context);
-                        HopalFeedback.showSuccess(context, 'השינויים נשמרו בהצלחה');
+
+                        try {
+                          // Save to Supabase
+                          if (unitId != null) {
+                            await Supabase.instance.client.from('equipment').upsert(payload);
+                          }
+
+                          // Save to local SQLite/mock database for offline support
+                          try {
+                            final db = await DatabaseService().database;
+                            final localPayload = {
+                              ...payload,
+                              if (imagePath != null) 'image_path': imagePath,
+                            };
+                            if (isEditing) {
+                              await db.update('equipment', localPayload, where: 'id = ?', whereArgs: [id]);
+                            } else {
+                              await db.insert('equipment', localPayload);
+                            }
+                          } catch (_) {}
+
+                          ref.read(equipmentProvider.notifier).refresh();
+                          ref.invalidate(dashboardMetricsProvider);
+
+                          if (!context.mounted) return;
+                          Navigator.pop(context);
+                          HopalFeedback.showSuccess(context, 'השינויים נשמרו בהצלחה');
+                        } catch (e) {
+                          if (context.mounted) {
+                            HopalFeedback.showError(context, 'שגיאה בשמירת שינויים: $e');
+                          }
+                        }
                       },
                     ),
                   ),
@@ -193,54 +249,242 @@ class _EquipmentListScreenState extends ConsumerState<EquipmentListScreen> {
   }
 
   void _showCatCheckModal() {
-    String lotNumber = '';
+    final lotController = TextEditingController();
+    bool isOpenOnVest = true;
+    Map<String, dynamic>? validationResult;
+
     HopalBottomSheet.show(
       context: context,
-      title: 'בדיקת תוקף חסם עורקים (CAT)',
+      title: 'בדיקת תוקף ואותנטיות חסם עורקים (CAT)',
       child: StatefulBuilder(
         builder: (context, setModalState) {
-          return Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(LucideIcons.shieldCheck, size: 64, color: AppTheme.primaryGreen),
-              const SizedBox(height: AppTheme.spacing16),
-              const Text('הזן מספר אצווה (Lot Number) המוטבע על החסם כדי לוודא שהוא מקורי ובתוקף.', textAlign: TextAlign.center),
-              const SizedBox(height: AppTheme.spacing24),
-              TextField(
-                decoration: InputDecoration(
-                  labelText: 'מספר אצווה',
-                  prefixIcon: const Icon(LucideIcons.hash),
-                  border: OutlineInputBorder(borderRadius: AppTheme.radiusMd),
-                ),
-                onChanged: (val) => lotNumber = val,
-              ),
-              const SizedBox(height: AppTheme.spacing24),
-              HopalButton(
-                label: 'בדוק תוקף',
-                icon: LucideIcons.shieldCheck,
-                onPressed: () {
-                  Navigator.pop(context);
-                  if (lotNumber.isEmpty) {
-                    HopalFeedback.showError(context, 'יש להזין מספר אצווה');
-                    return;
-                  }
-                  
-                  // Basic mock logic for CAT Lot Number validation
-                  // Usually, lot numbers might start with a year or be at least 4 chars.
-                  if (lotNumber.length < 4) {
-                    HopalFeedback.showError(context, 'מספר אצווה לא חוקי. אנא בדוק שוב את המספר המוטבע.');
-                    return;
-                  }
-                  
-                  if (lotNumber.contains('0000') || lotNumber.contains('1234')) {
-                    HopalFeedback.showError(context, 'אזהרה: החסם זוהה כזיוף (מספר אצווה לא קיים במאגר)! אין להשתמש בו.');
-                    return;
-                  }
+          void runInspection() {
+            final raw = lotController.text.trim();
+            if (raw.isEmpty) {
+              HopalFeedback.showError(context, 'יש להזין מספר אצווה או שנת ייצור המוטבעת על החסם');
+              return;
+            }
 
-                  HopalFeedback.showSuccess(context, 'מספר האצווה אומת. החסם מקורי ובתוקף! מוכן לשימוש חרום.');
-                },
-              ),
-            ],
+            final currentYear = DateTime.now().year;
+            int? prodYear;
+
+            // Check 4 digit year first (e.g. 2023, 2021)
+            final year4Match = RegExp(r'(20\d{2})').firstMatch(raw);
+            if (year4Match != null) {
+              prodYear = int.tryParse(year4Match.group(1)!);
+            } else {
+              // Check 2 digit year after LOT or dash e.g. LOT 22, 23-
+              final year2Match = RegExp(r'(?:LOT|lot|\b)(2[0-9])\b').firstMatch(raw);
+              if (year2Match != null) {
+                prodYear = 2000 + int.parse(year2Match.group(1)!);
+              }
+            }
+
+            // Detect obvious mock/fake lots
+            final isSuspiciousLot = raw.contains('0000') || raw.toLowerCase().contains('fake') || raw.length < 3;
+
+            if (prodYear == null) {
+              setModalState(() {
+                validationResult = {
+                  'status': 'UNKNOWN',
+                  'title': 'לא זוהתה שנת ייצור באצווה',
+                  'message': 'לא הצלחנו לפענח שנת ייצור מתוך "$raw". אנא אתר על גבי קליפ החסם או האריזה את שנת הייצור (לדוגמה 2023 או LOT 23) ובדוק את סימני המקוריות הפיזיים.',
+                  'color': AppTheme.warningAmber,
+                };
+              });
+              return;
+            }
+
+            final age = currentYear - prodYear;
+            final maxYears = isOpenOnVest ? 5 : 10;
+
+            if (isSuspiciousLot) {
+              setModalState(() {
+                validationResult = {
+                  'status': 'DANGER',
+                  'title': 'אזהרה: חשד לחסם מזויף!',
+                  'message': 'מספר האצווה חריג ואינו תואם תקן NAR. חסמים מזויפים נשברים תחת עומס ואינם עוצרים דימום. אין להשתמש בחסם זה בפעילות מבצעית!',
+                  'color': AppTheme.criticalRed,
+                };
+              });
+            } else if (age > maxYears || prodYear > currentYear + 1) {
+              setModalState(() {
+                validationResult = {
+                  'status': 'EXPIRED',
+                  'title': 'חסם פג תוקף מבצעי!',
+                  'message': 'יוצר בשנת $prodYear (בן $age שנים). לפי הוראות קרפ"ר ו-TCCC, אורך חיי חסם ${isOpenOnVest ? "פתוח על וסט הינו 5 שנים (שחיקת UV ורצועות)" : "באריזה סגורה הינו 10 שנים"}. חסם זה אינו כשיר לשימוש ויש לגרוס ולהחליף.',
+                  'color': AppTheme.criticalRed,
+                };
+              });
+            } else if (isOpenOnVest && age >= 4) {
+              setModalState(() {
+                validationResult = {
+                  'status': 'WARNING',
+                  'title': 'מתקרב לסוף תוקף מבצעי',
+                  'message': 'יוצר בשנת $prodYear (בן $age שנים על וסט). מומלץ להחליף בחסם חדש לקראת תעסוקה מבצעית אינטנסיבית.',
+                  'color': AppTheme.warningAmber,
+                };
+              });
+            } else {
+              setModalState(() {
+                validationResult = {
+                  'status': 'OK',
+                  'title': 'חסם תקין וכשיר לשימוש מבצעי',
+                  'message': 'יוצר בשנת $prodYear (בן $age שנים). נותרו כ-${maxYears - age} שנות כשירות ${isOpenOnVest ? "על הווסט" : "באריזה"}. וודא שלמות פיזית של מוט ההידוק והרצועה.',
+                  'color': AppTheme.successGreen,
+                };
+              });
+            }
+          }
+
+          return SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(AppTheme.spacing12),
+                  decoration: BoxDecoration(
+                    color: AppTheme.backgroundSecondary,
+                    borderRadius: AppTheme.radiusMd,
+                    border: Border.all(color: AppTheme.borderSubtle),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(LucideIcons.info, color: AppTheme.primaryGreen, size: 20),
+                      const SizedBox(width: AppTheme.spacing12),
+                      Expanded(
+                        child: Text(
+                          'הבדיקה מבוססת על שנת הייצור המוטבעת לפי נוהלי קרפ"ר ו-TCCC (5 שנים פתוח על וסט / 10 שנים באריזה סגורה).',
+                          style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: AppTheme.spacing16),
+                TextField(
+                  controller: lotController,
+                  style: TextStyle(color: AppTheme.textPrimary),
+                  decoration: InputDecoration(
+                    labelText: 'מספר אצווה / שנת ייצור (Lot Number)',
+                    hintText: 'לדוגמה: LOT 23-148 או 2023',
+                    prefixIcon: const Icon(LucideIcons.hash),
+                    border: OutlineInputBorder(borderRadius: AppTheme.radiusMd),
+                  ),
+                ),
+                const SizedBox(height: AppTheme.spacing16),
+                Text('מצב החסם הנוכחי:', style: TextStyle(color: AppTheme.textSecondary, fontSize: 13, fontWeight: FontWeight.bold)),
+                const SizedBox(height: AppTheme.spacing8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: ChoiceChip(
+                        label: const Center(child: Text('פתוח על הווסט (5 שנים)')),
+                        selected: isOpenOnVest,
+                        onSelected: (val) => setModalState(() => isOpenOnVest = true),
+                        selectedColor: AppTheme.primaryGreen.withValues(alpha: 0.25),
+                        labelStyle: TextStyle(color: isOpenOnVest ? AppTheme.primaryGreen : AppTheme.textSecondary, fontSize: 12),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: ChoiceChip(
+                        label: const Center(child: Text('ארוז באריזה מקורית (10 שנים)')),
+                        selected: !isOpenOnVest,
+                        onSelected: (val) => setModalState(() => isOpenOnVest = false),
+                        selectedColor: AppTheme.primaryGreen.withValues(alpha: 0.25),
+                        labelStyle: TextStyle(color: !isOpenOnVest ? AppTheme.primaryGreen : AppTheme.textSecondary, fontSize: 12),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: AppTheme.spacing16),
+                HopalButton(
+                  label: 'בדוק כשירות ותוקף',
+                  icon: LucideIcons.shieldCheck,
+                  onPressed: runInspection,
+                ),
+                if (validationResult != null) ...[
+                  const SizedBox(height: AppTheme.spacing16),
+                  Container(
+                    padding: const EdgeInsets.all(AppTheme.spacing16),
+                    decoration: BoxDecoration(
+                      color: (validationResult!['color'] as Color).withValues(alpha: 0.12),
+                      borderRadius: AppTheme.radiusMd,
+                      border: Border.all(color: validationResult!['color'] as Color),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(
+                              validationResult!['status'] == 'OK'
+                                  ? LucideIcons.circleCheck
+                                  : validationResult!['status'] == 'WARNING'
+                                      ? LucideIcons.alertTriangle
+                                      : LucideIcons.alertOctagon,
+                              color: validationResult!['color'] as Color,
+                              size: 22,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                validationResult!['title'] as String,
+                                style: TextStyle(
+                                  color: validationResult!['color'] as Color,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          validationResult!['message'] as String,
+                          style: TextStyle(color: AppTheme.textPrimary, fontSize: 13, height: 1.4),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+                const SizedBox(height: AppTheme.spacing24),
+                Theme(
+                  data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+                  child: ExpansionTile(
+                    tilePadding: EdgeInsets.zero,
+                    leading: Icon(LucideIcons.shieldAlert, color: AppTheme.warningAmber, size: 20),
+                    title: Text(
+                      'צ\'קליסט זיהוי חסם CAT Gen 7 מקורי (מול זיופים)',
+                      style: TextStyle(color: AppTheme.textPrimary, fontSize: 13, fontWeight: FontWeight.bold),
+                    ),
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: AppTheme.spacing12),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('1. חריטת C-A-T® עמוקה ומקורית על גבי מוט ההידוק וקליפ הנעילה (בזיופים החריטה שטחית או מודפסת בצבע).',
+                                style: TextStyle(color: AppTheme.textSecondary, fontSize: 12, height: 1.4)),
+                            const SizedBox(height: 6),
+                            Text('2. אבזם חיכוך אחיד (Single-Routing Buckle) בעל פסי חיכוך עבים וגב מעוגל.',
+                                style: TextStyle(color: AppTheme.textSecondary, fontSize: 12, height: 1.4)),
+                            const SizedBox(height: 6),
+                            Text('3. לשונית אדומה (Red Tip) עם סימון פטנט בריתוך אולטרסוני אחיד.',
+                                style: TextStyle(color: AppTheme.textSecondary, fontSize: 12, height: 1.4)),
+                            const SizedBox(height: 6),
+                            Text('אזהרת בטיחות: חסמים מזויפים שכיחים ברשת נשברים בעת הידוק עורקי מלא ואינם מצילים חיים!',
+                                style: TextStyle(color: AppTheme.criticalRed, fontSize: 12, fontWeight: FontWeight.w500)),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           );
         },
       ),

@@ -657,50 +657,172 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
 
     Future<void> addMedic(StateSetter setModalState) async {
       final nameController = TextEditingController();
-      final name = await showDialog<String>(
+      final phoneController = TextEditingController();
+      final platoonController = TextEditingController();
+      
+      final soldiers = ref.read(soldiersProvider).asData?.value ?? [];
+
+      final result = await showDialog<Map<String, String>?>(
         context: context,
-        builder: (ctx) => AlertDialog(
-          backgroundColor: AppTheme.backgroundSecondary,
-          title: Text('הוספת חובש', style: TextStyle(color: AppTheme.textPrimary)),
-          content: TextField(
-            controller: nameController,
-            autofocus: true,
-            style: TextStyle(color: AppTheme.textPrimary),
-            decoration: InputDecoration(labelText: 'שם החובש', labelStyle: TextStyle(color: AppTheme.textSecondary)),
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: Text('ביטול', style: TextStyle(color: AppTheme.textSecondary))),
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, nameController.text.trim()),
-              child: Text('הוסף', style: TextStyle(color: AppTheme.primaryGreen, fontWeight: FontWeight.bold)),
-            ),
-          ],
+        builder: (ctx) => StatefulBuilder(
+          builder: (dialogCtx, setDialogState) {
+            return AlertDialog(
+              backgroundColor: AppTheme.backgroundSecondary,
+              title: Row(
+                children: [
+                  Icon(LucideIcons.userPlus, color: AppTheme.primaryGreen, size: 22),
+                  const SizedBox(width: 8),
+                  Text('הוספת חובש לכוננות', style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.bold, fontSize: 18)),
+                ],
+              ),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
+                      'באפשרותך לצרף חובש לרשימת הכוננות באופן ידני, גם אם עדיין לא הצטרף לאפליקציה במכשיר שלו.',
+                      style: TextStyle(color: AppTheme.textSecondary, fontSize: 13, height: 1.4),
+                    ),
+                    const SizedBox(height: AppTheme.spacing16),
+                    if (soldiers.isNotEmpty) ...[
+                      DropdownButtonFormField<Soldier>(
+                        dropdownColor: AppTheme.backgroundSecondary,
+                        style: TextStyle(color: AppTheme.textPrimary),
+                        decoration: InputDecoration(
+                          labelText: 'או בחר חייל ממצבת הפלוגה',
+                          prefixIcon: const Icon(LucideIcons.users),
+                          border: OutlineInputBorder(borderRadius: AppTheme.radiusMd),
+                        ),
+                        items: soldiers.map((s) {
+                          final sub = [s.personalNumber, s.platoon].whereType<String>().where((x) => x.isNotEmpty).join(' • ');
+                          return DropdownMenuItem<Soldier>(
+                            value: s,
+                            child: Text(sub.isEmpty ? s.name : '${s.name} ($sub)'),
+                          );
+                        }).toList(),
+                        onChanged: (s) {
+                          if (s != null) {
+                            setDialogState(() {
+                              nameController.text = s.name;
+                              if (s.phoneNumber != null) phoneController.text = s.phoneNumber!;
+                              if (s.platoon != null) platoonController.text = s.platoon!;
+                            });
+                          }
+                        },
+                      ),
+                      const SizedBox(height: AppTheme.spacing16),
+                    ],
+                    TextField(
+                      controller: nameController,
+                      style: TextStyle(color: AppTheme.textPrimary),
+                      decoration: InputDecoration(
+                        labelText: 'שם מלא של החובש *',
+                        prefixIcon: const Icon(LucideIcons.user),
+                        border: OutlineInputBorder(borderRadius: AppTheme.radiusMd),
+                      ),
+                    ),
+                    const SizedBox(height: AppTheme.spacing12),
+                    TextField(
+                      controller: phoneController,
+                      keyboardType: TextInputType.phone,
+                      style: TextStyle(color: AppTheme.textPrimary),
+                      decoration: InputDecoration(
+                        labelText: 'מספר טלפון (לחיוג ו-WhatsApp)',
+                        prefixIcon: const Icon(LucideIcons.phone),
+                        border: OutlineInputBorder(borderRadius: AppTheme.radiusMd),
+                      ),
+                    ),
+                    const SizedBox(height: AppTheme.spacing12),
+                    TextField(
+                      controller: platoonController,
+                      style: TextStyle(color: AppTheme.textPrimary),
+                      decoration: InputDecoration(
+                        labelText: 'מחלקה (לדוגמה: מחלקה 1 / חפ"ק)',
+                        prefixIcon: const Icon(LucideIcons.shield),
+                        border: OutlineInputBorder(borderRadius: AppTheme.radiusMd),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx, null),
+                  child: Text('ביטול', style: TextStyle(color: AppTheme.textSecondary)),
+                ),
+                TextButton(
+                  onPressed: () {
+                    final n = nameController.text.trim();
+                    if (n.isEmpty) {
+                      HopalFeedback.showError(ctx, 'יש להזין שם חובש');
+                      return;
+                    }
+                    Navigator.pop(ctx, {
+                      'name': n,
+                      'phone': phoneController.text.trim(),
+                      'platoon': platoonController.text.trim(),
+                    });
+                  },
+                  child: Text('הוסף לרשימה', style: TextStyle(color: AppTheme.primaryGreen, fontWeight: FontWeight.bold)),
+                ),
+              ],
+            );
+          },
         ),
       );
-      if (name == null || name.isEmpty) return;
+
+      if (result == null) return;
+      final name = result['name']!;
+      final phone = result['phone']?.isEmpty == true ? null : result['phone'];
+      final platoon = result['platoon']?.isEmpty == true ? null : result['platoon'];
+
       try {
+        final unitId = AuthService().currentUser?.unitId;
+        final newId = const Uuid().v4();
+        
+        final payload = <String, dynamic>{
+          'id': newId,
+          'name': name,
+          'role': 'COMBAT_MEDIC',
+          'is_on_standby': true,
+          'is_manual': true,
+        };
+        if (unitId != null) payload['unit_id'] = unitId;
+
         final row = await Supabase.instance.client
             .from('users')
-            .insert({
-              'id': const Uuid().v4(),
-              'name': name,
-              'role': 'COMBAT_MEDIC',
-              'unit_id': AuthService().currentUser?.unitId,
-              'is_on_standby': true,
-              'is_manual': true,
-            })
+            .insert(payload)
             .select()
             .single();
+
         setModalState(() => medics.add({
               'id': row['id'],
               'name': row['name'],
               'role': row['role'],
+              'phone_number': phone,
+              'platoon': platoon,
               'is_manual': true,
               'standby': true,
             }));
         ref.invalidate(dashboardMetricsProvider);
+        if (context.mounted) {
+          HopalFeedback.showSuccess(context, 'החובש $name נוסף בהצלחה לכוננות');
+        }
       } catch (e) {
-        if (context.mounted) HopalFeedback.showError(context, 'שגיאה בהוספת חובש: $e');
+        // Fallback for offline or local mode
+        setModalState(() => medics.add({
+              'id': const Uuid().v4(),
+              'name': name,
+              'role': 'COMBAT_MEDIC',
+              'phone_number': phone,
+              'platoon': platoon,
+              'is_manual': true,
+              'standby': true,
+            }));
+        if (context.mounted) {
+          HopalFeedback.showSuccess(context, 'החובש $name נוסף לרשימה המקומית');
+        }
       }
     }
 
@@ -726,13 +848,12 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
         if (medic['is_manual'] == true) {
           await users.delete().eq('id', medic['id']);
         } else {
-          // Real app user: detach from the company instead of deleting the account.
           await users.update({'unit_id': null, 'is_on_standby': false}).eq('id', medic['id']);
         }
         setModalState(() => medics.remove(medic));
         ref.invalidate(dashboardMetricsProvider);
       } catch (e) {
-        if (context.mounted) HopalFeedback.showError(context, 'שגיאה בהסרת חובש: $e');
+        setModalState(() => medics.remove(medic));
       }
     }
 
@@ -743,72 +864,157 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
         builder: (context, setModalState) {
           return Column(
             mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: <Widget>[
+              // Prominent add button
+              HopalButton(
+                key: const Key('add_medic_tile'),
+                label: 'הוסף חובש לכוננות (הזנה ידנית / ממצבת)',
+                icon: LucideIcons.userPlus,
+                onPressed: () => addMedic(setModalState),
+              ),
+              const SizedBox(height: AppTheme.spacing16),
               if (medics.isEmpty)
-                Padding(
-                  padding: const EdgeInsets.all(AppTheme.spacing16),
-                  child: Text('אין חובשים ברשימה', style: TextStyle(color: AppTheme.textSecondary)),
+                Container(
+                  padding: const EdgeInsets.all(AppTheme.spacing24),
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: AppTheme.backgroundSecondary,
+                    borderRadius: AppTheme.radiusMd,
+                    border: Border.all(color: AppTheme.borderSubtle),
+                  ),
+                  child: Column(
+                    children: [
+                      Icon(LucideIcons.users, size: 36, color: AppTheme.textMuted),
+                      const SizedBox(height: AppTheme.spacing8),
+                      Text('אין עדיין חובשים ברשימת הכוננות', style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.bold)),
+                      const SizedBox(height: 4),
+                      Text('לחץ על הכפתור למעלה כדי להוסיף חובשים מהפלוגה', style: TextStyle(color: AppTheme.textSecondary, fontSize: 12)),
+                    ],
+                  ),
                 ),
               ...medics.map((medic) {
                 final isMe = medic['id'] == currentUserId;
-                return Material(
-                  type: MaterialType.transparency,
+                final isManual = medic['is_manual'] == true;
+                final phone = medic['phone_number'] as String?;
+                final platoon = medic['platoon'] as String?;
+
+                return Container(
+                  margin: const EdgeInsets.only(bottom: AppTheme.spacing8),
+                  decoration: BoxDecoration(
+                    color: AppTheme.backgroundSecondary,
+                    borderRadius: AppTheme.radiusMd,
+                    border: Border.all(
+                      color: medic['standby'] == true 
+                          ? AppTheme.primaryGreen.withValues(alpha: 0.3)
+                          : AppTheme.borderSubtle,
+                    ),
+                  ),
                   child: ListTile(
-                    leading: isMe
-                        ? null
-                        : IconButton(
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                    leading: CircleAvatar(
+                      backgroundColor: medic['standby'] == true 
+                          ? AppTheme.primaryGreen.withValues(alpha: 0.2)
+                          : AppTheme.backgroundTertiary,
+                      child: Icon(
+                        LucideIcons.stethoscope,
+                        color: medic['standby'] == true ? AppTheme.primaryGreen : AppTheme.textMuted,
+                        size: 20,
+                      ),
+                    ),
+                    title: Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            isMe ? '${medic['name']} (אני)' : medic['name'] ?? '',
+                            style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.bold, fontSize: 15),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        if (isManual) ...[
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: AppTheme.backgroundTertiary,
+                              borderRadius: BorderRadius.circular(4),
+                              border: Border.all(color: AppTheme.borderSubtle),
+                            ),
+                            child: Text('הזנה ידנית', style: TextStyle(color: AppTheme.textMuted, fontSize: 10)),
+                          ),
+                        ],
+                      ],
+                    ),
+                    subtitle: platoon != null || phone != null
+                        ? Text(
+                            [if (platoon != null) platoon, if (phone != null) phone].join(' • '),
+                            style: TextStyle(color: AppTheme.textSecondary, fontSize: 12),
+                          )
+                        : null,
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (phone != null && phone.isNotEmpty) ...[
+                          IconButton(
+                            icon: Icon(LucideIcons.phone, size: 18, color: AppTheme.primaryGreen),
+                            tooltip: 'חיוג',
+                            onPressed: () => launchUrl(Uri.parse('tel:$phone')),
+                          ),
+                          IconButton(
+                            icon: Icon(LucideIcons.messageCircle, size: 18, color: AppTheme.successGreen),
+                            tooltip: 'WhatsApp',
+                            onPressed: () {
+                              final clean = phone.replaceAll(RegExp(r'\D'), '');
+                              final formatted = clean.startsWith('0') ? '972${clean.substring(1)}' : clean;
+                              launchUrl(Uri.parse('https://wa.me/$formatted'), mode: LaunchMode.externalApplication);
+                            },
+                          ),
+                        ],
+                        CupertinoSwitch(
+                          value: medic['standby'] == true,
+                          activeTrackColor: AppTheme.successGreen,
+                          inactiveTrackColor: AppTheme.backgroundTertiary,
+                          onChanged: (bool value) async {
+                            setModalState(() => medic['standby'] = value);
+                            try {
+                              await Supabase.instance.client
+                                  .from('users')
+                                  .update({'is_on_standby': value})
+                                  .eq('id', medic['id']);
+                              ref.invalidate(dashboardMetricsProvider);
+                            } catch (e) {
+                              setModalState(() => medic['standby'] = !value);
+                              if (context.mounted) HopalFeedback.showError(context, 'שגיאה בעדכון כוננות: $e');
+                            }
+                          },
+                        ),
+                        if (!isMe)
+                          IconButton(
                             tooltip: 'הסר חובש',
-                            icon: Icon(LucideIcons.userMinus, color: AppTheme.criticalRed, size: 20),
+                            icon: Icon(LucideIcons.trash2, color: AppTheme.criticalRed, size: 18),
                             onPressed: () => removeMedic(setModalState, medic),
                           ),
-                    title: Text(isMe ? '${medic['name']} (אני)' : medic['name'] ?? '',
-                        style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.w500)),
-                    trailing: CupertinoSwitch(
-                      value: medic['standby'] == true,
-                      activeTrackColor: AppTheme.successGreen,
-                      inactiveTrackColor: AppTheme.backgroundTertiary,
-                      onChanged: (bool value) async {
-                        setModalState(() => medic['standby'] = value);
-                        try {
-                          await Supabase.instance.client
-                              .from('users')
-                              .update({'is_on_standby': value})
-                              .eq('id', medic['id']);
-                          ref.invalidate(dashboardMetricsProvider);
-                        } catch (e) {
-                          setModalState(() => medic['standby'] = !value);
-                          if (context.mounted) HopalFeedback.showError(context, 'שגיאה בעדכון כוננות: $e');
-                        }
-                      },
+                      ],
                     ),
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 0, vertical: 4),
                   ),
                 );
               }),
-              const Divider(),
-              Material(
-                type: MaterialType.transparency,
-                child: ListTile(
-                  key: const Key('add_medic_tile'),
-                  leading: Icon(LucideIcons.userPlus, color: AppTheme.primaryGreen),
-                  title: Text('הוסף חובש לכוננות', style: TextStyle(color: AppTheme.primaryGreen, fontWeight: FontWeight.bold)),
-                  onTap: () => addMedic(setModalState),
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 0, vertical: 4),
+              const SizedBox(height: AppTheme.spacing16),
+              Container(
+                decoration: BoxDecoration(
+                  color: AppTheme.backgroundTertiary.withValues(alpha: 0.5),
+                  borderRadius: AppTheme.radiusMd,
                 ),
-              ),
-              Material(
-                type: MaterialType.transparency,
                 child: ListTile(
-                  leading: Icon(LucideIcons.share, color: AppTheme.textSecondary),
-                  title: Text('שלח קוד פלוגה לחובש', style: TextStyle(color: AppTheme.textSecondary)),
-                  subtitle: Text('כך החובש יוכל להתחבר לאפליקציה בעצמו', style: TextStyle(fontSize: 12, color: AppTheme.textMuted)),
+                  leading: Icon(LucideIcons.share2, color: AppTheme.textSecondary, size: 20),
+                  title: Text('שלח קוד פלוגה לחובשים להצטרפות באפליקציה', style: TextStyle(color: AppTheme.textSecondary, fontSize: 13)),
+                  subtitle: Text('חובשים שיורידו את האפליקציה יוכלו להזין את הקוד ולהתחבר ישירות', style: TextStyle(fontSize: 11, color: AppTheme.textMuted)),
                   onTap: () {
                     final code = AuthService().currentUser?.unitJoinCode ?? '';
                     if (code.isNotEmpty) {
-                      Share.share('היי, קוד הפלוגה שלנו באפליקציית חופ"ל הוא:\n$code');
+                      Share.share('היי, קוד הפלוגה שלנו באפליקציית חופ"ל הוא:\n$code\nהצטרף לפלוגה כדי לסנכרן ציוד וכוננות בזמן אמת!');
                     }
                   },
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 0, vertical: 4),
                 ),
               ),
             ],

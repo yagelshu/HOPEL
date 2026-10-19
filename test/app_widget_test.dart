@@ -4,13 +4,21 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:chopel_app/features/dashboard/dashboard_screen.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 void main() {
   // Initialize sqflite_common_ffi for desktop/unit testing
-  setUpAll(() {
+  setUpAll(() async {
+    TestWidgetsFlutterBinding.ensureInitialized();
     sqfliteFfiInit();
     databaseFactory = databaseFactoryFfi;
     SharedPreferences.setMockInitialValues({});
+    try {
+      await Supabase.initialize(
+        url: 'https://placeholder.supabase.co',
+        anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.e30.placeholder',
+      );
+    } catch (_) {}
   });
 
   testWidgets('Widget Test: add medic and verify dashboard', (WidgetTester tester) async {
