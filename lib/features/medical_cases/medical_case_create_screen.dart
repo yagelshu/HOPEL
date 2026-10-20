@@ -142,26 +142,28 @@ class _MedicalCaseCreateScreenState extends ConsumerState<MedicalCaseCreateScree
     final nameController = TextEditingController();
     final idController = TextEditingController();
     final phoneController = TextEditingController();
+    final platoonController = TextEditingController();
     
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: AppTheme.backgroundSecondary,
-        title: Text('הוספת חייל חדש', style: TextStyle(color: AppTheme.textPrimary)),
+        title: Text('הוספת חייל חדש', style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.bold)),
         content: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               HopalTextField(
                 controller: nameController,
-                hint: 'שם מלא (לדוגמה: ישראל ישראלי)',
+                hint: 'שם מלא (לדוגמה: ישראל ישראלי) *',
                 icon: LucideIcons.user,
               ),
               const SizedBox(height: AppTheme.spacing16),
               HopalTextField(
                 controller: idController,
-                hint: 'מספר אישי',
+                hint: 'מספר אישי *',
                 icon: LucideIcons.hash,
+                keyboardType: TextInputType.number,
               ),
               const SizedBox(height: AppTheme.spacing16),
               HopalTextField(
@@ -169,6 +171,12 @@ class _MedicalCaseCreateScreenState extends ConsumerState<MedicalCaseCreateScree
                 hint: 'טלפון (אופציונלי)',
                 icon: LucideIcons.phone,
                 keyboardType: TextInputType.phone,
+              ),
+              const SizedBox(height: AppTheme.spacing16),
+              HopalTextField(
+                controller: platoonController,
+                hint: 'מחלקה (לדוגמה: מחלקה 1 / חפ"ק)',
+                icon: LucideIcons.shield,
               ),
             ],
           ),
@@ -181,25 +189,46 @@ class _MedicalCaseCreateScreenState extends ConsumerState<MedicalCaseCreateScree
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primaryGreen),
             onPressed: () async {
-              if (nameController.text.isEmpty || idController.text.isEmpty) {
-                HopalFeedback.showError(context, 'נא למלא את כל השדות');
+              final rawName = nameController.text.trim();
+              final personalNum = idController.text.trim();
+              final phone = phoneController.text.trim();
+              final platoon = platoonController.text.trim();
+
+              if (rawName.isEmpty || personalNum.isEmpty) {
+                HopalFeedback.showError(context, 'נא למלא שם ומספר אישי');
                 return;
               }
               
               final user = AuthService().currentUser;
               final soldierId = const Uuid().v4();
-              final personalNum = idController.text.trim();
               
-              final payload = {
+              final payload = <String, dynamic>{
                 'id': soldierId,
-                'name': nameController.text.trim(),
+                'name': rawName,
                 'personal_number': personalNum,
                 'unit_id': user?.unitId,
-                'phone_number': phoneController.text.trim(),
+                if (phone.isNotEmpty) 'phone_number': phone,
+                if (platoon.isNotEmpty) 'platoon': platoon,
               };
 
               try {
-                await Supabase.instance.client.from('soldiers').insert(payload);
+                try {
+                  await Supabase.instance.client.from('soldiers').insert(payload);
+                } on PostgrestException catch (pe) {
+                  // Fallback if personal_number column is not present in Supabase schema cache
+                  if (pe.code == 'PGRST204' || pe.message.contains('personal_number')) {
+                    final fallbackPayload = <String, dynamic>{
+                      'id': soldierId,
+                      'name': personalNum.isNotEmpty ? '$rawName ($personalNum)' : rawName,
+                      'unit_id': user?.unitId,
+                      if (phone.isNotEmpty) 'phone_number': phone,
+                      if (platoon.isNotEmpty) 'platoon': platoon,
+                    };
+                    await Supabase.instance.client.from('soldiers').insert(fallbackPayload);
+                  } else {
+                    rethrow;
+                  }
+                }
                 
                 if (!context.mounted) return;
                 ref.invalidate(soldiersProvider);
@@ -214,7 +243,7 @@ class _MedicalCaseCreateScreenState extends ConsumerState<MedicalCaseCreateScree
                 }
               }
             },
-            child: Text('הוסף חייל', style: TextStyle(color: AppTheme.backgroundPrimary)),
+            child: Text('הוסף חייל', style: TextStyle(color: AppTheme.backgroundPrimary, fontWeight: FontWeight.bold)),
           ),
         ],
       ),

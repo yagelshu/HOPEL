@@ -72,20 +72,49 @@ class _SoldiersManagementScreenState extends ConsumerState<SoldiersManagementScr
                 return;
               }
               String? orNull(String v) => v.trim().isEmpty ? null : v.trim();
-              final data = {
-                'name': nameController.text.trim(),
-                'personal_number': orNull(pnController.text.replaceAll(RegExp(r'\D'), '')),
+              final rawName = nameController.text.trim();
+              final rawPn = orNull(pnController.text.replaceAll(RegExp(r'\D'), ''));
+              final data = <String, dynamic>{
+                'name': rawName,
+                'personal_number': rawPn,
                 'phone_number': orNull(phoneController.text),
                 'platoon': orNull(platoonController.text),
               };
               try {
                 final client = Supabase.instance.client;
                 if (isEdit) {
-                  await client.from('soldiers').update(data).eq('id', soldier.id);
+                  try {
+                    await client.from('soldiers').update(data).eq('id', soldier.id);
+                  } on PostgrestException catch (pe) {
+                    if (pe.code == 'PGRST204' || pe.message.contains('personal_number')) {
+                      final fallbackData = <String, dynamic>{
+                        'name': rawPn != null && rawPn.isNotEmpty ? '$rawName ($rawPn)' : rawName,
+                        'phone_number': orNull(phoneController.text),
+                        'platoon': orNull(platoonController.text),
+                      };
+                      await client.from('soldiers').update(fallbackData).eq('id', soldier.id);
+                    } else {
+                      rethrow;
+                    }
+                  }
                 } else {
                   final unitId = AuthService().currentUser?.unitId;
                   if (unitId == null) throw Exception('לא נמצאה פלוגה למשתמש');
-                  await client.from('soldiers').insert({...data, 'unit_id': unitId});
+                  try {
+                    await client.from('soldiers').insert({...data, 'unit_id': unitId});
+                  } on PostgrestException catch (pe) {
+                    if (pe.code == 'PGRST204' || pe.message.contains('personal_number')) {
+                      final fallbackData = <String, dynamic>{
+                        'name': rawPn != null && rawPn.isNotEmpty ? '$rawName ($rawPn)' : rawName,
+                        'phone_number': orNull(phoneController.text),
+                        'platoon': orNull(platoonController.text),
+                        'unit_id': unitId,
+                      };
+                      await client.from('soldiers').insert(fallbackData);
+                    } else {
+                      rethrow;
+                    }
+                  }
                 }
                 if (context.mounted) {
                   ref.invalidate(soldiersProvider);

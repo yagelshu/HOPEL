@@ -139,13 +139,36 @@ class SoldierImportService {
     final withoutNumber = soldiers.where((s) => s.personalNumber == null).map((s) => s.toRow(unitId)).toList();
 
     const chunk = 200;
-    for (var i = 0; i < withNumber.length; i += chunk) {
-      final part = withNumber.sublist(i, (i + chunk).clamp(0, withNumber.length));
-      await client.from('soldiers').upsert(part, onConflict: 'unit_id,personal_number');
-    }
-    for (var i = 0; i < withoutNumber.length; i += chunk) {
-      final part = withoutNumber.sublist(i, (i + chunk).clamp(0, withoutNumber.length));
-      await client.from('soldiers').insert(part);
+    try {
+      for (var i = 0; i < withNumber.length; i += chunk) {
+        final part = withNumber.sublist(i, (i + chunk).clamp(0, withNumber.length));
+        await client.from('soldiers').upsert(part, onConflict: 'unit_id,personal_number');
+      }
+      for (var i = 0; i < withoutNumber.length; i += chunk) {
+        final part = withoutNumber.sublist(i, (i + chunk).clamp(0, withoutNumber.length));
+        await client.from('soldiers').insert(part);
+      }
+    } on PostgrestException catch (pe) {
+      if (pe.code == 'PGRST204' || pe.message.contains('personal_number')) {
+        // Fallback for legacy schema where personal_number column is absent
+        final fallbackRows = soldiers.map((s) {
+          final pn = s.personalNumber;
+          final displayName = (pn != null && pn.isNotEmpty) ? '${s.name} ($pn)' : s.name;
+          return <String, dynamic>{
+            'name': displayName,
+            'unit_id': unitId,
+            if (s.phone != null) 'phone_number': s.phone,
+            if (s.platoon != null) 'platoon': s.platoon,
+          };
+        }).toList();
+
+        for (var i = 0; i < fallbackRows.length; i += chunk) {
+          final part = fallbackRows.sublist(i, (i + chunk).clamp(0, fallbackRows.length));
+          await client.from('soldiers').insert(part);
+        }
+      } else {
+        rethrow;
+      }
     }
     return ImportResult(soldiers.length, 0);
   }
