@@ -31,6 +31,7 @@ import 'package:chopel_app/features/profile/soldiers_management_screen.dart';
 import 'package:chopel_app/features/learning/trivia_screen.dart';
 import 'package:chopel_app/features/onboarding/walkthrough_dialog.dart';
 import 'package:chopel_app/core/database/database_service.dart';
+import 'package:chopel_app/core/services/standby_medics_service.dart';
 import 'package:uuid/uuid.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -651,8 +652,20 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
     );
   }
 
-  void _showMedicsBottomSheet(BuildContext context, List<Map<String, dynamic>> initialMedics) {
+  void _showMedicsBottomSheet(BuildContext context, List<Map<String, dynamic>> initialMedics) async {
+    final unitId = AuthService().currentUser?.unitId;
+    final manualMedics = await StandbyMedicsService.getManualMedics(unitId);
+    if (!context.mounted) return;
+
     final medics = initialMedics.map((m) => Map<String, dynamic>.from(m)).toList();
+    for (final m in manualMedics) {
+      final idx = medics.indexWhere((x) => x['id'] == m['id'] || (x['name'] == m['name'] && x['is_manual'] == true));
+      if (idx != -1) {
+        medics[idx] = m;
+      } else {
+        medics.add(m);
+      }
+    }
     final currentUserId = AuthService().currentUser?.id;
 
     Future<void> addMedic(StateSetter setModalState) async {
@@ -777,52 +790,37 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
       final phone = result['phone']?.isEmpty == true ? null : result['phone'];
       final platoon = result['platoon']?.isEmpty == true ? null : result['platoon'];
 
-      try {
-        final unitId = AuthService().currentUser?.unitId;
-        final newId = const Uuid().v4();
-        
-        final payload = <String, dynamic>{
-          'id': newId,
-          'name': name,
-          'role': 'COMBAT_MEDIC',
-          'is_on_standby': true,
-          'is_manual': true,
-        };
-        if (unitId != null) payload['unit_id'] = unitId;
+      final unitId = AuthService().currentUser?.unitId;
+      final newId = const Uuid().v4();
 
-        final row = await Supabase.instance.client
-            .from('users')
-            .insert(payload)
-            .select()
-            .single();
+      final medicData = <String, dynamic>{
+        'id': newId,
+        'name': name,
+        'role': 'COMBAT_MEDIC',
+        'phone_number': phone,
+        'platoon': platoon,
+        'is_manual': true,
+        'standby': true,
+      };
 
-        setModalState(() => medics.add({
-              'id': row['id'],
-              'name': row['name'],
-              'role': row['role'],
-              'phone_number': phone,
-              'platoon': platoon,
-              'is_manual': true,
-              'standby': true,
-            }));
-        ref.invalidate(dashboardMetricsProvider);
-        if (context.mounted) {
-          HopalFeedback.showSuccess(context, 'החובש $name נוסף בהצלחה לכוננות');
+      // 1. Persist locally and to Supabase
+      await StandbyMedicsService.saveManualMedic(unitId, medicData);
+
+      // 2. Add to active modal state
+      setModalState(() {
+        final existingIdx = medics.indexWhere((m) => m['id'] == newId);
+        if (existingIdx != -1) {
+          medics[existingIdx] = medicData;
+        } else {
+          medics.add(medicData);
         }
-      } catch (e) {
-        // Fallback for offline or local mode
-        setModalState(() => medics.add({
-              'id': const Uuid().v4(),
-              'name': name,
-              'role': 'COMBAT_MEDIC',
-              'phone_number': phone,
-              'platoon': platoon,
-              'is_manual': true,
-              'standby': true,
-            }));
-        if (context.mounted) {
-          HopalFeedback.showSuccess(context, 'החובש $name נוסף לרשימה המקומית');
-        }
+      });
+
+      // 3. Invalidate dashboard metrics provider so home screen cards update immediately
+      ref.invalidate(dashboardMetricsProvider);
+
+      if (context.mounted) {
+        HopalFeedback.showSuccess(context, 'החובש $name נוסף בהצלחה לכוננות');
       }
     }
 
@@ -843,17 +841,21 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
         ),
       );
       if (ok != true) return;
-      try {
-        final users = Supabase.instance.client.from('users');
-        if (medic['is_manual'] == true) {
-          await users.delete().eq('id', medic['id']);
-        } else {
-          await users.update({'unit_id': null, 'is_on_standby': false}).eq('id', medic['id']);
-        }
-        setModalState(() => medics.remove(medic));
-        ref.invalidate(dashboardMetricsProvider);
-      } catch (e) {
-        setModalState(() => medics.remove(medic));
+      final unitId = AuthService().currentUser?.unitId;
+      if (medic['is_manual'] == true) {
+        await StandbyMedicsService.removeManualMedic(unitId, medic['id']);
+      } else {
+        try {
+          await Supabase.instance.client
+              .from('users')
+              .update({'unit_id': null, 'is_on_standby': false})
+              .eq('id', medic['id']);
+        } catch (_) {}
+      }
+      setModalState(() => medics.removeWhere((m) => m['id'] == medic['id']));
+      ref.invalidate(dashboardMetricsProvider);
+      if (context.mounted) {
+        HopalFeedback.showSuccess(context, 'החובש ${medic['name']} הוסר בהצלחה');
       }
     }
 
@@ -976,16 +978,22 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
                           inactiveTrackColor: AppTheme.backgroundTertiary,
                           onChanged: (bool value) async {
                             setModalState(() => medic['standby'] = value);
-                            try {
-                              await Supabase.instance.client
-                                  .from('users')
-                                  .update({'is_on_standby': value})
-                                  .eq('id', medic['id']);
-                              ref.invalidate(dashboardMetricsProvider);
-                            } catch (e) {
-                              setModalState(() => medic['standby'] = !value);
-                              if (context.mounted) HopalFeedback.showError(context, 'שגיאה בעדכון כוננות: $e');
+                            final unitId = AuthService().currentUser?.unitId;
+                            if (medic['is_manual'] == true) {
+                              await StandbyMedicsService.updateStandby(unitId, medic['id'], value);
+                            } else {
+                              try {
+                                await Supabase.instance.client
+                                    .from('users')
+                                    .update({'is_on_standby': value})
+                                    .eq('id', medic['id']);
+                              } catch (e) {
+                                setModalState(() => medic['standby'] = !value);
+                                if (context.mounted) HopalFeedback.showError(context, 'שגיאה בעדכון כוננות: $e');
+                                return;
+                              }
                             }
+                            ref.invalidate(dashboardMetricsProvider);
                           },
                         ),
                         if (!isMe)

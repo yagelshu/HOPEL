@@ -3,6 +3,7 @@ import 'package:sqflite/sqflite.dart';
 import 'package:chopel_app/core/database/database_service.dart';
 import 'package:chopel_app/core/utils/date_formatter.dart';
 import 'package:chopel_app/core/auth/auth_service.dart';
+import 'package:chopel_app/core/services/standby_medics_service.dart';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -123,10 +124,37 @@ final dashboardMetricsProvider = FutureProvider<DashboardMetrics>((ref) async {
       'id': u['id'],
       'name': u['name'],
       'role': u['role'],
+      'phone_number': u['phone_number'],
+      'platoon': u['platoon'],
       'is_manual': u['is_manual'] == true,
       'standby': u['is_on_standby'] == true || u['is_on_standby'] == 1,
     };
   }).toList();
+
+  // Merge locally-persisted manual standby medics
+  final manualMedics = await StandbyMedicsService.getManualMedics(user.unitId);
+  for (final m in manualMedics) {
+    final idx = medics.indexWhere((x) => x['id'] == m['id'] || (x['name'] == m['name'] && x['is_manual'] == true));
+    if (idx != -1) {
+      medics[idx] = m;
+    } else {
+      medics.add(m);
+    }
+  }
+
+  // Ensure current user is always present in medics list
+  final hasMe = medics.any((m) => m['id'] == user.id);
+  if (!hasMe) {
+    medics.insert(0, {
+      'id': user.id,
+      'name': user.name.isNotEmpty ? user.name : 'חופ"ל',
+      'role': user.role.isNotEmpty ? user.role : 'COMPANY_MEDIC',
+      'phone_number': null,
+      'platoon': null,
+      'is_manual': false,
+      'standby': true,
+    });
+  }
 
   return DashboardMetrics(
     activeMedicalCases: activeCases,
