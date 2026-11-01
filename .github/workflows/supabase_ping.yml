@@ -1,14 +1,27 @@
-name: Supabase Ping
+name: Supabase Keep-Alive Ping
 
 on:
   schedule:
-    - cron: '0 0 */3 * *' # Runs every 3 days at midnight
-  workflow_dispatch: # Allows manual trigger
+    # Run every 3 days at 06:00 UTC
+    - cron: '0 6 */3 * *'
+  workflow_dispatch: # Allows manual trigger from GitHub Actions tab
 
 jobs:
   ping_supabase:
     runs-on: ubuntu-latest
     steps:
-      - name: Ping Supabase API
+      - name: Ping Supabase REST API
         run: |
-          curl -I https://ffnrvjoswyphsduvmhbe.supabase.co
+          STATUS_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+            -H "apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZmbnJ2am9zd3lwaHNkdXZtaGJlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU2NjI3MDIsImV4cCI6MjEwMTIzODcwMn0.kUelONEPeHZESu6TWwNc-S75uZxV4g0z0HYwjcChFvQ" \
+            -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZmbnJ2am9zd3lwaHNkdXZtaGJlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU2NjI3MDIsImV4cCI6MjEwMTIzODcwMn0.kUelONEPeHZESu6TWwNc-S75uZxV4g0z0HYwjcChFvQ" \
+            "https://ffnrvjoswyphsduvmhbe.supabase.co/rest/v1/units?select=id&limit=1")
+          echo "Supabase responded with HTTP: $STATUS_CODE"
+          if [ "$STATUS_CODE" -ge 200 ] && [ "$STATUS_CODE" -lt 400 ]; then
+            echo "Keep-alive ping successful - database active!"
+            exit 0
+          else
+            echo "Unexpected status code: $STATUS_CODE"
+            exit 1
+          fi
+
