@@ -10,6 +10,8 @@ import 'package:chopel_app/theme/components/hopal_text_field.dart';
 import 'package:chopel_app/theme/components/hopal_form_section.dart';
 import 'package:chopel_app/theme/components/hopal_feedback.dart';
 import 'package:chopel_app/theme/components/hopal_segmented_control.dart';
+import 'package:chopel_app/theme/components/hopal_card.dart';
+import 'package:chopel_app/theme/components/hopal_status_badge.dart';
 import 'dart:io';
 import 'package:chopel_app/core/auth/auth_service.dart';
 import 'package:chopel_app/features/medical_cases/providers.dart';
@@ -899,62 +901,35 @@ class _MedicalCaseCreateScreenState extends ConsumerState<MedicalCaseCreateScree
                 ),
                 const SizedBox(height: AppTheme.spacing24),
 
-                HopalFormSection(
-                  title: 'סיווג רפואי וחומרה',
-                  children: [
-                    Text('קטגוריית תחלואה', style: TextStyle(color: AppTheme.textSecondary, fontSize: 14)),
-                    const SizedBox(height: AppTheme.spacing8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: AppTheme.spacing16),
-                      decoration: BoxDecoration(
-                        color: AppTheme.backgroundTertiary,
-                        borderRadius: AppTheme.radiusMd,
-                        border: Border.all(color: AppTheme.borderSubtle),
+                HopalCard(
+                  padding: const EdgeInsets.all(AppTheme.spacing16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text('סטטוס הפנייה', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppTheme.textPrimary)),
+                          HopalStatusBadge(
+                            label: _selectedOutcome == 'COMPLETED' ? 'הטיפול הושלם' : 'דורש המשך טיפול / רופא',
+                            variant: _selectedOutcome == 'COMPLETED' ? HopalStatusBadgeVariant.neutral : HopalStatusBadgeVariant.warning,
+                            icon: _selectedOutcome == 'COMPLETED' ? LucideIcons.checkCircle : LucideIcons.alertTriangle,
+                          ),
+                        ],
                       ),
-                      child: DropdownButtonHideUnderline(
-                        child: DropdownButton<String>(
-                          value: _selectedCategory,
-                          isExpanded: true,
-                          dropdownColor: AppTheme.backgroundSecondary,
-                          icon: Icon(LucideIcons.chevronDown, color: AppTheme.textSecondary),
-                          items: ['שגרת מרפאה', 'אורתופדיה', 'טראומה / פציעה', 'מחלות זיהומיות', 'ברה"ן'].map((cat) {
-                            return DropdownMenuItem(
-                              value: cat,
-                              child: Text(cat, style: TextStyle(color: AppTheme.textPrimary)),
-                            );
-                          }).toList(),
-                          onChanged: (val) {
-                            if (val != null) setState(() => _selectedCategory = val);
-                          },
-                        ),
+                      const SizedBox(height: AppTheme.spacing12),
+                      HopalSegmentedControl(
+                        segments: const ['הטיפול הושלם במקום', 'נדרש המשך מעקב / רופא'],
+                        selectedIndex: _selectedOutcome == 'COMPLETED' ? 0 : 1,
+                        onValueChanged: (index) {
+                          setState(() {
+                            _selectedOutcome = index == 0 ? 'COMPLETED' : 'REQUIRES_ATTENTION';
+                            _selectedSeverity = index == 0 ? 'שגרה' : 'דחוף';
+                          });
+                        },
                       ),
-                    ),
-                    const SizedBox(height: AppTheme.spacing16),
-                    Text('חומרה / דחיפות', style: TextStyle(color: AppTheme.textSecondary, fontSize: 14)),
-                    const SizedBox(height: AppTheme.spacing8),
-                    HopalSegmentedControl(
-                      segments: const ['שגרה', 'דחוף', 'חירום'],
-                      selectedIndex: ['שגרה', 'דחוף', 'חירום'].indexOf(_selectedSeverity),
-                      onValueChanged: (index) {
-                        setState(() {
-                          _selectedSeverity = ['שגרה', 'דחוף', 'חירום'][index];
-                        });
-                      },
-                    ),
-                  ],
-                ),
-                const SizedBox(height: AppTheme.spacing32),
-
-                Text('החלטת חופ"ל', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppTheme.textPrimary)),
-                const SizedBox(height: AppTheme.spacing16),
-                HopalSegmentedControl(
-                  segments: const ['טיפול הושלם', 'נדרש המשך טיפול'],
-                  selectedIndex: _selectedOutcome == 'COMPLETED' ? 0 : 1,
-                  onValueChanged: (index) {
-                    setState(() {
-                      _selectedOutcome = index == 0 ? 'COMPLETED' : 'REQUIRES_ATTENTION';
-                    });
-                  },
+                    ],
+                  ),
                 ),
                 
                 const SizedBox(height: AppTheme.spacing32),
