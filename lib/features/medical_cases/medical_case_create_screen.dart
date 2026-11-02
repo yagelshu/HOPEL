@@ -144,109 +144,136 @@ class _MedicalCaseCreateScreenState extends ConsumerState<MedicalCaseCreateScree
     final phoneController = TextEditingController();
     final platoonController = TextEditingController();
     
+    final allergiesController = TextEditingController();
+
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: AppTheme.backgroundSecondary,
-        title: Text('הוספת חייל חדש', style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.bold)),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              HopalTextField(
-                controller: nameController,
-                hint: 'שם מלא (לדוגמה: ישראל ישראלי) *',
-                icon: LucideIcons.user,
-              ),
-              const SizedBox(height: AppTheme.spacing16),
-              HopalTextField(
-                controller: idController,
-                hint: 'מספר אישי *',
-                icon: LucideIcons.hash,
-                keyboardType: TextInputType.number,
-              ),
-              const SizedBox(height: AppTheme.spacing16),
-              HopalTextField(
-                controller: phoneController,
-                hint: 'טלפון (אופציונלי)',
-                icon: LucideIcons.phone,
-                keyboardType: TextInputType.phone,
-              ),
-              const SizedBox(height: AppTheme.spacing16),
-              HopalTextField(
-                controller: platoonController,
-                hint: 'מחלקה (לדוגמה: מחלקה 1 / חפ"ק)',
-                icon: LucideIcons.shield,
-              ),
-            ],
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: AppTheme.backgroundSecondary,
+          title: Text('הוספת חייל חדש', style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.bold)),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                HopalTextField(
+                  controller: nameController,
+                  hint: 'שם מלא (לדוגמה: ישראל ישראלי) *',
+                  icon: LucideIcons.user,
+                ),
+                const SizedBox(height: AppTheme.spacing16),
+                HopalTextField(
+                  controller: idController,
+                  hint: 'מספר אישי *',
+                  icon: LucideIcons.hash,
+                  keyboardType: TextInputType.number,
+                ),
+                const SizedBox(height: AppTheme.spacing16),
+                HopalTextField(
+                  controller: phoneController,
+                  hint: 'טלפון (אופציונלי)',
+                  icon: LucideIcons.phone,
+                  keyboardType: TextInputType.phone,
+                ),
+                const SizedBox(height: AppTheme.spacing16),
+                HopalTextField(
+                  controller: platoonController,
+                  hint: 'מחלקה (לדוגמה: מחלקה 1 / חפ"ק)',
+                  icon: LucideIcons.shield,
+                ),
+                const SizedBox(height: AppTheme.spacing16),
+                HopalTextField(
+                  controller: allergiesController,
+                  hint: 'אלרגיות / רגישויות (G6PD, פניצילין וכו\')',
+                  icon: LucideIcons.alertTriangle,
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 6,
+                  children: ['G6PD', 'פניצילין', 'אופטלגין', 'NSAID'].map((alg) {
+                    return ActionChip(
+                      label: Text(alg, style: const TextStyle(fontSize: 11)),
+                      backgroundColor: AppTheme.backgroundTertiary,
+                      onPressed: () {
+                        final current = allergiesController.text.trim();
+                        allergiesController.text = current.isEmpty ? alg : '$current, $alg';
+                      },
+                    );
+                  }).toList(),
+                ),
+              ],
+            ),
           ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text('ביטול', style: TextStyle(color: AppTheme.textSecondary)),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primaryGreen),
-            onPressed: () async {
-              final rawName = nameController.text.trim();
-              final personalNum = idController.text.trim();
-              final phone = phoneController.text.trim();
-              final platoon = platoonController.text.trim();
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text('ביטול', style: TextStyle(color: AppTheme.textSecondary)),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primaryGreen),
+              onPressed: () async {
+                final rawName = nameController.text.trim();
+                final personalNum = idController.text.trim();
+                final phone = phoneController.text.trim();
+                final platoon = platoonController.text.trim();
+                final allergies = allergiesController.text.trim();
 
-              if (rawName.isEmpty || personalNum.isEmpty) {
-                HopalFeedback.showError(context, 'נא למלא שם ומספר אישי');
-                return;
-              }
-              
-              final user = AuthService().currentUser;
-              final soldierId = const Uuid().v4();
-              
-              final payload = <String, dynamic>{
-                'id': soldierId,
-                'name': rawName,
-                'personal_number': personalNum,
-                'unit_id': user?.unitId,
-                if (phone.isNotEmpty) 'phone_number': phone,
-                if (platoon.isNotEmpty) 'platoon': platoon,
-              };
-
-              try {
-                try {
-                  await Supabase.instance.client.from('soldiers').insert(payload);
-                } on PostgrestException catch (pe) {
-                  // Fallback if personal_number column is not present in Supabase schema cache
-                  if (pe.code == 'PGRST204' || pe.message.contains('personal_number')) {
-                    final fallbackPayload = <String, dynamic>{
-                      'id': soldierId,
-                      'name': personalNum.isNotEmpty ? '$rawName ($personalNum)' : rawName,
-                      'unit_id': user?.unitId,
-                      if (phone.isNotEmpty) 'phone_number': phone,
-                      if (platoon.isNotEmpty) 'platoon': platoon,
-                    };
-                    await Supabase.instance.client.from('soldiers').insert(fallbackPayload);
-                  } else {
-                    rethrow;
-                  }
+                if (rawName.isEmpty || personalNum.isEmpty) {
+                  HopalFeedback.showError(context, 'נא למלא שם ומספר אישי');
+                  return;
                 }
                 
-                if (!context.mounted) return;
-                ref.invalidate(soldiersProvider);
-                Navigator.pop(context);
-                setState(() {
-                  _selectedSoldierId = soldierId;
-                });
-                HopalFeedback.showSuccess(context, 'חייל נוסף בהצלחה');
-              } catch (e) {
-                if (context.mounted) {
-                  HopalFeedback.showError(context, 'שגיאה בהוספת חייל: $e');
+                final user = AuthService().currentUser;
+                final soldierId = const Uuid().v4();
+                
+                final payload = <String, dynamic>{
+                  'id': soldierId,
+                  'name': rawName,
+                  'personal_number': personalNum,
+                  'unit_id': user?.unitId,
+                  if (phone.isNotEmpty) 'phone_number': phone,
+                  if (platoon.isNotEmpty) 'platoon': platoon,
+                  if (allergies.isNotEmpty) 'allergies': allergies,
+                };
+
+                try {
+                  try {
+                    await Supabase.instance.client.from('soldiers').insert(payload);
+                  } on PostgrestException catch (pe) {
+                    // Fallback if allergies or personal_number column is not in Supabase
+                    if (pe.code == 'PGRST204' || pe.code == '42703' || pe.message.contains('allergies') || pe.message.contains('personal_number')) {
+                      payload.remove('allergies');
+                      final fallbackPayload = <String, dynamic>{
+                        'id': soldierId,
+                        'name': personalNum.isNotEmpty ? '$rawName ($personalNum)' : rawName,
+                        'unit_id': user?.unitId,
+                        if (phone.isNotEmpty) 'phone_number': phone,
+                        if (platoon.isNotEmpty) 'platoon': platoon,
+                      };
+                      await Supabase.instance.client.from('soldiers').insert(fallbackPayload);
+                    } else {
+                      rethrow;
+                    }
+                  }
+                  
+                  if (!context.mounted) return;
+                  ref.invalidate(soldiersProvider);
+                  Navigator.pop(context);
+                  setState(() {
+                    _selectedSoldierId = soldierId;
+                  });
+                  HopalFeedback.showSuccess(context, 'חייל נוסף בהצלחה');
+                } catch (e) {
+                  if (context.mounted) {
+                    HopalFeedback.showError(context, 'שגיאה בהוספת חייל: $e');
+                  }
                 }
-              }
-            },
-            child: Text('הוסף חייל', style: TextStyle(color: AppTheme.backgroundPrimary, fontWeight: FontWeight.bold)),
-          ),
-        ],
-      ),
+              },
+              child: Text('הוסף חייל', style: TextStyle(color: AppTheme.backgroundPrimary, fontWeight: FontWeight.bold)),
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -381,26 +408,50 @@ class _MedicalCaseCreateScreenState extends ConsumerState<MedicalCaseCreateScree
                               final hasPn = s.personalNumber != null && s.personalNumber!.isNotEmpty;
                               final hasPlatoon = s.platoon != null && s.platoon!.isNotEmpty;
 
-                              return ListTile(
-                                leading: CircleAvatar(
-                                  backgroundColor: AppTheme.primaryGreen.withValues(alpha: 0.15),
-                                  child: Icon(LucideIcons.user, color: AppTheme.primaryGreen),
-                                ),
-                                title: Text(s.name,
-                                    style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.bold)),
-                                subtitle: Text(
-                                  [
-                                    if (hasPn) 'מ.א: ${s.personalNumber}',
-                                    if (hasPlatoon) 'מחלקה ${s.platoon}',
-                                    if (s.phoneNumber != null) s.phoneNumber!,
-                                  ].join(' • '),
-                                  style: TextStyle(color: AppTheme.textSecondary, fontSize: 12),
-                                ),
-                                onTap: () {
-                                  setState(() => _selectedSoldierId = s.id);
-                                  Navigator.pop(context);
-                                },
-                              );
+                                return ListTile(
+                                  leading: CircleAvatar(
+                                    backgroundColor: s.hasAllergies 
+                                        ? AppTheme.criticalRed.withValues(alpha: 0.15)
+                                        : AppTheme.primaryGreen.withValues(alpha: 0.15),
+                                    child: Icon(
+                                      s.hasAllergies ? LucideIcons.alertTriangle : LucideIcons.user, 
+                                      color: s.hasAllergies ? AppTheme.criticalRed : AppTheme.primaryGreen
+                                    ),
+                                  ),
+                                  title: Row(
+                                    children: [
+                                      Text(s.name,
+                                          style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.bold)),
+                                      if (s.hasAllergies) ...[
+                                        const SizedBox(width: 8),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                          decoration: BoxDecoration(
+                                            color: AppTheme.criticalRed.withValues(alpha: 0.15),
+                                            borderRadius: BorderRadius.circular(4),
+                                            border: Border.all(color: AppTheme.criticalRed.withValues(alpha: 0.4)),
+                                          ),
+                                          child: Text(
+                                            'רגישות: ${s.allergies}',
+                                            style: TextStyle(fontSize: 10, color: AppTheme.criticalRed, fontWeight: FontWeight.bold),
+                                          ),
+                                        ),
+                                      ],
+                                    ],
+                                  ),
+                                  subtitle: Text(
+                                    [
+                                      if (hasPn) 'מ.א: ${s.personalNumber}',
+                                      if (hasPlatoon) 'מחלקה ${s.platoon}',
+                                      if (s.phoneNumber != null) s.phoneNumber!,
+                                    ].join(' • '),
+                                    style: TextStyle(color: AppTheme.textSecondary, fontSize: 12),
+                                  ),
+                                  onTap: () {
+                                    setState(() => _selectedSoldierId = s.id);
+                                    Navigator.pop(context);
+                                  },
+                                );
                             },
                           ),
                   ),
@@ -515,7 +566,17 @@ class _MedicalCaseCreateScreenState extends ConsumerState<MedicalCaseCreateScree
         await Supabase.instance.client.from('medical_cases').update(payload).eq('id', widget.existingCase!.id);
       }
     } catch (e) {
-      if (e.toString().contains('SocketException') || e.toString().contains('Failed host lookup') || e.toString().contains('ClientException')) {
+      final errStr = e.toString().toLowerCase();
+      final isNetworkError = errStr.contains('socketexception') ||
+          errStr.contains('failed host lookup') ||
+          errStr.contains('clientexception') ||
+          errStr.contains('timeout') ||
+          errStr.contains('network') ||
+          errStr.contains('connection refused') ||
+          errStr.contains('os error') ||
+          errStr.contains('offline');
+
+      if (isNetworkError) {
         if (widget.existingCase != null) {
           if (mounted) HopalFeedback.showError(context, 'עריכת תיק רפואי דורשת חיבור זמין לאינטרנט');
           setState(() => _isSaving = false);
@@ -523,7 +584,7 @@ class _MedicalCaseCreateScreenState extends ConsumerState<MedicalCaseCreateScree
         }
         await DraftService.saveDraft(payload);
         if (mounted) {
-          HopalFeedback.showSuccess(context, 'אין קליטה - התיק נשמר בטיוטות ויסונכרן בהמשך');
+          HopalFeedback.showSuccess(context, 'אין קליטה - התיק נשמר בטלפון ויסונכרן אוטומטית בהמשך');
           Navigator.pop(context);
         }
         return;
@@ -632,6 +693,28 @@ class _MedicalCaseCreateScreenState extends ConsumerState<MedicalCaseCreateScree
                                                 ),
                                             ],
                                           ),
+                                          if (soldier.hasAllergies) ...[
+                                            const SizedBox(height: 8),
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                              decoration: BoxDecoration(
+                                                color: AppTheme.criticalRed.withValues(alpha: 0.15),
+                                                borderRadius: BorderRadius.circular(6),
+                                                border: Border.all(color: AppTheme.criticalRed.withValues(alpha: 0.5)),
+                                              ),
+                                              child: Row(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  Icon(LucideIcons.alertTriangle, size: 14, color: AppTheme.criticalRed),
+                                                  const SizedBox(width: 6),
+                                                  Text(
+                                                    'רגישות רפואית: ${soldier.allergies}',
+                                                    style: TextStyle(fontSize: 12, color: AppTheme.criticalRed, fontWeight: FontWeight.bold),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          ],
                                         ],
                                       ),
                                     ),

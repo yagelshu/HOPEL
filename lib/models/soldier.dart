@@ -5,6 +5,7 @@ class Soldier {
   final String? platoon;
   final String? unitId;
   final String? phoneNumber;
+  final String? allergies;
 
   Soldier({
     required this.id,
@@ -13,6 +14,7 @@ class Soldier {
     this.platoon,
     this.unitId,
     this.phoneNumber,
+    this.allergies,
   });
 
   static final _legacyPattern = RegExp(r'^(.*?)\s*\((\d+)\)\s*$');
@@ -20,6 +22,8 @@ class Soldier {
   /// Label for pickers/search: "ישראל ישראלי · 1234567"
   String get displayLabel =>
       (personalNumber == null || personalNumber!.isEmpty) ? name : '$name · $personalNumber';
+
+  bool get hasAllergies => allergies != null && allergies!.trim().isNotEmpty;
 
   factory Soldier.fromMap(Map<String, dynamic> map) {
     String name = (map['name'] ?? '').toString();
@@ -37,6 +41,7 @@ class Soldier {
       platoon: map['platoon']?.toString(),
       unitId: map['unit_id']?.toString(),
       phoneNumber: map['phone_number']?.toString(),
+      allergies: map['allergies']?.toString(),
     );
   }
 
@@ -48,6 +53,8 @@ class Soldier {
       'platoon': platoon,
       'unit_id': unitId,
       'phone_number': phoneNumber,
+      if (allergies != null) 'allergies': allergies,
     };
   }
 }
+

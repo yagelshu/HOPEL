@@ -31,6 +31,7 @@ import 'package:chopel_app/features/profile/soldiers_management_screen.dart';
 import 'package:chopel_app/features/learning/trivia_screen.dart';
 import 'package:chopel_app/features/onboarding/walkthrough_dialog.dart';
 import 'package:chopel_app/core/database/database_service.dart';
+import 'package:chopel_app/core/database/draft_service.dart';
 import 'package:chopel_app/core/services/standby_medics_service.dart';
 import 'package:uuid/uuid.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -79,6 +80,19 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
     }
     
     _checkFirstTimeSetup();
+    _autoSyncDrafts();
+  }
+
+  Future<void> _autoSyncDrafts() async {
+    try {
+      if (await DraftService.hasDrafts()) {
+        final synced = await DraftService.syncDrafts();
+        if (synced > 0 && mounted) {
+          ref.read(medicalCasesProvider.notifier).refresh();
+          ref.invalidate(dashboardMetricsProvider);
+        }
+      }
+    } catch (_) {}
   }
 
   Future<void> _checkFirstTimeSetup() async {
@@ -129,6 +143,15 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
                 slivers: [
                   SliverToBoxAdapter(
                     child: _animateWidget(_buildHeader(user?.name ?? 'חופ"ל', user), _headerFade),
+                  ),
+                  SliverToBoxAdapter(
+                    child: ValueListenableBuilder<int>(
+                      valueListenable: DraftService.draftsCountNotifier,
+                      builder: (context, count, _) {
+                        if (count == 0) return const SizedBox.shrink();
+                        return _buildDraftsBanner(count);
+                      },
+                    ),
                   ),
                   SliverToBoxAdapter(
                     child: _animateWidget(_buildHero(metrics), _heroFade, _heroSlide),
@@ -269,6 +292,63 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
                   ),
                 ],
               ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDraftsBanner(int count) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(AppTheme.spacing16, 0, AppTheme.spacing16, AppTheme.spacing16),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: AppTheme.spacing16, vertical: AppTheme.spacing12),
+        decoration: BoxDecoration(
+          color: AppTheme.warningAmber.withValues(alpha: 0.15),
+          borderRadius: AppTheme.radiusMd,
+          border: Border.all(color: AppTheme.warningAmber.withValues(alpha: 0.5)),
+        ),
+        child: Row(
+          children: [
+            Icon(LucideIcons.cloudOff, color: AppTheme.warningAmber, size: 22),
+            const SizedBox(width: AppTheme.spacing12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'ישנן $count פניות שמורות בטלפון',
+                    style: TextStyle(fontWeight: FontWeight.bold, color: AppTheme.textPrimary, fontSize: 14),
+                  ),
+                  Text(
+                    'נשמרו ללא קליטה וממתינות לסנכרון',
+                    style: TextStyle(color: AppTheme.textSecondary, fontSize: 12),
+                  ),
+                ],
+              ),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.warningAmber,
+                foregroundColor: Colors.black,
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                minimumSize: Size.zero,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              onPressed: () async {
+                final synced = await DraftService.syncDrafts();
+                if (mounted) {
+                  if (synced > 0) {
+                    HopalFeedback.showSuccess(context, 'סונכרנו $synced פניות בהצלחה!');
+                    ref.read(medicalCasesProvider.notifier).refresh();
+                    ref.invalidate(dashboardMetricsProvider);
+                  } else {
+                    HopalFeedback.showError(context, 'לא ניתן לסנכרן כעת, ודא שיש קליטה זמינה');
+                  }
+                }
+              },
+              child: const Text('סנכרן כעת', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
             ),
           ],
         ),

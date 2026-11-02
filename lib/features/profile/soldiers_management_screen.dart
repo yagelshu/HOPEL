@@ -28,6 +28,7 @@ class _SoldiersManagementScreenState extends ConsumerState<SoldiersManagementScr
     final pnController = TextEditingController(text: soldier?.personalNumber ?? '');
     final phoneController = TextEditingController(text: soldier?.phoneNumber ?? '');
     final platoonController = TextEditingController(text: soldier?.platoon ?? '');
+    final allergiesController = TextEditingController(text: soldier?.allergies ?? '');
     final isEdit = soldier != null;
 
     showDialog(
@@ -57,6 +58,26 @@ class _SoldiersManagementScreenState extends ConsumerState<SoldiersManagementScr
               ),
               const SizedBox(height: AppTheme.spacing16),
               HopalTextField(controller: platoonController, hint: 'מחלקה (אופציונלי)', icon: LucideIcons.users),
+              const SizedBox(height: AppTheme.spacing16),
+              HopalTextField(
+                controller: allergiesController,
+                hint: 'אלרגיות / רגישויות (G6PD, פניצילין וכו\')',
+                icon: LucideIcons.alertTriangle,
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 6,
+                children: ['G6PD', 'פניצילין', 'אופטלגין', 'NSAID'].map((alg) {
+                  return ActionChip(
+                    label: Text(alg, style: const TextStyle(fontSize: 11)),
+                    backgroundColor: AppTheme.backgroundTertiary,
+                    onPressed: () {
+                      final current = allergiesController.text.trim();
+                      allergiesController.text = current.isEmpty ? alg : '$current, $alg';
+                    },
+                  );
+                }).toList(),
+              ),
             ],
           ),
         ),
@@ -74,11 +95,13 @@ class _SoldiersManagementScreenState extends ConsumerState<SoldiersManagementScr
               String? orNull(String v) => v.trim().isEmpty ? null : v.trim();
               final rawName = nameController.text.trim();
               final rawPn = orNull(pnController.text.replaceAll(RegExp(r'\D'), ''));
+              final rawAllergies = orNull(allergiesController.text);
               final data = <String, dynamic>{
                 'name': rawName,
                 'personal_number': rawPn,
                 'phone_number': orNull(phoneController.text),
                 'platoon': orNull(platoonController.text),
+                if (rawAllergies != null) 'allergies': rawAllergies,
               };
               try {
                 final client = Supabase.instance.client;
@@ -86,7 +109,8 @@ class _SoldiersManagementScreenState extends ConsumerState<SoldiersManagementScr
                   try {
                     await client.from('soldiers').update(data).eq('id', soldier.id);
                   } on PostgrestException catch (pe) {
-                    if (pe.code == 'PGRST204' || pe.message.contains('personal_number')) {
+                    if (pe.code == 'PGRST204' || pe.code == '42703' || pe.message.contains('allergies') || pe.message.contains('personal_number')) {
+                      data.remove('allergies');
                       final fallbackData = <String, dynamic>{
                         'name': rawPn != null && rawPn.isNotEmpty ? '$rawName ($rawPn)' : rawName,
                         'phone_number': orNull(phoneController.text),
@@ -103,7 +127,8 @@ class _SoldiersManagementScreenState extends ConsumerState<SoldiersManagementScr
                   try {
                     await client.from('soldiers').insert({...data, 'unit_id': unitId});
                   } on PostgrestException catch (pe) {
-                    if (pe.code == 'PGRST204' || pe.message.contains('personal_number')) {
+                    if (pe.code == 'PGRST204' || pe.code == '42703' || pe.message.contains('allergies') || pe.message.contains('personal_number')) {
+                      data.remove('allergies');
                       final fallbackData = <String, dynamic>{
                         'name': rawPn != null && rawPn.isNotEmpty ? '$rawName ($rawPn)' : rawName,
                         'phone_number': orNull(phoneController.text),
@@ -299,11 +324,35 @@ class _SoldiersManagementScreenState extends ConsumerState<SoldiersManagementScr
 
                               return ListTile(
                                 leading: CircleAvatar(
-                                  backgroundColor: AppTheme.primaryGreen.withValues(alpha: 0.1),
-                                  child: Icon(LucideIcons.user, color: AppTheme.primaryGreen),
+                                  backgroundColor: soldier.hasAllergies
+                                      ? AppTheme.criticalRed.withValues(alpha: 0.15)
+                                      : AppTheme.primaryGreen.withValues(alpha: 0.1),
+                                  child: Icon(
+                                    soldier.hasAllergies ? LucideIcons.alertTriangle : LucideIcons.user,
+                                    color: soldier.hasAllergies ? AppTheme.criticalRed : AppTheme.primaryGreen,
+                                  ),
                                 ),
-                                title: Text(soldier.name,
-                                    style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.bold)),
+                                title: Row(
+                                  children: [
+                                    Text(soldier.name,
+                                        style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.bold)),
+                                    if (soldier.hasAllergies) ...[
+                                      const SizedBox(width: 8),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: AppTheme.criticalRed.withValues(alpha: 0.15),
+                                          borderRadius: BorderRadius.circular(4),
+                                          border: Border.all(color: AppTheme.criticalRed.withValues(alpha: 0.4)),
+                                        ),
+                                        child: Text(
+                                          'רגישות: ${soldier.allergies}',
+                                          style: TextStyle(fontSize: 10, color: AppTheme.criticalRed, fontWeight: FontWeight.bold),
+                                        ),
+                                      ),
+                                    ],
+                                  ],
+                                ),
                                 subtitle: Text(details.isEmpty ? 'אין פרטים נוספים' : details,
                                     style: TextStyle(color: AppTheme.textSecondary, fontSize: 12)),
                                 trailing: Row(

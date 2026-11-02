@@ -13,6 +13,8 @@ import 'package:chopel_app/core/auth/auth_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:async';
 
+import 'package:chopel_app/core/database/draft_service.dart';
+
 void main() async {
   try {
     WidgetsFlutterBinding.ensureInitialized();
@@ -23,6 +25,7 @@ void main() async {
     );
 
     await DatabaseService().database;
+    await DraftService.init();
 
     runApp(const ProviderScope(child: HopalApp()));
   } catch (e, stackTrace) {

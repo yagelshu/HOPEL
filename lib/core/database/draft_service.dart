@@ -1,9 +1,16 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class DraftService {
   static const _key = 'offline_drafts';
+  static final ValueNotifier<int> draftsCountNotifier = ValueNotifier<int>(0);
+
+  static Future<void> init() async {
+    final drafts = await getDrafts();
+    draftsCountNotifier.value = drafts.length;
+  }
 
   static Future<void> saveDraft(Map<String, dynamic> payload) async {
     final prefs = await SharedPreferences.getInstance();
@@ -11,6 +18,7 @@ class DraftService {
     List<dynamic> drafts = draftsStr != null ? jsonDecode(draftsStr) : [];
     drafts.add(payload);
     await prefs.setString(_key, jsonEncode(drafts));
+    draftsCountNotifier.value = drafts.length;
   }
 
   static Future<List<Map<String, dynamic>>> getDrafts() async {
@@ -25,6 +33,7 @@ class DraftService {
   static Future<void> clearDrafts() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_key);
+    draftsCountNotifier.value = 0;
   }
   
   static Future<bool> hasDrafts() async {
@@ -34,7 +43,10 @@ class DraftService {
   
   static Future<int> syncDrafts() async {
     final drafts = await getDrafts();
-    if (drafts.isEmpty) return 0;
+    if (drafts.isEmpty) {
+      draftsCountNotifier.value = 0;
+      return 0;
+    }
     
     int successCount = 0;
     final List<Map<String, dynamic>> remainingDrafts = [];
@@ -53,6 +65,7 @@ class DraftService {
     } else {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_key, jsonEncode(remainingDrafts));
+      draftsCountNotifier.value = remainingDrafts.length;
     }
     
     return successCount;
