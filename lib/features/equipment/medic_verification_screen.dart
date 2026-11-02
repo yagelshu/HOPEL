@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' hide User;
 import 'package:chopel_app/features/equipment/providers.dart';
-import 'package:chopel_app/core/network/sync_engine.dart';
 import 'package:chopel_app/features/learning/learning_center_screen.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:chopel_app/theme/app_theme.dart';

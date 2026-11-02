@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:chopel_app/theme/app_theme.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:chopel_app/core/auth/auth_service.dart';
-import 'package:chopel_app/features/dashboard/dashboard_screen.dart';
 import 'package:chopel_app/screens/main_layout_screen.dart';
 import 'package:chopel_app/features/auth/login_screen.dart';
 import 'package:chopel_app/features/onboarding/deployment_selection_screen.dart';
@@ -57,48 +56,51 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
 
   Future<void> _initializeAppData() async {
     await Future.delayed(const Duration(milliseconds: 500));
+    if (!mounted) return;
     
-    if (mounted) {
-      await UpdateService.checkForUpdates(context);
+    await UpdateService.checkForUpdates(context);
+    if (!mounted) return;
+    
+    if (AuthService().isAuthenticated) {
+      await AuthService().loadProfile();
+      if (!mounted) return;
       
-      if (AuthService().isAuthenticated) {
-        await AuthService().loadProfile();
+      final user = AuthService().currentUser;
+      if (user != null && user.unitId == null) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => const UnitSelectionScreen()),
+        );
+      } else if (user != null && user.activeDeploymentId == null) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => const DeploymentSelectionScreen()),
+        );
+      } else {
+        final prefs = await SharedPreferences.getInstance();
+        final useBiometrics = prefs.getBool('use_biometrics') ?? false;
         
-        final user = AuthService().currentUser;
-        if (user != null && user.unitId == null) {
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (context) => const UnitSelectionScreen()),
-          );
-        } else if (user != null && user.activeDeploymentId == null) {
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (context) => const DeploymentSelectionScreen()),
-          );
-        } else {
-          final prefs = await SharedPreferences.getInstance();
-          final useBiometrics = prefs.getBool('use_biometrics') ?? false;
-          
-          if (useBiometrics) {
-            final auth = LocalAuthentication();
-            final canCheck = await auth.canCheckBiometrics || await auth.isDeviceSupported();
-            if (canCheck) {
-              if (mounted) {
-                Navigator.pushReplacement(
-                  context,
-                  MaterialPageRoute(builder: (context) => const BiometricLockScreen()),
-                );
-                return;
-              }
-            }
+        if (useBiometrics) {
+          final auth = LocalAuthentication();
+          final canCheck = await auth.canCheckBiometrics || await auth.isDeviceSupported();
+          if (canCheck && mounted) {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (context) => const BiometricLockScreen()),
+            );
+            return;
           }
-          
+        }
+        
+        if (mounted) {
           Navigator.pushReplacement(
             context,
             MaterialPageRoute(builder: (context) => const MainLayoutScreen()),
           );
         }
-      } else {
+      }
+    } else {
+      if (mounted) {
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(builder: (context) => const LoginScreen()),

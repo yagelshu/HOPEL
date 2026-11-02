@@ -8,8 +8,6 @@ import 'dart:math';
 import 'package:supabase_flutter/supabase_flutter.dart' hide User;
 import 'package:chopel_app/core/auth/auth_service.dart';
 import 'package:chopel_app/theme/components/hopal_feedback.dart';
-import 'package:supabase_flutter/supabase_flutter.dart' as supa;
-import 'package:chopel_app/core/network/sync_engine.dart';
 
 class TriviaScreen extends ConsumerStatefulWidget {
   const TriviaScreen({super.key});

@@ -13,7 +13,6 @@ import 'package:chopel_app/models/equipment.dart';
 import 'package:chopel_app/theme/components/hopal_card.dart';
 import 'package:chopel_app/theme/components/hopal_status_badge.dart';
 import 'package:chopel_app/theme/components/hopal_empty_state.dart';
-import 'package:chopel_app/core/network/sync_engine.dart';
 import 'package:chopel_app/core/auth/auth_service.dart';
 import 'package:chopel_app/theme/components/hopal_button.dart';
 import 'package:chopel_app/theme/components/hopal_bottom_sheet.dart';
@@ -156,11 +155,11 @@ class _EquipmentListScreenState extends ConsumerState<EquipmentListScreen> {
                             await Supabase.instance.client
                                 .from('equipment')
                                 .delete()
-                                .eq('id', item!.id);
+                                .eq('id', item.id);
 
                             try {
                               final db = await DatabaseService().database;
-                              await db.delete('equipment', where: 'id = ?', whereArgs: [item!.id]);
+                              await db.delete('equipment', where: 'id = ?', whereArgs: [item.id]);
                             } catch (_) {}
 
                             ref.read(equipmentProvider.notifier).refresh();
@@ -186,8 +185,8 @@ class _EquipmentListScreenState extends ConsumerState<EquipmentListScreen> {
                           HopalFeedback.showError(context, 'נא להזין שם פריט');
                           return;
                         }
-                        final String id = isEditing ? item!.id : const Uuid().v4();
-                        final int minReq = isEditing ? item!.minimumRequired : currentQuantity; 
+                        final String id = isEditing ? item.id : const Uuid().v4();
+                        final int minReq = isEditing ? item.minimumRequired : currentQuantity; 
                         
                         final user = AuthService().currentUser;
                         final unitId = user?.unitId ?? item?.unitId;

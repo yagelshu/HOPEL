@@ -6,7 +6,6 @@ import 'package:chopel_app/theme/components/hopal_text_field.dart';
 import 'package:chopel_app/theme/components/hopal_feedback.dart';
 import 'package:chopel_app/core/auth/auth_service.dart';
 import 'package:chopel_app/core/network/sync_engine.dart';
-import 'package:chopel_app/features/dashboard/dashboard_screen.dart';
 import 'package:chopel_app/screens/main_layout_screen.dart';
 import 'package:chopel_app/features/onboarding/deployment_selection_screen.dart';
 import 'package:chopel_app/features/onboarding/unit_selection_screen.dart';

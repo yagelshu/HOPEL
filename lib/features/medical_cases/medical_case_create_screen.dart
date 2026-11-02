@@ -11,8 +11,6 @@ import 'package:chopel_app/theme/components/hopal_form_section.dart';
 import 'package:chopel_app/theme/components/hopal_feedback.dart';
 import 'package:chopel_app/theme/components/hopal_segmented_control.dart';
 import 'dart:io';
-import 'package:image_picker/image_picker.dart';
-import 'package:chopel_app/core/network/sync_engine.dart';
 import 'package:chopel_app/core/auth/auth_service.dart';
 import 'package:chopel_app/features/medical_cases/providers.dart';
 import 'package:chopel_app/features/dashboard/providers.dart';

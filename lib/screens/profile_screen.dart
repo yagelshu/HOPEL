@@ -10,7 +10,6 @@ import 'package:chopel_app/theme/components/hopal_list_tile.dart';
 import 'package:chopel_app/theme/components/hopal_feedback.dart';
 import 'package:chopel_app/theme/components/hopal_bottom_sheet.dart';
 import 'package:chopel_app/features/auth/login_screen.dart';
-import 'package:chopel_app/features/learning/learning_content_viewer_screen.dart';
 import 'package:chopel_app/core/network/sync_engine.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:share_plus/share_plus.dart';
@@ -18,7 +17,6 @@ import 'package:chopel_app/theme/theme_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:local_auth/local_auth.dart';
 import 'package:chopel_app/core/database/database_service.dart';
-import 'package:chopel_app/screens/main_layout_screen.dart';
 import 'package:chopel_app/features/profile/deployment_summary_screen.dart';
 import 'package:chopel_app/screens/user_manual_screen.dart';
 import 'package:chopel_app/features/profile/soldiers_management_screen.dart';
@@ -82,7 +80,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     setState(() {
       _biometricsEnabled = newValue;
     });
-    HopalFeedback.showSuccess(context, newValue ? 'אבטחה ביומטרית הופעלה' : 'אבטחה ביומטרית כובתה');
+    if (mounted) {
+      HopalFeedback.showSuccess(context, newValue ? 'אבטחה ביומטרית הופעלה' : 'אבטחה ביומטרית כובתה');
+    }
   }
 
   void _showThemeSettings(BuildContext context) {
