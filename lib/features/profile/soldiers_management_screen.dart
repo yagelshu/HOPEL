@@ -247,11 +247,13 @@ class _SoldiersManagementScreenState extends ConsumerState<SoldiersManagementScr
           }
 
           final q = _query.trim().toLowerCase();
+          final cleanQ = q.replaceAll(RegExp(r'[\s-]'), '');
           final soldiers = all.where((s) {
+            final cleanPn = (s.personalNumber ?? '').replaceAll(RegExp(r'[\s-]'), '').toLowerCase();
             final matchesQuery = q.isEmpty ||
                 s.name.toLowerCase().contains(q) ||
-                (s.personalNumber != null && s.personalNumber!.contains(q)) ||
-                (s.phoneNumber != null && s.phoneNumber!.contains(q)) ||
+                (cleanPn.isNotEmpty && cleanPn.contains(cleanQ)) ||
+                (s.phoneNumber != null && s.phoneNumber!.contains(cleanQ)) ||
                 (s.platoon != null && s.platoon!.toLowerCase().contains(q));
 
             final matchesPlatoon = _selectedPlatoon == 'הכל' || s.platoon?.trim() == _selectedPlatoon;

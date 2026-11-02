@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' hide User;
@@ -737,19 +738,86 @@ class _EquipmentListScreenState extends ConsumerState<EquipmentListScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(item.name, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppTheme.textPrimary), maxLines: 2, overflow: TextOverflow.ellipsis),
-                          const SizedBox(height: AppTheme.spacing4),
                           Text(
-                            'כמות: ${item.quantity} / ${item.minimumRequired}',
-                            style: TextStyle(
-                              fontSize: 14,
-                              color: isMissing ? AppTheme.criticalRed : AppTheme.textSecondary,
+                            item.name, 
+                            style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: AppTheme.textPrimary), 
+                            maxLines: 2, 
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: AppTheme.spacing4),
+                          Row(
+                            children: [
+                              Text(
+                                'תקן: ${item.minimumRequired}',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: AppTheme.textSecondary,
+                                ),
+                              ),
+                              const SizedBox(width: AppTheme.spacing8),
+                              HopalStatusBadge(label: statusText, icon: statusIcon, variant: variant),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: AppTheme.spacing8),
+                    Container(
+                      decoration: BoxDecoration(
+                        color: AppTheme.backgroundSecondary,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: AppTheme.borderSubtle),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          InkWell(
+                            borderRadius: const BorderRadius.horizontal(right: Radius.circular(10)),
+                            onTap: item.quantity > 0 
+                                ? () {
+                                    HapticFeedback.selectionClick();
+                                    ref.read(equipmentProvider.notifier).adjustQuantity(item.id, -1);
+                                  }
+                                : null,
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                              child: Icon(
+                                LucideIcons.minus,
+                                size: 16,
+                                color: item.quantity > 0 ? AppTheme.criticalRed : AppTheme.textMuted,
+                              ),
+                            ),
+                          ),
+                          Container(
+                            constraints: const BoxConstraints(minWidth: 28),
+                            alignment: Alignment.center,
+                            child: Text(
+                              '${item.quantity}',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: isMissing ? AppTheme.criticalRed : AppTheme.textPrimary,
+                              ),
+                            ),
+                          ),
+                          InkWell(
+                            borderRadius: const BorderRadius.horizontal(left: Radius.circular(10)),
+                            onTap: () {
+                              HapticFeedback.selectionClick();
+                              ref.read(equipmentProvider.notifier).adjustQuantity(item.id, 1);
+                            },
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                              child: Icon(
+                                LucideIcons.plus,
+                                size: 16,
+                                color: AppTheme.primaryGreen,
+                              ),
                             ),
                           ),
                         ],
                       ),
                     ),
-                    HopalStatusBadge(label: statusText, icon: statusIcon, variant: variant),
                   ],
                 ),
               ),

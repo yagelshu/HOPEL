@@ -437,12 +437,21 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
                               updatedCase['description'] = '${updatedCase['description'] ?? ''}\n\n[סיכום טיפול]: $notes'.trim();
                             }
 
-                            await SyncEngine().queueMutation(
-                              entityType: 'medical_cases',
-                              action: 'UPDATE',
-                              entityId: medCase.id,
-                              payload: updatedCase,
-                            );
+                            try {
+                              await Supabase.instance.client
+                                  .from('medical_cases')
+                                  .update(updatedCase)
+                                  .eq('id', medCase.id);
+                            } catch (_) {
+                              try {
+                                await SyncEngine().queueMutation(
+                                  entityType: 'medical_cases',
+                                  action: 'UPDATE',
+                                  entityId: medCase.id,
+                                  payload: updatedCase,
+                                );
+                              } catch (_) {}
+                            }
 
                             return true;
                           },
@@ -450,7 +459,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
                             if (mounted) {
                               ref.read(medicalCasesProvider.notifier).refresh();
                               ref.invalidate(dashboardMetricsProvider);
-                              HopalFeedback.showSuccess(context, 'טיפול הסתיים');
+                              HopalFeedback.showSuccess(context, 'הטיפול סומן כהושלם');
                             }
                           },
                           background: Container(

@@ -52,4 +52,30 @@ class Equipment {
       'image_path': imagePath,
     };
   }
+
+  Equipment copyWith({
+    String? id,
+    String? name,
+    String? category,
+    String? itemType,
+    int? quantity,
+    int? minimumRequired,
+    String? expirationDate,
+    String? status,
+    String? unitId,
+    String? imagePath,
+  }) {
+    return Equipment(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      category: category ?? this.category,
+      itemType: itemType ?? this.itemType,
+      quantity: quantity ?? this.quantity,
+      minimumRequired: minimumRequired ?? this.minimumRequired,
+      expirationDate: expirationDate ?? this.expirationDate,
+      status: status ?? this.status,
+      unitId: unitId ?? this.unitId,
+      imagePath: imagePath ?? this.imagePath,
+    );
+  }
 }

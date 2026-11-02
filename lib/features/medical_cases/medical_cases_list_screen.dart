@@ -53,8 +53,15 @@ class _MedicalCasesListScreenState extends ConsumerState<MedicalCasesListScreen>
             filteredCases = filteredCases.where((c) {
               final soldier = soldiers.firstWhere((s) => s.id == c.soldierId, orElse: () => Soldier(id: '', name: 'לא ידוע', platoon: ''));
               final soldierName = soldier.name.toLowerCase();
+              final personalNumber = (soldier.personalNumber ?? '').toLowerCase();
+              final platoon = (soldier.platoon ?? '').toLowerCase();
               final desc = (c.description ?? '').toLowerCase();
-              return soldierName.contains(_searchQuery) || desc.contains(_searchQuery);
+              final cleanQuery = _searchQuery.replaceAll(RegExp(r'[\s-]'), '');
+              final cleanPn = personalNumber.replaceAll(RegExp(r'[\s-]'), '');
+              return soldierName.contains(_searchQuery) ||
+                  (cleanPn.isNotEmpty && cleanPn.contains(cleanQuery)) ||
+                  platoon.contains(_searchQuery) ||
+                  desc.contains(_searchQuery);
             }).toList();
           }
 
@@ -245,10 +252,45 @@ class _MedicalCasesListScreenState extends ConsumerState<MedicalCasesListScreen>
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(soldier.name, style: Theme.of(context).textTheme.titleMedium),
+                        Row(
+                          children: [
+                            Text(soldier.name, style: Theme.of(context).textTheme.titleMedium),
+                            if (soldier.hasAllergies) ...[
+                              const SizedBox(width: AppTheme.spacing8),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: AppTheme.criticalRed.withValues(alpha: 0.15),
+                                  borderRadius: BorderRadius.circular(6),
+                                  border: Border.all(color: AppTheme.criticalRed.withValues(alpha: 0.4)),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(LucideIcons.shieldAlert, size: 12, color: AppTheme.criticalRed),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      soldier.allergies!,
+                                      style: TextStyle(color: AppTheme.criticalRed, fontSize: 11, fontWeight: FontWeight.bold),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
                         const SizedBox(height: 2),
-                        if (soldier.personalNumber != null)
-                          Text('מ.א: ${soldier.personalNumber}', style: TextStyle(color: AppTheme.textSecondary, fontSize: 13)),
+                        Row(
+                          children: [
+                            if (soldier.personalNumber != null)
+                              Text('מ.א: ${soldier.personalNumber}', style: TextStyle(color: AppTheme.textSecondary, fontSize: 13)),
+                            if (soldier.platoon != null && soldier.platoon!.isNotEmpty) ...[
+                              if (soldier.personalNumber != null)
+                                Text(' • ', style: TextStyle(color: AppTheme.textSecondary, fontSize: 13)),
+                              Text(soldier.platoon!, style: TextStyle(color: AppTheme.textSecondary, fontSize: 13)),
+                            ],
+                          ],
+                        ),
                       ],
                     ),
                   ),

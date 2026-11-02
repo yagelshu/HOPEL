@@ -299,11 +299,13 @@ class _MedicalCaseCreateScreenState extends ConsumerState<MedicalCaseCreateScree
         return StatefulBuilder(
           builder: (context, setModalState) {
             final q = searchQuery.trim().toLowerCase();
+            final cleanQ = q.replaceAll(RegExp(r'[\s-]'), '');
             final filtered = soldiers.where((s) {
+              final cleanPn = (s.personalNumber ?? '').replaceAll(RegExp(r'[\s-]'), '').toLowerCase();
               final matchesQuery = q.isEmpty ||
                   s.name.toLowerCase().contains(q) ||
-                  (s.personalNumber != null && s.personalNumber!.contains(q)) ||
-                  (s.phoneNumber != null && s.phoneNumber!.contains(q)) ||
+                  (cleanPn.isNotEmpty && cleanPn.contains(cleanQ)) ||
+                  (s.phoneNumber != null && s.phoneNumber!.contains(cleanQ)) ||
                   (s.platoon != null && s.platoon!.toLowerCase().contains(q));
               final matchesPlatoon = selectedPlatoon == 'הכל' || s.platoon?.trim() == selectedPlatoon;
               return matchesQuery && matchesPlatoon;
