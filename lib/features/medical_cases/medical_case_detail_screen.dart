@@ -17,6 +17,7 @@ import 'package:chopel_app/core/auth/auth_service.dart';
 import 'package:chopel_app/features/medical_cases/medical_case_create_screen.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class MedicalCaseDetailScreen extends ConsumerStatefulWidget {
   final MedicalCase medicalCase;
@@ -190,11 +191,90 @@ class _MedicalCaseDetailScreenState extends ConsumerState<MedicalCaseDetailScree
     buffer.writeln('\nאשמח להנחיות רופא.');
 
     final message = buffer.toString();
-    if (widget.medicalCase.imagePath != null && widget.medicalCase.imagePath!.isNotEmpty) {
-      await Share.shareXFiles([XFile(widget.medicalCase.imagePath!)], text: message);
-    } else {
-      await Share.share(message);
+    final prefs = await SharedPreferences.getInstance();
+    final doctorPhone = prefs.getString('doctor_phone_number');
+
+    if (doctorPhone != null && doctorPhone.trim().isNotEmpty) {
+      String cleanPhone = doctorPhone.replaceAll(RegExp(r'\D'), '');
+      if (cleanPhone.startsWith('0')) {
+        cleanPhone = '972${cleanPhone.substring(1)}';
+      }
+      final waUrl = Uri.parse('https://wa.me/$cleanPhone?text=${Uri.encodeComponent(message)}');
+      if (await canLaunchUrl(waUrl)) {
+        await launchUrl(waUrl, mode: LaunchMode.externalApplication);
+        return;
+      }
     }
+
+    if (mounted) {
+      _showDoctorPhonePromptOrShare(message);
+    }
+  }
+
+  void _showDoctorPhonePromptOrShare(String message) {
+    final phoneController = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppTheme.backgroundSecondary,
+        title: Row(
+          children: [
+            Icon(LucideIcons.stethoscope, color: AppTheme.primaryGreen),
+            const SizedBox(width: AppTheme.spacing8),
+            Text('התייעצות עם רופא הגדוד', style: TextStyle(color: AppTheme.textPrimary, fontSize: 18, fontWeight: FontWeight.bold)),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              'טרם הוגדר מספר טלפון עבור רופא הגדוד.\nהזן את מספרו לפתיחת WhatsApp ישיר, או שתף דרך אפליקציה אחרת:',
+              style: TextStyle(color: AppTheme.textSecondary, fontSize: 13, height: 1.4),
+            ),
+            const SizedBox(height: AppTheme.spacing16),
+            HopalTextField(
+              controller: phoneController,
+              hint: 'מספר טלפון (למשל: 0501234567)',
+              icon: LucideIcons.phone,
+              keyboardType: TextInputType.phone,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () async {
+              Navigator.pop(ctx);
+              if (widget.medicalCase.imagePath != null && widget.medicalCase.imagePath!.isNotEmpty) {
+                await Share.shareXFiles([XFile(widget.medicalCase.imagePath!)], text: message);
+              } else {
+                await Share.share(message);
+              }
+            },
+            child: Text('שיתוף כללי', style: TextStyle(color: AppTheme.textSecondary)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primaryGreen),
+            onPressed: () async {
+              final phone = phoneController.text.trim();
+              if (phone.isEmpty) return;
+              Navigator.pop(ctx);
+              final prefs = await SharedPreferences.getInstance();
+              await prefs.setString('doctor_phone_number', phone);
+              String cleanPhone = phone.replaceAll(RegExp(r'\D'), '');
+              if (cleanPhone.startsWith('0')) {
+                cleanPhone = '972${cleanPhone.substring(1)}';
+              }
+              final waUrl = Uri.parse('https://wa.me/$cleanPhone?text=${Uri.encodeComponent(message)}');
+              if (await canLaunchUrl(waUrl)) {
+                await launchUrl(waUrl, mode: LaunchMode.externalApplication);
+              }
+            },
+            child: Text('שמור ופתח ב-WhatsApp', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
   }
 
   @override

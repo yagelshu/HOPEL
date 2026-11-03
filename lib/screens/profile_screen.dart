@@ -24,6 +24,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:chopel_app/core/database/draft_service.dart';
 import 'package:chopel_app/features/medical_cases/providers.dart';
+import 'package:chopel_app/theme/components/hopal_text_field.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
@@ -37,11 +38,24 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   bool _notificationsEnabled = true;
   bool _biometricsEnabled = false;
   bool _canCheckBiometrics = false;
+  String _doctorName = '';
+  String _doctorPhone = '';
 
   @override
   void initState() {
     super.initState();
     _loadBiometricSettings();
+    _loadDoctorSettings();
+  }
+
+  Future<void> _loadDoctorSettings() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (mounted) {
+      setState(() {
+        _doctorName = prefs.getString('doctor_name') ?? '';
+        _doctorPhone = prefs.getString('doctor_phone_number') ?? '';
+      });
+    }
   }
 
   Future<void> _loadBiometricSettings() async {
@@ -118,6 +132,60 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             },
           ),
           const SizedBox(height: AppTheme.spacing24),
+        ],
+      ),
+    );
+  }
+
+  void _showDoctorSettingsDialog(BuildContext context) {
+    final nameController = TextEditingController(text: _doctorName);
+    final phoneController = TextEditingController(text: _doctorPhone);
+
+    HopalBottomSheet.show(
+      context: context,
+      title: 'הגדרת רופא גדודי (WhatsApp)',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            'הגדר את מספר הטלפון של רופא הגדוד. בלחיצה על "התייעצות רופא" בתיק רפואי, האפליקציה תפתח ישירות שיחת WhatsApp עם תמצית המקרה הרפואי.',
+            style: TextStyle(color: AppTheme.textSecondary, fontSize: 13, height: 1.4),
+          ),
+          const SizedBox(height: AppTheme.spacing16),
+          HopalTextField(
+            controller: nameController,
+            hint: 'שם הרופא (לדוגמה: ד"ר כהן)',
+            icon: LucideIcons.user,
+          ),
+          const SizedBox(height: AppTheme.spacing12),
+          HopalTextField(
+            controller: phoneController,
+            hint: 'מספר טלפון ל-WhatsApp (למשל: 0501234567)',
+            icon: LucideIcons.phone,
+            keyboardType: TextInputType.phone,
+          ),
+          const SizedBox(height: AppTheme.spacing24),
+          HopalButton(
+            label: 'שמור פרטי רופא',
+            icon: LucideIcons.check,
+            onPressed: () async {
+              final prefs = await SharedPreferences.getInstance();
+              final newName = nameController.text.trim();
+              final newPhone = phoneController.text.trim();
+              await prefs.setString('doctor_name', newName);
+              await prefs.setString('doctor_phone_number', newPhone);
+              if (context.mounted) {
+                setState(() {
+                  _doctorName = newName;
+                  _doctorPhone = newPhone;
+                });
+                Navigator.pop(context);
+                HopalFeedback.showSuccess(context, 'פרטי רופא הגדוד נשמרו בהצלחה');
+              }
+            },
+          ),
+          const SizedBox(height: AppTheme.spacing16),
         ],
       ),
     );
@@ -457,6 +525,20 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             padding: EdgeInsets.zero,
             child: Column(
               children: [
+                HopalListTile(
+                  title: const Text('רופא הגדוד (התייעצות WhatsApp)'),
+                  subtitle: Text(
+                    _doctorPhone.isNotEmpty
+                        ? '${_doctorName.isNotEmpty ? '$_doctorName • ' : ''}$_doctorPhone'
+                        : 'טרם הוגדר מספר (לחץ להגדרה מהירה)',
+                    style: TextStyle(
+                      color: _doctorPhone.isNotEmpty ? AppTheme.primaryGreen : AppTheme.warningAmber,
+                      fontSize: 13,
+                    ),
+                  ),
+                  leadingIcon: LucideIcons.stethoscope,
+                  onTap: () => _showDoctorSettingsDialog(context),
+                ),
                 HopalListTile(
                   title: const Text('ניהול חיילים בפלוגה'),
                   subtitle: const Text('עריכה ומחיקת חיילים מהמאגר'),

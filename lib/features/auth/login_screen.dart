@@ -35,8 +35,12 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Future<void> _checkStoredCredentials() async {
     final prefs = await SharedPreferences.getInstance();
+    final savedEmail = prefs.getString('saved_email');
     setState(() {
       _hasStoredCredentials = prefs.containsKey('saved_email') && prefs.containsKey('saved_password');
+      if (savedEmail != null && _emailController.text.isEmpty) {
+        _emailController.text = savedEmail;
+      }
     });
   }
 
