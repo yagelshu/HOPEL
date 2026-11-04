@@ -7,7 +7,7 @@ import 'package:chopel_app/theme/components/hopal_button.dart';
 import 'package:chopel_app/theme/components/hopal_feedback.dart';
 import 'package:chopel_app/core/utils/app_error_helper.dart';
 import 'package:chopel_app/core/auth/auth_service.dart';
-import 'package:chopel_app/screens/main_layout_screen.dart';
+import 'package:chopel_app/features/onboarding/deployment_selection_screen.dart';
 import 'package:chopel_app/features/dashboard/providers.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:intl/intl.dart';
@@ -152,7 +152,7 @@ class _DeploymentSummaryScreenState extends ConsumerState<DeploymentSummaryScree
       
       if (mounted) {
         Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(builder: (_) => const MainLayoutScreen()),
+          MaterialPageRoute(builder: (_) => const DeploymentSelectionScreen()),
           (route) => false,
         );
       }

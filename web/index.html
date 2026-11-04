@@ -113,6 +113,84 @@
       document.getElementById("splash-branding")?.remove();
       document.body.style.background = "transparent";
     }
+
+    window.hopalBiometrics = {
+      isAvailable: async function () {
+        try {
+          if (!window.PublicKeyCredential || !navigator.credentials) return false;
+          return await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
+        } catch (e) {
+          return false;
+        }
+      },
+      register: async function (userId, userName) {
+        try {
+          const challenge = new Uint8Array(32);
+          window.crypto.getRandomValues(challenge);
+          const userBytes = new TextEncoder().encode(userId || 'hopal-user');
+          const credential = await navigator.credentials.create({
+            publicKey: {
+              challenge: challenge,
+              rp: { name: 'HOPAL - חופ"ל', id: window.location.hostname },
+              user: {
+                id: userBytes,
+                name: userName || 'חופ"ל',
+                displayName: userName || 'חופ"ל'
+              },
+              pubKeyCredParams: [
+                { type: 'public-key', alg: -7 },
+                { type: 'public-key', alg: -257 }
+              ],
+              authenticatorSelection: {
+                authenticatorAttachment: 'platform',
+                userVerification: 'required',
+                residentKey: 'preferred'
+              },
+              timeout: 60000
+            }
+          });
+          if (!credential || !credential.rawId) return null;
+          const bytes = new Uint8Array(credential.rawId);
+          let binary = '';
+          for (let i = 0; i < bytes.byteLength; i++) {
+            binary += String.fromCharCode(bytes[i]);
+          }
+          return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+        } catch (e) {
+          console.error('WebAuthn register failed:', e);
+          return null;
+        }
+      },
+      authenticate: async function (credentialIdBase64Url) {
+        try {
+          const challenge = new Uint8Array(32);
+          window.crypto.getRandomValues(challenge);
+          const publicKey = {
+            challenge: challenge,
+            rpId: window.location.hostname,
+            userVerification: 'required',
+            timeout: 60000
+          };
+          if (credentialIdBase64Url && credentialIdBase64Url.length > 0) {
+            let base64 = credentialIdBase64Url.replace(/-/g, '+').replace(/_/g, '/');
+            while (base64.length % 4) base64 += '=';
+            const binary = atob(base64);
+            const idBytes = new Uint8Array(binary.length);
+            for (let i = 0; i < binary.length; i++) {
+              idBytes[i] = binary.charCodeAt(i);
+            }
+            publicKey.allowCredentials = [
+              { type: 'public-key', id: idBytes }
+            ];
+          }
+          const assertion = await navigator.credentials.get({ publicKey: publicKey });
+          return !!assertion;
+        } catch (e) {
+          console.error('WebAuthn authenticate failed:', e);
+          return false;
+        }
+      }
+    };
   </script>
 </head>
 <body>

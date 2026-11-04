@@ -45,8 +45,13 @@ class _LoginScreenState extends State<LoginScreen> {
   Future<void> _checkStoredCredentials() async {
     final prefs = await SharedPreferences.getInstance();
     final savedEmail = prefs.getString('saved_email');
+    final useBiometrics = prefs.getBool('use_biometrics') ?? false;
+    final canUseBio = useBiometrics ? await AuthService().canUseBiometrics() : false;
+    if (!mounted) return;
     setState(() {
-      _hasStoredCredentials = prefs.containsKey('saved_email') && prefs.containsKey('saved_password');
+      _hasStoredCredentials = canUseBio &&
+          prefs.containsKey('saved_email') &&
+          prefs.containsKey('saved_password');
       if (savedEmail != null && _emailController.text.isEmpty) {
         _emailController.text = savedEmail;
       }
@@ -64,6 +69,8 @@ class _LoginScreenState extends State<LoginScreen> {
         _passwordController.text = password;
         await _submit();
       }
+    } else if (mounted) {
+      HopalFeedback.showError(context, 'האימות הביומטרי לא הושלם. נסה שוב או הזן סיסמה.');
     }
   }
 

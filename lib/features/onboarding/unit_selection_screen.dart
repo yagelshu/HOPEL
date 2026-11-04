@@ -8,6 +8,8 @@ import 'package:chopel_app/core/network/unit_service.dart';
 import 'package:chopel_app/features/onboarding/deployment_selection_screen.dart';
 import 'package:chopel_app/features/auth/login_screen.dart';
 import 'package:chopel_app/core/auth/auth_service.dart';
+import 'package:chopel_app/core/utils/app_error_helper.dart';
+import 'package:chopel_app/screens/main_layout_screen.dart';
 
 class UnitSelectionScreen extends StatefulWidget {
   const UnitSelectionScreen({super.key});
@@ -19,9 +21,16 @@ class UnitSelectionScreen extends StatefulWidget {
 class _UnitSelectionScreenState extends State<UnitSelectionScreen> {
   final _nameController = TextEditingController();
   final _codeController = TextEditingController();
-  
+
   bool _isLoading = false;
   bool _isCreating = true;
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _codeController.dispose();
+    super.dispose();
+  }
 
   Future<void> _submit() async {
     setState(() => _isLoading = true);
@@ -47,23 +56,34 @@ class _UnitSelectionScreenState extends State<UnitSelectionScreen> {
       }
 
       if (!mounted) return;
-      
+
       setState(() => _isLoading = false);
 
       if (success) {
         await AuthService().loadProfile();
-        // After unit is set, go to deployment selection
+        if (!mounted) return;
+        final hasActiveDeployment = AuthService().currentUser?.activeDeploymentId != null;
         Navigator.pushReplacement(
           context,
-          MaterialPageRoute(builder: (context) => const DeploymentSelectionScreen()),
+          MaterialPageRoute(
+            builder: (context) => hasActiveDeployment
+                ? const MainLayoutScreen()
+                : const DeploymentSelectionScreen(),
+          ),
         );
       } else {
-        HopalFeedback.showError(context, _isCreating ? 'שגיאה ביצירת הפלוגה' : 'קוד ההצטרפות אינו תקין');
+        HopalFeedback.showError(
+          context,
+          _isCreating ? 'שגיאה ביצירת הפלוגה' : 'קוד ההצטרפות אינו תקין',
+        );
       }
     } catch (e) {
       if (!mounted) return;
       setState(() => _isLoading = false);
-      HopalFeedback.showError(context, AuthService.localizeAuthError(e));
+      HopalFeedback.showError(
+        context,
+        AppErrorHelper.toHebrew(e, fallback: 'שגיאה בהגדרת הפלוגה. נסה שוב.'),
+      );
     }
   }
 
@@ -87,14 +107,13 @@ class _UnitSelectionScreenState extends State<UnitSelectionScreen> {
               ),
               const SizedBox(height: AppTheme.spacing8),
               Text(
-                _isCreating 
+                _isCreating
                     ? 'צור סביבה חדשה עבור הפלוגה שלך. תוכל בהמשך להזמין חובשים נוספים.'
                     : 'הזן את קוד ההצטרפות שקיבלת מהחופ"ל שלך.',
                 style: TextStyle(fontSize: 16, color: AppTheme.textSecondary),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: AppTheme.spacing48),
-              
               if (_isCreating) ...[
                 HopalTextField(
                   controller: _nameController,
@@ -108,9 +127,7 @@ class _UnitSelectionScreenState extends State<UnitSelectionScreen> {
                   icon: LucideIcons.key,
                 ),
               ],
-              
               const SizedBox(height: AppTheme.spacing32),
-              
               HopalButton(
                 label: _isCreating ? 'צור פלוגה חדשה' : 'הצטרף לפלוגה',
                 onPressed: _submit,
@@ -119,7 +136,6 @@ class _UnitSelectionScreenState extends State<UnitSelectionScreen> {
                 isExpanded: true,
               ),
               const SizedBox(height: AppTheme.spacing24),
-              
               TextButton(
                 onPressed: () {
                   setState(() => _isCreating = !_isCreating);

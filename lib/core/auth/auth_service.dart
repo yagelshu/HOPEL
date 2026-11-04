@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import 'package:chopel_app/core/database/database_service.dart';
+import 'package:chopel_app/core/auth/web_biometrics.dart';
 
 class User {
   final String id;
@@ -424,7 +425,96 @@ class AuthService {
     }
   }
 
+  void updateUnitAndDeploymentNames({String? unitName, String? deploymentName}) {
+    if (_currentUser != null) {
+      _currentUser = User(
+        id: _currentUser!.id,
+        name: _currentUser!.name,
+        role: _currentUser!.role,
+        unitId: _currentUser!.unitId,
+        unitName: unitName ?? _currentUser!.unitName,
+        unitJoinCode: _currentUser!.unitJoinCode,
+        activeDeploymentId: _currentUser!.activeDeploymentId,
+        activeDeploymentName: deploymentName ?? _currentUser!.activeDeploymentName,
+        competencePoints: _currentUser!.competencePoints,
+      );
+      _saveLocalProfile(_currentUser!.toMap());
+    }
+  }
+
+  Future<void> detachFromCurrentUnit() async {
+    final user = _currentUser;
+    if (user == null) return;
+
+    await _supabase.from('users').update({
+      'unit_id': null,
+      'active_deployment_id': null,
+    }).eq('id', user.id);
+
+    _currentUser = User(
+      id: user.id,
+      name: user.name,
+      role: user.role,
+      unitId: null,
+      unitName: null,
+      unitJoinCode: null,
+      activeDeploymentId: null,
+      activeDeploymentName: null,
+      competencePoints: user.competencePoints,
+    );
+    await _saveLocalProfile(_currentUser!.toMap());
+
+    try {
+      final db = await DatabaseService().database;
+      await db.clear();
+    } catch (_) {}
+  }
+
+  Future<bool> canUseBiometrics() async {
+    if (kIsWeb) {
+      return await WebBiometrics.isAvailable();
+    }
+    final LocalAuthentication auth = LocalAuthentication();
+    try {
+      return await auth.canCheckBiometrics || await auth.isDeviceSupported();
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<bool> enableBiometrics() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (kIsWeb) {
+      final credId = await WebBiometrics.register(
+        userId: _currentUser?.id ?? 'hopal-user',
+        userName: _currentUser?.name ?? 'חופ"ל',
+      );
+      if (credId == null || credId.isEmpty) {
+        return false;
+      }
+      await prefs.setString('webauthn_credential_id', credId);
+      await prefs.setBool('use_biometrics', true);
+      return true;
+    }
+
+    final verified = await authenticateWithBiometrics();
+    if (!verified) return false;
+    await prefs.setBool('use_biometrics', true);
+    return true;
+  }
+
+  Future<void> disableBiometrics() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('use_biometrics', false);
+  }
+
   Future<bool> authenticateWithBiometrics() async {
+    if (kIsWeb) {
+      final prefs = await SharedPreferences.getInstance();
+      final credId = prefs.getString('webauthn_credential_id');
+      return await WebBiometrics.authenticate(credId);
+    }
+
     final LocalAuthentication auth = LocalAuthentication();
     try {
       final bool canAuthenticateWithBiometrics = await auth.canCheckBiometrics;
