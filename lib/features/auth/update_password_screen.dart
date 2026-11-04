@@ -42,22 +42,26 @@ class _UpdatePasswordScreenState extends State<UpdatePasswordScreen> {
         UserAttributes(password: password),
       );
 
-      AuthService().isPasswordRecovery = false;
+      await AuthService().markRecoveryHandled();
 
       final currentEmail = Supabase.instance.client.auth.currentUser?.email;
       if (currentEmail != null) {
         final prefs = await SharedPreferences.getInstance();
-        if (prefs.getString('saved_email') == currentEmail) {
-          await prefs.setString('saved_password', password);
-        }
+        await prefs.setString('saved_email', currentEmail);
+        await prefs.setString('saved_password', password);
       }
 
       if (mounted) {
+        final canPopBack = Navigator.of(context).canPop();
         HopalFeedback.showSuccess(context, 'הסיסמה עודכנה בהצלחה!');
-        Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(builder: (_) => const SplashScreen()),
-          (route) => false,
-        );
+        if (canPopBack) {
+          Navigator.of(context).pop();
+        } else {
+          Navigator.of(context).pushAndRemoveUntil(
+            MaterialPageRoute(builder: (_) => const SplashScreen()),
+            (route) => false,
+          );
+        }
       }
     } catch (e) {
       if (mounted) {
@@ -79,6 +83,8 @@ class _UpdatePasswordScreenState extends State<UpdatePasswordScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final canPopBack = Navigator.of(context).canPop();
+
     return Scaffold(
       backgroundColor: AppTheme.backgroundPrimary,
       appBar: AppBar(
@@ -88,14 +94,22 @@ class _UpdatePasswordScreenState extends State<UpdatePasswordScreen> {
         centerTitle: true,
       ),
       body: SafeArea(
-        child: Padding(
+        child: SingleChildScrollView(
           padding: const EdgeInsets.all(AppTheme.spacing24),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              Icon(LucideIcons.keyRound, size: 56, color: AppTheme.successGreen),
+              const SizedBox(height: AppTheme.spacing16),
               Text(
-                'הזן את הסיסמה החדשה שלך למטה.',
-                style: TextStyle(color: AppTheme.textSecondary, fontSize: 16),
+                'בחר סיסמה חדשה לחשבון שלך',
+                style: TextStyle(color: AppTheme.textPrimary, fontSize: 18, fontWeight: FontWeight.bold),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: AppTheme.spacing8),
+              Text(
+                'הזן סיסמה בת 6 תווים לפחות וודא שהיא זהה בשני השדות.',
+                style: TextStyle(color: AppTheme.textSecondary, fontSize: 14),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: AppTheme.spacing32),
@@ -114,12 +128,29 @@ class _UpdatePasswordScreenState extends State<UpdatePasswordScreen> {
               ),
               const SizedBox(height: AppTheme.spacing32),
               HopalButton(
-                label: 'עדכן סיסמה',
+                label: 'שמור סיסמה חדשה',
                 onPressed: _updatePassword,
                 isLoading: _isLoading,
                 icon: LucideIcons.checkCircle,
                 isExpanded: true,
               ),
+              if (!canPopBack) ...[
+                const SizedBox(height: AppTheme.spacing16),
+                TextButton(
+                  onPressed: () async {
+                    await AuthService().markRecoveryHandled();
+                    if (!context.mounted) return;
+                    Navigator.of(context).pushAndRemoveUntil(
+                      MaterialPageRoute(builder: (_) => const SplashScreen()),
+                      (route) => false,
+                    );
+                  },
+                  child: Text(
+                    'המשך לאפליקציה ללא שינוי סיסמה',
+                    style: TextStyle(color: AppTheme.textSecondary),
+                  ),
+                ),
+              ],
             ],
           ),
         ),

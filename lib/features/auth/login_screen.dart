@@ -31,6 +31,15 @@ class _LoginScreenState extends State<LoginScreen> {
   void initState() {
     super.initState();
     _checkStoredCredentials();
+    final pendingError = AuthService().pendingAuthErrorMessage;
+    if (pendingError != null) {
+      AuthService().pendingAuthErrorMessage = null;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          HopalFeedback.showError(context, pendingError);
+        }
+      });
+    }
   }
 
   Future<void> _checkStoredCredentials() async {

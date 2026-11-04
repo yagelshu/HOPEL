@@ -10,6 +10,7 @@ import 'package:chopel_app/theme/components/hopal_list_tile.dart';
 import 'package:chopel_app/theme/components/hopal_feedback.dart';
 import 'package:chopel_app/theme/components/hopal_bottom_sheet.dart';
 import 'package:chopel_app/features/auth/login_screen.dart';
+import 'package:chopel_app/features/auth/update_password_screen.dart';
 import 'package:chopel_app/core/network/sync_engine.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:share_plus/share_plus.dart';
@@ -624,6 +625,19 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                           activeColor: AppTheme.primaryGreen,
                         ),
                   onTap: _toggleBiometrics,
+                ),
+                HopalListTile(
+                  title: const Text('שינוי סיסמה'),
+                  subtitle: const Text('בחירת סיסמה חדשה לחשבון שלך'),
+                  leadingIcon: LucideIcons.keyRound,
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const UpdatePasswordScreen(),
+                      ),
+                    );
+                  },
                 ),
               ],
             ),

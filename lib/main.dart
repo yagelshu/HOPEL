@@ -17,12 +17,20 @@ import 'package:chopel_app/core/database/draft_service.dart';
 
 void main() async {
   try {
+    final initialUri = Uri.base;
+    final rawFragment = initialUri.fragment;
+    final rawQuery = initialUri.query;
+
     WidgetsFlutterBinding.ensureInitialized();
 
-    final initialUri = Uri.base;
-    if (initialUri.fragment.contains('type=recovery') ||
+    if (rawFragment.contains('type=recovery') ||
         initialUri.queryParameters['type'] == 'recovery') {
       AuthService().isPasswordRecovery = true;
+    } else if (rawFragment.contains('error_code=otp_expired') ||
+        rawQuery.contains('error_code=otp_expired') ||
+        rawFragment.contains('error=access_denied')) {
+      AuthService().pendingAuthErrorMessage =
+          'פג תוקף הקישור לאיפוס הסיסמה (או שכבר נעשה בו שימוש). לחץ על "שכחת סיסמה?" לבקשת קישור חדש.';
     }
 
     await Supabase.initialize(
@@ -32,6 +40,8 @@ void main() async {
         authFlowType: AuthFlowType.implicit,
       ),
     );
+
+    await AuthService().checkInitialRecoverySession();
 
     Supabase.instance.client.auth.onAuthStateChange.listen((data) {
       if (data.event == AuthChangeEvent.passwordRecovery) {
@@ -122,7 +132,7 @@ class _HopalAppState extends ConsumerState<HopalApp> with WidgetsBindingObserver
     final prefs = await SharedPreferences.getInstance();
     final useBiometrics = prefs.getBool('use_biometrics') ?? false;
 
-    if (useBiometrics && AuthService().isAuthenticated) {
+    if (useBiometrics && AuthService().isAuthenticated && !AuthService().isPasswordRecovery) {
       _isLocked = true;
       await _navigatorKey.currentState?.push(
         MaterialPageRoute(builder: (context) => const BiometricLockScreen()),
@@ -151,7 +161,22 @@ class _HopalAppState extends ConsumerState<HopalApp> with WidgetsBindingObserver
         Locale('he', 'IL'),
       ],
       locale: const Locale('he', 'IL'),
-      home: const SplashScreen(),
+      onGenerateInitialRoutes: (String initialRouteName) {
+        return [
+          MaterialPageRoute(
+            builder: (_) => AuthService().isPasswordRecovery
+                ? const UpdatePasswordScreen()
+                : const SplashScreen(),
+          ),
+        ];
+      },
+      onGenerateRoute: (RouteSettings settings) {
+        return MaterialPageRoute(
+          builder: (_) => AuthService().isPasswordRecovery
+              ? const UpdatePasswordScreen()
+              : const SplashScreen(),
+        );
+      },
     );
   }
 }

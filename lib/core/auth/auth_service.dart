@@ -70,6 +70,60 @@ class AuthService {
 
   /// True when the app was opened from a password recovery link
   bool isPasswordRecovery = false;
+
+  /// Optional auth error message captured from redirect URL hash/query (e.g. expired recovery link)
+  String? pendingAuthErrorMessage;
+
+  String? _extractRecoveryAmrTimestamp() {
+    final session = _supabase.auth.currentSession;
+    if (session == null) return null;
+    try {
+      final parts = session.accessToken.split('.');
+      if (parts.length != 3) return null;
+      final payloadStr = utf8.decode(base64Url.decode(base64Url.normalize(parts[1])));
+      final payload = jsonDecode(payloadStr) as Map<String, dynamic>;
+      final amr = payload['amr'];
+      if (amr is List) {
+        for (final entry in amr) {
+          if (entry is Map && entry['method'] == 'recovery') {
+            return entry['timestamp']?.toString() ?? 'recovery';
+          }
+        }
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  /// Inspects the active Supabase JWT `amr` claim to detect a recovery session
+  /// even when URL fragments were stripped or PKCE `?code=` was used.
+  Future<void> checkInitialRecoverySession() async {
+    final ts = _extractRecoveryAmrTimestamp();
+    if (ts == null) return;
+
+    final prefs = await SharedPreferences.getInstance();
+    final handledTs = prefs.getString('handled_recovery_amr_ts');
+    if (ts == handledTs) return;
+
+    final parsedSeconds = int.tryParse(ts);
+    if (parsedSeconds != null) {
+      final nowSeconds = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+      if ((nowSeconds - parsedSeconds).abs() > 3600) {
+        return;
+      }
+    }
+
+    isPasswordRecovery = true;
+  }
+
+  /// Marks the current recovery session as completed so it doesn't prompt again.
+  Future<void> markRecoveryHandled() async {
+    isPasswordRecovery = false;
+    final ts = _extractRecoveryAmrTimestamp();
+    if (ts != null) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('handled_recovery_amr_ts', ts);
+    }
+  }
   
   void updateCurrentUserDeployment(String? deploymentId, String? deploymentName) {
     if (_currentUser != null) {
