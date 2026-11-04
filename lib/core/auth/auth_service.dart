@@ -198,7 +198,22 @@ class AuthService {
           .maybeSingle();
           
       if (data == null) {
-        _currentUser = await _loadLocalProfile(supaUser.id) ?? User(id: supaUser.id, name: 'משתמש חדש', role: 'COMBAT_MEDIC');
+        final fallback = await _loadLocalProfile(supaUser.id) ??
+            User(
+              id: supaUser.id,
+              name: supaUser.email?.split('@').first ?? 'חופ"ל',
+              role: 'COMBAT_MEDIC',
+            );
+        _currentUser = fallback;
+        try {
+          await _supabase.from('users').upsert({
+            'id': fallback.id,
+            'name': fallback.name,
+            'role': fallback.role,
+            'unit_id': fallback.unitId,
+            'active_deployment_id': fallback.activeDeploymentId,
+          });
+        } catch (_) {}
         return;
       }
           

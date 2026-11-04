@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:chopel_app/theme/app_theme.dart';
 import 'package:chopel_app/theme/components/hopal_button.dart';
@@ -10,15 +11,18 @@ import 'package:chopel_app/features/auth/login_screen.dart';
 import 'package:chopel_app/core/auth/auth_service.dart';
 import 'package:chopel_app/core/utils/app_error_helper.dart';
 import 'package:chopel_app/screens/main_layout_screen.dart';
+import 'package:chopel_app/features/dashboard/providers.dart';
+import 'package:chopel_app/features/equipment/providers.dart';
+import 'package:chopel_app/features/medical_cases/providers.dart';
 
-class UnitSelectionScreen extends StatefulWidget {
+class UnitSelectionScreen extends ConsumerStatefulWidget {
   const UnitSelectionScreen({super.key});
 
   @override
-  State<UnitSelectionScreen> createState() => _UnitSelectionScreenState();
+  ConsumerState<UnitSelectionScreen> createState() => _UnitSelectionScreenState();
 }
 
-class _UnitSelectionScreenState extends State<UnitSelectionScreen> {
+class _UnitSelectionScreenState extends ConsumerState<UnitSelectionScreen> {
   final _nameController = TextEditingController();
   final _codeController = TextEditingController();
 
@@ -61,6 +65,11 @@ class _UnitSelectionScreenState extends State<UnitSelectionScreen> {
 
       if (success) {
         await AuthService().loadProfile();
+        ref.invalidate(equipmentProvider);
+        ref.invalidate(medicalCasesProvider);
+        ref.invalidate(soldiersProvider);
+        ref.invalidate(dashboardMetricsProvider);
+
         if (!mounted) return;
         final hasActiveDeployment = AuthService().currentUser?.activeDeploymentId != null;
         Navigator.pushReplacement(

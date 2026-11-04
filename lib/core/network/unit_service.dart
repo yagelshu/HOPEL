@@ -2,9 +2,43 @@ import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 import 'package:chopel_app/core/auth/auth_service.dart';
+import 'package:chopel_app/core/utils/default_equipment_catalog.dart';
 
 class UnitService {
   final _supabase = Supabase.instance.client;
+
+  /// Seeds the 50-item IDF standard equipment list for [unitId] in Supabase.
+  /// Tries `equipment_catalog` first, falling back to [DefaultEquipmentCatalog].
+  Future<List<Map<String, dynamic>>> seedUnitEquipment(String unitId) async {
+    final user = AuthService().currentUser;
+    if (user != null) {
+      try {
+        await _supabase.from('users').upsert({
+          'id': user.id,
+          'name': user.name,
+          'role': user.role,
+          'unit_id': unitId,
+          'active_deployment_id': user.activeDeploymentId,
+        });
+      } catch (_) {}
+    }
+
+    List<Map<String, dynamic>> catalog = [];
+    try {
+      final res = await _supabase.from('equipment_catalog').select();
+      catalog = List<Map<String, dynamic>>.from(res);
+    } catch (_) {}
+
+    final equipmentToInsert = DefaultEquipmentCatalog.buildRowsForUnit(
+      unitId,
+      catalogSource: catalog,
+    );
+
+    if (equipmentToInsert.isNotEmpty) {
+      await _supabase.from('equipment').insert(equipmentToInsert);
+    }
+    return equipmentToInsert;
+  }
 
   Future<bool> createUnit(String name) async {
     final user = AuthService().currentUser;
@@ -21,30 +55,20 @@ class UnitService {
         'join_code': joinCode,
       });
 
-      // 2. Update User Role and Unit (deployment will be named on the next screen)
-      await _supabase.from('users').update({
+      // 2. Upsert User Role and Unit (deployment will be named on the next screen)
+      await _supabase.from('users').upsert({
+        'id': user.id,
+        'name': user.name,
         'role': 'COMPANY_MEDIC',
         'unit_id': unitId,
         'active_deployment_id': null,
-      }).eq('id', user.id);
+      });
 
-      // 3. Seed default equipment from catalog
-      final catalog = await _supabase.from('equipment_catalog').select();
-      final List<Map<String, dynamic>> equipmentToInsert = catalog.map((item) {
-        return {
-          'id': const Uuid().v4(),
-          'name': item['name'],
-          'quantity': item['minimum_required'], // Starts fully stocked
-          'minimum_required': item['minimum_required'],
-          'status': 'IN_STOCK', // Fully stocked
-          'category': item['category'],
-          'item_type': item['item_type'],
-          'unit_id': unitId,
-        };
-      }).toList();
-
-      if (equipmentToInsert.isNotEmpty) {
-        await _supabase.from('equipment').insert(equipmentToInsert);
+      // 3. Seed default equipment (catalog or built-in IDF standard)
+      try {
+        await seedUnitEquipment(unitId);
+      } catch (seedErr) {
+        debugPrint('Equipment seed warning (will retry on screen open): $seedErr');
       }
 
       // Reload profile
@@ -87,12 +111,14 @@ class UnitService {
 
       final activeDeploymentId = activeDeploymentRes?['id'];
 
-      // Update user
-      await _supabase.from('users').update({
+      // Upsert user so missing profile rows are created cleanly
+      await _supabase.from('users').upsert({
+        'id': user.id,
+        'name': user.name,
         'role': 'COMBAT_MEDIC',
         'unit_id': unitId,
         'active_deployment_id': activeDeploymentId,
-      }).eq('id', user.id);
+      });
 
       await AuthService().loadProfile();
       AuthService().updateCurrentUserUnit(

@@ -29,10 +29,10 @@ class Equipment {
       name: map['name'],
       category: map['category'] ?? 'כללי',
       itemType: map['item_type'] ?? 'מתכלה',
-      quantity: map['quantity'],
-      minimumRequired: map['minimum_required'],
+      quantity: (map['quantity'] as num?)?.toInt() ?? 0,
+      minimumRequired: (map['minimum_required'] as num?)?.toInt() ?? 0,
       expirationDate: map['expiration_date'],
-      status: map['status'],
+      status: map['status'] ?? 'IN_STOCK',
       unitId: map['unit_id'],
       imagePath: map['image_path'],
     );
@@ -50,6 +50,21 @@ class Equipment {
       'status': status,
       'unit_id': unitId,
       'image_path': imagePath,
+    };
+  }
+
+  /// Columns present in the Supabase `public.equipment` table.
+  Map<String, dynamic> toSupabaseMap() {
+    return {
+      'id': id,
+      'name': name,
+      'category': category,
+      'item_type': itemType,
+      'quantity': quantity,
+      'minimum_required': minimumRequired,
+      if (expirationDate != null) 'expiration_date': expirationDate,
+      'status': status,
+      if (unitId != null) 'unit_id': unitId,
     };
   }
 

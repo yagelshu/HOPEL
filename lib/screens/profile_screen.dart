@@ -25,6 +25,7 @@ import 'package:chopel_app/screens/user_manual_screen.dart';
 import 'package:chopel_app/features/profile/soldiers_management_screen.dart';
 import 'package:chopel_app/core/database/draft_service.dart';
 import 'package:chopel_app/features/medical_cases/providers.dart';
+import 'package:chopel_app/features/equipment/providers.dart';
 import 'package:chopel_app/theme/components/hopal_text_field.dart';
 import 'package:chopel_app/core/utils/app_constants.dart';
 import 'package:chopel_app/core/utils/app_error_helper.dart';
@@ -243,6 +244,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 await AuthService().detachFromCurrentUnit();
                 ref.invalidate(medicalCasesProvider);
                 ref.invalidate(soldiersProvider);
+                ref.invalidate(equipmentProvider);
                 ref.invalidate(dashboardMetricsProvider);
 
                 if (!mounted) return;
@@ -497,6 +499,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
                         ref.invalidate(medicalCasesProvider);
                         ref.invalidate(soldiersProvider);
+                        ref.invalidate(equipmentProvider);
 
                         if (context.mounted) {
                           Navigator.pop(context);

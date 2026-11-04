@@ -14,6 +14,7 @@ import 'package:chopel_app/features/auth/login_screen.dart';
 import 'package:chopel_app/features/onboarding/unit_selection_screen.dart';
 import 'package:chopel_app/features/dashboard/providers.dart';
 import 'package:chopel_app/features/medical_cases/providers.dart';
+import 'package:chopel_app/features/equipment/providers.dart';
 
 class DeploymentSelectionScreen extends ConsumerStatefulWidget {
   const DeploymentSelectionScreen({super.key});
@@ -80,6 +81,7 @@ class _DeploymentSelectionScreenState extends ConsumerState<DeploymentSelectionS
       AuthService().updateCurrentUserDeployment(deploymentId, name);
       ref.invalidate(dashboardMetricsProvider);
       ref.invalidate(medicalCasesProvider);
+      ref.invalidate(equipmentProvider);
 
       if (!mounted) return;
 
@@ -105,6 +107,7 @@ class _DeploymentSelectionScreenState extends ConsumerState<DeploymentSelectionS
       await AuthService().detachFromCurrentUnit();
       ref.invalidate(medicalCasesProvider);
       ref.invalidate(soldiersProvider);
+      ref.invalidate(equipmentProvider);
       ref.invalidate(dashboardMetricsProvider);
       if (!mounted) return;
       Navigator.pushAndRemoveUntil(

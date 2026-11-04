@@ -37,7 +37,7 @@ class _EquipmentListScreenState extends ConsumerState<EquipmentListScreen> {
     int currentQuantity = item?.quantity ?? 0;
     String category = item?.category ?? _selectedGroup;
     String itemType = item?.itemType ?? 'מתכלה';
-    
+
     String? imagePath = item?.imagePath;
 
     HopalBottomSheet.show(
@@ -45,7 +45,7 @@ class _EquipmentListScreenState extends ConsumerState<EquipmentListScreen> {
       title: isEditing ? 'עריכת פריט' : 'הוספת פריט חדש',
       child: StatefulBuilder(
         builder: (context, setModalState) {
-          Future<void> _pickImage() async {
+          Future<void> pickImage() async {
             final picker = ImagePicker();
             final pickedFile = await picker.pickImage(source: ImageSource.camera);
             if (pickedFile != null) {
@@ -58,16 +58,16 @@ class _EquipmentListScreenState extends ConsumerState<EquipmentListScreen> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               GestureDetector(
-                onTap: _pickImage,
+                onTap: pickImage,
                 child: Container(
                   height: 120,
                   decoration: BoxDecoration(
                     color: AppTheme.backgroundSecondary,
                     borderRadius: AppTheme.radiusMd,
                     border: Border.all(color: AppTheme.borderSubtle),
-                    image: imagePath != null 
-                      ? DecorationImage(image: resolveLocalOrWebImage(imagePath!), fit: BoxFit.cover)
-                      : null,
+                    image: imagePath != null
+                        ? DecorationImage(image: resolveLocalOrWebImage(imagePath!), fit: BoxFit.cover)
+                        : null,
                   ),
                   child: imagePath == null
                       ? Column(
@@ -83,7 +83,7 @@ class _EquipmentListScreenState extends ConsumerState<EquipmentListScreen> {
               ),
               const SizedBox(height: AppTheme.spacing16),
               TextField(
-                decoration: InputDecoration(
+                decoration: const InputDecoration(
                   labelText: 'שם הפריט',
                   border: OutlineInputBorder(borderRadius: AppTheme.radiusMd),
                 ),
@@ -113,14 +113,14 @@ class _EquipmentListScreenState extends ConsumerState<EquipmentListScreen> {
               ),
               const SizedBox(height: AppTheme.spacing16),
               DropdownButtonFormField<String>(
-                value: category,
+                initialValue: category,
                 decoration: const InputDecoration(labelText: 'שיוך', border: OutlineInputBorder(borderRadius: AppTheme.radiusMd)),
                 items: ['וסט חובש', 'ארגז חופל'].map((g) => DropdownMenuItem(value: g, child: Text(g))).toList(),
                 onChanged: (val) => setModalState(() => category = val!),
               ),
               const SizedBox(height: AppTheme.spacing16),
               DropdownButtonFormField<String>(
-                value: itemType,
+                initialValue: itemType,
                 decoration: const InputDecoration(labelText: 'סוג', border: OutlineInputBorder(borderRadius: AppTheme.radiusMd)),
                 items: ['מתכלה', 'קבוע'].map((t) => DropdownMenuItem(value: t, child: Text(t))).toList(),
                 onChanged: (val) => setModalState(() => itemType = val!),
@@ -187,8 +187,8 @@ class _EquipmentListScreenState extends ConsumerState<EquipmentListScreen> {
                           return;
                         }
                         final String id = isEditing ? item.id : const Uuid().v4();
-                        final int minReq = isEditing ? item.minimumRequired : currentQuantity; 
-                        
+                        final int minReq = isEditing ? item.minimumRequired : currentQuantity;
+
                         final user = AuthService().currentUser;
                         final unitId = user?.unitId ?? item?.unitId;
 
@@ -367,10 +367,10 @@ class _EquipmentListScreenState extends ConsumerState<EquipmentListScreen> {
                 TextField(
                   controller: lotController,
                   style: TextStyle(color: AppTheme.textPrimary),
-                  decoration: InputDecoration(
+                  decoration: const InputDecoration(
                     labelText: 'מספר אצווה / שנת ייצור (Lot Number)',
                     hintText: 'לדוגמה: LOT 23-148 או 2023',
-                    prefixIcon: const Icon(LucideIcons.hash),
+                    prefixIcon: Icon(LucideIcons.hash),
                     border: OutlineInputBorder(borderRadius: AppTheme.radiusMd),
                   ),
                 ),
@@ -499,21 +499,38 @@ class _EquipmentListScreenState extends ConsumerState<EquipmentListScreen> {
 
     return Scaffold(
       backgroundColor: AppTheme.backgroundPrimary,
-      floatingActionButton: canEdit ? Padding(
-        padding: const EdgeInsets.only(bottom: 120.0),
-        child: FloatingActionButton(
-          onPressed: () => _showAddOrEditSheet(context),
-          backgroundColor: AppTheme.primaryGreen,
-          child: const Icon(LucideIcons.plus, color: Colors.white),
-        ),
-      ) : null,
+      floatingActionButton: canEdit
+          ? Padding(
+              padding: const EdgeInsets.only(bottom: 120.0),
+              child: FloatingActionButton(
+                onPressed: () => _showAddOrEditSheet(context),
+                backgroundColor: AppTheme.primaryGreen,
+                child: const Icon(LucideIcons.plus, color: Colors.white),
+              ),
+            )
+          : null,
       body: equipmentAsync.when(
         data: (eqList) {
           if (eqList.isEmpty) {
-            return const HopalEmptyState(
+            return HopalEmptyState(
               icon: LucideIcons.briefcase,
               title: 'אין ציוד מנוהל',
-              subtitle: 'לא נמצא ציוד רפואי במערכת.',
+              subtitle: 'לא נמצא ציוד רפואי בפלוגה זו. ניתן לטעון את תקן הציוד הפלוגתי המלא בלחיצה אחת.',
+              action: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  HopalButton(
+                    label: 'טען תקן ציוד פלוגתי (וסט חובש + ארגז חופ"ל)',
+                    icon: LucideIcons.packagePlus,
+                    onPressed: () async {
+                      await ref.read(equipmentProvider.notifier).seedStandardCatalog();
+                      if (context.mounted) {
+                        HopalFeedback.showSuccess(context, 'תקן הציוד הרפואי נטען בהצלחה');
+                      }
+                    },
+                  ),
+                ],
+              ),
             );
           }
 
@@ -522,103 +539,134 @@ class _EquipmentListScreenState extends ConsumerState<EquipmentListScreen> {
           final expendables = items.where((e) => e.itemType == 'מתכלה').toList();
           final durables = items.where((e) => e.itemType == 'קבוע').toList();
 
-          final readinessPercent = eqList.isEmpty ? 100 : ((eqList.length - eqList.where((e) => e.status == 'MISSING' || e.quantity < e.minimumRequired).length) / eqList.length * 100).round();
+          final readinessPercent = eqList.isEmpty
+              ? 100
+              : ((eqList.length - eqList.where((e) => e.status == 'MISSING' || e.quantity < e.minimumRequired).length) / eqList.length * 100).round();
           final isReady = readinessPercent > 90;
 
           final missingItems = eqList.where((e) => e.status == 'MISSING' || e.quantity < e.minimumRequired).toList();
 
-          return CustomScrollView(
-            slivers: [
-              SliverAppBar(
-                title: const Text('כשירות ציוד רפואי', style: TextStyle(fontWeight: FontWeight.bold)),
-                floating: true,
-                pinned: true,
-                actions: [
-                  IconButton(
-                    icon: const Icon(LucideIcons.shieldCheck),
-                    tooltip: 'בדיקת חסם עורקים',
-                    onPressed: _showCatCheckModal,
-                  ),
-                ],
-              ),
-              SliverToBoxAdapter(
-                child: _buildHeroReadiness(readinessPercent, isReady),
-              ),
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: AppTheme.spacing16, vertical: AppTheme.spacing8),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        flex: 5,
-                        child: HopalButton(
-                          label: 'בדיקת חסם עורקים',
-                          icon: LucideIcons.shieldCheck,
-                          variant: HopalButtonVariant.secondary,
-                          onPressed: _showCatCheckModal,
-                        ),
-                      ),
-                      if (missingItems.isNotEmpty) ...[
-                        const SizedBox(width: AppTheme.spacing8),
+          return RefreshIndicator(
+            color: AppTheme.primaryGreen,
+            onRefresh: () => ref.read(equipmentProvider.notifier).refresh(),
+            child: CustomScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              slivers: [
+                SliverAppBar(
+                  title: const Text('כשירות ציוד רפואי', style: TextStyle(fontWeight: FontWeight.bold)),
+                  floating: true,
+                  pinned: true,
+                  actions: [
+                    IconButton(
+                      icon: const Icon(LucideIcons.shieldCheck),
+                      tooltip: 'בדיקת חסם עורקים',
+                      onPressed: _showCatCheckModal,
+                    ),
+                  ],
+                ),
+                SliverToBoxAdapter(
+                  child: _buildHeroReadiness(readinessPercent, isReady),
+                ),
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: AppTheme.spacing16, vertical: AppTheme.spacing8),
+                    child: Row(
+                      children: [
                         Expanded(
-                          flex: 4,
+                          flex: 5,
                           child: HopalButton(
-                            label: 'שלח חוסרים לחוג"ד',
-                            icon: LucideIcons.messageCircle,
-                            onPressed: () async {
-                              final text = 'היי החוג"ד, להלן חוסרים בציוד:\n' + missingItems.map((e) => '- ${e.name} (חסר: ${e.minimumRequired - e.quantity})').join('\n');
-                              final url = Uri.parse('whatsapp://send?text=${Uri.encodeComponent(text)}');
-                              if (await canLaunchUrl(url)) {
-                                await launchUrl(url);
-                              } else {
-                                if (context.mounted) HopalFeedback.showError(context, 'לא ניתן לפתוח את WhatsApp');
-                              }
-                            },
+                            label: 'בדיקת חסם עורקים',
+                            icon: LucideIcons.shieldCheck,
+                            variant: HopalButtonVariant.secondary,
+                            onPressed: _showCatCheckModal,
                           ),
                         ),
+                        if (missingItems.isNotEmpty) ...[
+                          const SizedBox(width: AppTheme.spacing8),
+                          Expanded(
+                            flex: 4,
+                            child: HopalButton(
+                              label: 'שלח חוסרים לחוג"ד',
+                              icon: LucideIcons.messageCircle,
+                              onPressed: () async {
+                                final text = 'היי החוג"ד, להלן חוסרים בציוד:\n${missingItems.map((e) => '- ${e.name} (חסר: ${e.minimumRequired - e.quantity})').join('\n')}';
+                                final url = Uri.parse('whatsapp://send?text=${Uri.encodeComponent(text)}');
+                                if (await canLaunchUrl(url)) {
+                                  await launchUrl(url);
+                                } else {
+                                  if (context.mounted) HopalFeedback.showError(context, 'לא ניתן לפתוח את WhatsApp');
+                                }
+                              },
+                            ),
+                          ),
+                        ],
                       ],
-                    ],
+                    ),
                   ),
                 ),
-              ),
-              SliverToBoxAdapter(
-                child: SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  padding: const EdgeInsets.symmetric(horizontal: AppTheme.spacing16, vertical: AppTheme.spacing8),
-                  child: Row(
-                    children: allGroups.map((grp) {
-                      final isSelected = _selectedGroup == grp;
-                      return Padding(
-                        padding: const EdgeInsets.only(left: AppTheme.spacing8),
-                        child: ChoiceChip(
-                          label: Text(grp, style: TextStyle(color: isSelected ? Colors.white : AppTheme.textSecondary)),
-                          selected: isSelected,
-                          onSelected: (selected) {
-                            if (selected) setState(() => _selectedGroup = grp);
-                          },
-                          backgroundColor: AppTheme.backgroundSecondary,
-                          selectedColor: AppTheme.primaryGreen,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: BorderSide(color: isSelected ? AppTheme.primaryGreen : AppTheme.borderSubtle)),
+                SliverToBoxAdapter(
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    padding: const EdgeInsets.symmetric(horizontal: AppTheme.spacing16, vertical: AppTheme.spacing8),
+                    child: Row(
+                      children: allGroups.map((grp) {
+                        final isSelected = _selectedGroup == grp;
+                        return Padding(
+                          padding: const EdgeInsets.only(left: AppTheme.spacing8),
+                          child: ChoiceChip(
+                            label: Text(grp, style: TextStyle(color: isSelected ? Colors.white : AppTheme.textSecondary)),
+                            selected: isSelected,
+                            onSelected: (selected) {
+                              if (selected) setState(() => _selectedGroup = grp);
+                            },
+                            backgroundColor: AppTheme.backgroundSecondary,
+                            selectedColor: AppTheme.primaryGreen,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(20),
+                              side: BorderSide(color: isSelected ? AppTheme.primaryGreen : AppTheme.borderSubtle),
+                            ),
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                  ),
+                ),
+                if (items.isEmpty)
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.all(AppTheme.spacing32),
+                      child: Center(
+                        child: Text(
+                          'אין פריטים תחת $_selectedGroup',
+                          style: TextStyle(color: AppTheme.textSecondary),
                         ),
-                      );
-                    }).toList(),
+                      ),
+                    ),
                   ),
-                ),
-              ),
-              if (expendables.isNotEmpty) ...[
-                _buildSectionHeader('ציוד מתכלה', LucideIcons.packagePlus, AppTheme.primaryGreen),
-                _buildEquipmentList(expendables),
+                if (expendables.isNotEmpty) ...[
+                  _buildSectionHeader('ציוד מתכלה', LucideIcons.packagePlus, AppTheme.primaryGreen),
+                  _buildEquipmentList(expendables),
+                ],
+                if (durables.isNotEmpty) ...[
+                  _buildSectionHeader('ציוד קבוע', LucideIcons.briefcase, AppTheme.primaryGreen),
+                  _buildEquipmentList(durables),
+                ],
+                const SliverToBoxAdapter(child: SizedBox(height: 120)), // Nav padding
               ],
-              if (durables.isNotEmpty) ...[
-                _buildSectionHeader('ציוד קבוע', LucideIcons.briefcase, AppTheme.primaryGreen),
-                _buildEquipmentList(durables),
-              ],
-              const SliverToBoxAdapter(child: SizedBox(height: 120)), // Nav padding
-            ],
+            ),
           );
         },
         loading: () => Center(child: CircularProgressIndicator(color: AppTheme.primaryGreen)),
-        error: (err, stack) => Center(child: Text('שגיאה: $err')),
+        error: (err, stack) => HopalEmptyState(
+          icon: LucideIcons.alertTriangle,
+          title: 'שגיאה בטעינת הציוד',
+          subtitle: AppErrorHelper.toHebrew(err, fallback: 'לא ניתן היה לטעון את רשימת הציוד כרגע.'),
+          action: HopalButton(
+            label: 'נסה שוב',
+            icon: LucideIcons.refreshCw,
+            onPressed: () => ref.read(equipmentProvider.notifier).refresh(),
+          ),
+        ),
       ),
     );
   }
@@ -644,9 +692,9 @@ class _EquipmentListScreenState extends ConsumerState<EquipmentListScreen> {
             ),
             const SizedBox(height: AppTheme.spacing8),
             Text(
-              isReady 
-                ? 'כשירות ציוד מצוינת לגזרה זו' 
-                : 'כשירות ציוד פגועה (${100 - readinessPercent}% פריטים חסרים) - נדרשת השלמה',
+              isReady
+                  ? 'כשירות ציוד מצוינת לגזרה זו'
+                  : 'כשירות ציוד פגועה (${100 - readinessPercent}% פריטים חסרים) - נדרשת השלמה',
               style: TextStyle(color: isReady ? AppTheme.successGreen : AppTheme.criticalRed, fontSize: 14, fontWeight: FontWeight.bold),
               textAlign: TextAlign.center,
             ),
@@ -684,7 +732,7 @@ class _EquipmentListScreenState extends ConsumerState<EquipmentListScreen> {
             HopalStatusBadgeVariant variant = HopalStatusBadgeVariant.success;
             String statusText = 'תקין';
             IconData statusIcon = LucideIcons.checkCircle;
-            
+
             if (isMissing) {
               variant = HopalStatusBadgeVariant.critical;
               statusText = 'חסר';
@@ -739,9 +787,9 @@ class _EquipmentListScreenState extends ConsumerState<EquipmentListScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            item.name, 
-                            style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: AppTheme.textPrimary), 
-                            maxLines: 2, 
+                            item.name,
+                            style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: AppTheme.textPrimary),
+                            maxLines: 2,
                             overflow: TextOverflow.ellipsis,
                           ),
                           const SizedBox(height: AppTheme.spacing4),
@@ -773,7 +821,7 @@ class _EquipmentListScreenState extends ConsumerState<EquipmentListScreen> {
                         children: [
                           InkWell(
                             borderRadius: const BorderRadius.horizontal(right: Radius.circular(10)),
-                            onTap: item.quantity > 0 
+                            onTap: item.quantity > 0
                                 ? () {
                                     HapticFeedback.selectionClick();
                                     ref.read(equipmentProvider.notifier).adjustQuantity(item.id, -1);
@@ -829,4 +877,3 @@ class _EquipmentListScreenState extends ConsumerState<EquipmentListScreen> {
     );
   }
 }
-
