@@ -63,7 +63,7 @@ class _UnitSelectionScreenState extends State<UnitSelectionScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() => _isLoading = false);
-      HopalFeedback.showError(context, e.toString());
+      HopalFeedback.showError(context, AuthService.localizeAuthError(e));
     }
   }
 

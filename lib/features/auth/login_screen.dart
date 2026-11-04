@@ -67,6 +67,16 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
 
+    if (!email.contains('@') || !email.contains('.')) {
+      HopalFeedback.showError(context, 'נא להזין כתובת אימייל תקינה');
+      return;
+    }
+
+    if (_isRegistering && password.length < 6) {
+      HopalFeedback.showError(context, 'הסיסמה חייבת להכיל לפחות 6 תווים');
+      return;
+    }
+
     setState(() => _isLoading = true);
 
     String? error;
@@ -116,15 +126,23 @@ class _LoginScreenState extends State<LoginScreen> {
         );
       }
     } else {
-      HopalFeedback.showError(context, error);
+      if (_isRegistering && error.contains('כבר קיים במערכת')) {
+        setState(() => _isRegistering = false);
+        HopalFeedback.showInfo(
+          context,
+          'משתמש עם אימייל זה כבר קיים במערכת – העברנו אותך למסך ההתחברות.',
+        );
+      } else {
+        HopalFeedback.showError(context, error);
+      }
     }
   }
 
   void _showForgotPasswordDialog(BuildContext context) {
-    final resetEmailController = TextEditingController(text: _emailController.text);
+    final resetEmailController = TextEditingController(text: _emailController.text.trim());
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (dialogContext) => AlertDialog(
         backgroundColor: AppTheme.backgroundSecondary,
         title: Text('איפוס סיסמה', style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.bold)),
         content: Column(
@@ -142,23 +160,27 @@ class _LoginScreenState extends State<LoginScreen> {
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: () => Navigator.pop(dialogContext),
             child: Text('ביטול', style: TextStyle(color: AppTheme.textSecondary)),
           ),
           TextButton(
             onPressed: () async {
-              if (resetEmailController.text.trim().isEmpty) return;
-              Navigator.pop(context);
-              final error = await AuthService().resetPassword(resetEmailController.text.trim());
-              if (context.mounted) {
+              final resetEmail = resetEmailController.text.trim();
+              if (resetEmail.isEmpty || !resetEmail.contains('@') || !resetEmail.contains('.')) {
+                HopalFeedback.showError(this.context, 'נא להזין כתובת אימייל תקינה');
+                return;
+              }
+              Navigator.pop(dialogContext);
+              final error = await AuthService().resetPassword(resetEmail);
+              if (mounted) {
                 if (error == null) {
-                  HopalFeedback.showSuccess(context, 'קישור לאיפוס סיסמה נשלח למייל בהצלחה');
+                  HopalFeedback.showSuccess(this.context, 'קישור לאיפוס סיסמה נשלח למייל! בדוק את תיבת הדואר (וגם ספאם).');
                 } else {
-                  HopalFeedback.showError(context, 'שגיאה בשליחת אימייל השחזור');
+                  HopalFeedback.showError(this.context, error);
                 }
               }
             },
-            child: Text('שלח אימייל', style: TextStyle(color: AppTheme.primaryGreen, fontWeight: FontWeight.bold)),
+            child: Text('שלח אימייל', style: TextStyle(color: AppTheme.successGreen, fontWeight: FontWeight.bold)),
           ),
         ],
       ),

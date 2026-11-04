@@ -5,12 +5,14 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:chopel_app/core/auth/auth_service.dart';
 import 'package:chopel_app/screens/main_layout_screen.dart';
 import 'package:chopel_app/features/auth/login_screen.dart';
+import 'package:chopel_app/features/auth/update_password_screen.dart';
 import 'package:chopel_app/features/onboarding/deployment_selection_screen.dart';
 import 'package:chopel_app/features/onboarding/unit_selection_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:local_auth/local_auth.dart';
 import 'package:chopel_app/screens/biometric_lock_screen.dart';
 import 'package:chopel_app/core/services/update_service.dart';
+import 'package:chopel_app/core/utils/app_constants.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -23,7 +25,7 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
   late Animation<double> _scaleAnimation;
-  
+
   bool _isTakingLong = false;
   Timer? _longLoadTimer;
 
@@ -57,14 +59,22 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
   Future<void> _initializeAppData() async {
     await Future.delayed(const Duration(milliseconds: 500));
     if (!mounted) return;
-    
+
     await UpdateService.checkForUpdates(context);
     if (!mounted) return;
-    
+
+    if (AuthService().isPasswordRecovery) {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (context) => const UpdatePasswordScreen()),
+      );
+      return;
+    }
+
     if (AuthService().isAuthenticated) {
       await AuthService().loadProfile();
       if (!mounted) return;
-      
+
       final user = AuthService().currentUser;
       if (user != null && user.unitId == null) {
         Navigator.pushReplacement(
@@ -79,7 +89,7 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
       } else {
         final prefs = await SharedPreferences.getInstance();
         final useBiometrics = prefs.getBool('use_biometrics') ?? false;
-        
+
         if (useBiometrics) {
           final auth = LocalAuthentication();
           final canCheck = await auth.canCheckBiometrics || await auth.isDeviceSupported();
@@ -91,7 +101,7 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
             return;
           }
         }
-        
+
         if (mounted) {
           Navigator.pushReplacement(
             context,
@@ -189,7 +199,7 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
       bottomNavigationBar: Padding(
         padding: EdgeInsets.all(24.0),
         child: Text(
-          'v1.0.0',
+          AppConstants.versionLabel,
           textAlign: TextAlign.center,
           style: TextStyle(color: AppTheme.militaryOlive, fontSize: 12),
         ),

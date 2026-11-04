@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:chopel_app/theme/app_theme.dart';
 
-class HopalTextField extends StatelessWidget {
+class HopalTextField extends StatefulWidget {
   final String hint;
   final IconData? icon;
   final bool isPassword;
@@ -33,7 +34,40 @@ class HopalTextField extends StatelessWidget {
   });
 
   @override
+  State<HopalTextField> createState() => _HopalTextFieldState();
+}
+
+class _HopalTextFieldState extends State<HopalTextField> {
+  bool _isPasswordVisible = false;
+
+  bool get _isSecretField => widget.obscureText || widget.isPassword;
+  bool get _isEmailField => widget.keyboardType == TextInputType.emailAddress;
+  bool get _isCredentialField => _isSecretField || _isEmailField;
+
+  @override
   Widget build(BuildContext context) {
+    final effectiveObscure = _isSecretField && !_isPasswordVisible;
+    final effectiveKeyboardType = (_isSecretField && widget.keyboardType == TextInputType.text)
+        ? TextInputType.visiblePassword
+        : widget.keyboardType;
+
+    Widget? effectiveSuffix = widget.suffixIcon;
+    if (effectiveSuffix == null && _isSecretField) {
+      effectiveSuffix = IconButton(
+        tooltip: _isPasswordVisible ? 'הסתר סיסמה' : 'הצג סיסמה',
+        icon: Icon(
+          _isPasswordVisible ? LucideIcons.eyeOff : LucideIcons.eye,
+          color: AppTheme.textSecondary,
+          size: 20,
+        ),
+        onPressed: () {
+          setState(() {
+            _isPasswordVisible = !_isPasswordVisible;
+          });
+        },
+      );
+    }
+
     return Container(
       decoration: BoxDecoration(
         color: AppTheme.inputBackground,
@@ -41,20 +75,26 @@ class HopalTextField extends StatelessWidget {
         border: Border.all(color: AppTheme.borderSubtle),
       ),
       child: TextField(
-        controller: controller,
-        focusNode: focusNode,
-        obscureText: obscureText || isPassword,
-        keyboardType: keyboardType,
-        textInputAction: textInputAction,
-        onSubmitted: onSubmitted,
-        inputFormatters: inputFormatters,
-        maxLines: (obscureText || isPassword) ? 1 : maxLines,
+        controller: widget.controller,
+        focusNode: widget.focusNode,
+        obscureText: effectiveObscure,
+        keyboardType: effectiveKeyboardType,
+        autocorrect: !_isCredentialField,
+        enableSuggestions: !_isSecretField,
+        textCapitalization: _isCredentialField ? TextCapitalization.none : TextCapitalization.sentences,
+        textDirection: _isCredentialField ? TextDirection.ltr : null,
+        textAlign: _isCredentialField ? TextAlign.right : TextAlign.start,
+        textInputAction: widget.textInputAction,
+        onSubmitted: widget.onSubmitted,
+        inputFormatters: widget.inputFormatters,
+        maxLines: _isSecretField ? 1 : widget.maxLines,
         style: TextStyle(color: AppTheme.textPrimary, fontSize: 16),
         decoration: InputDecoration(
-          hintText: hint,
+          hintText: widget.hint,
+          hintTextDirection: TextDirection.rtl,
           hintStyle: TextStyle(color: AppTheme.textMuted),
-          prefixIcon: icon != null ? Icon(icon, color: AppTheme.textMuted, size: 20) : null,
-          suffixIcon: suffixIcon,
+          prefixIcon: widget.icon != null ? Icon(widget.icon, color: AppTheme.textMuted, size: 20) : null,
+          suffixIcon: effectiveSuffix,
           border: InputBorder.none,
           contentPadding: const EdgeInsets.symmetric(horizontal: AppTheme.spacing16, vertical: AppTheme.spacing16),
         ),

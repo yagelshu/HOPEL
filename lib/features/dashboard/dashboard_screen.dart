@@ -28,6 +28,7 @@ import 'package:chopel_app/features/learning/trivia_screen.dart';
 import 'package:chopel_app/features/onboarding/walkthrough_dialog.dart';
 import 'package:chopel_app/core/database/draft_service.dart';
 import 'package:chopel_app/core/services/standby_medics_service.dart';
+import 'package:chopel_app/core/utils/app_error_helper.dart';
 import 'package:uuid/uuid.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -1073,7 +1074,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
                                     .eq('id', medic['id']);
                               } catch (e) {
                                 setModalState(() => medic['standby'] = !value);
-                                if (context.mounted) HopalFeedback.showError(context, 'שגיאה בעדכון כוננות: $e');
+                                if (context.mounted) HopalFeedback.showError(context, AppErrorHelper.toHebrew(e, fallback: 'שגיאה בעדכון כוננות החובש.'));
                                 return;
                               }
                             }
@@ -1274,7 +1275,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
                       ref.invalidate(dashboardMetricsProvider);
                     } catch (e) {
                       setModalState(() => event['is_done'] = val != true);
-                      if (context.mounted) HopalFeedback.showError(context, 'שגיאה בעדכון: $e');
+                      if (context.mounted) HopalFeedback.showError(context, AppErrorHelper.toHebrew(e, fallback: 'שגיאה בעדכון המשימה בלו"ז.'));
                     }
                   },
                   secondary: IconButton(
@@ -1285,7 +1286,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
                         setModalState(() => events.remove(event));
                         ref.invalidate(dashboardMetricsProvider);
                       } catch (e) {
-                        if (context.mounted) HopalFeedback.showError(context, 'שגיאה במחיקה: $e');
+                        if (context.mounted) HopalFeedback.showError(context, AppErrorHelper.toHebrew(e, fallback: 'שגיאה במחיקת המשימה מהלו"ז.'));
                       }
                     },
                   ),
@@ -1355,7 +1356,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
                     });
                     ref.invalidate(dashboardMetricsProvider);
                   } catch (e) {
-                    if (context.mounted) HopalFeedback.showError(context, 'המשימה לא נשמרה: $e');
+                    if (context.mounted) HopalFeedback.showError(context, AppErrorHelper.toHebrew(e, fallback: 'המשימה לא נשמרה. בדוק חיבור ונסה שוב.'));
                   }
                 },
               ),

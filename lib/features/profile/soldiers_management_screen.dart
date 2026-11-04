@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:chopel_app/theme/app_theme.dart';
 import 'package:chopel_app/theme/components/hopal_text_field.dart';
 import 'package:chopel_app/theme/components/hopal_feedback.dart';
+import 'package:chopel_app/core/utils/app_error_helper.dart';
 import 'package:chopel_app/core/auth/auth_service.dart';
 import 'package:chopel_app/models/soldier.dart';
 import 'package:chopel_app/features/medical_cases/providers.dart';
@@ -148,11 +149,10 @@ class _SoldiersManagementScreenState extends ConsumerState<SoldiersManagementScr
                 }
               } on PostgrestException catch (e) {
                 if (context.mounted) {
-                  final msg = e.code == '23505' ? 'כבר קיים חייל עם המספר האישי הזה' : e.message;
-                  HopalFeedback.showError(context, 'שגיאה: $msg');
+                  HopalFeedback.showError(context, AppErrorHelper.toHebrew(e, fallback: 'שגיאה בשמירת פרטי החייל.'));
                 }
               } catch (e) {
-                if (context.mounted) HopalFeedback.showError(context, 'שגיאה: $e');
+                if (context.mounted) HopalFeedback.showError(context, AppErrorHelper.toHebrew(e, fallback: 'שגיאה בשמירת פרטי החייל.'));
               }
             },
             child: Text(isEdit ? 'שמור שינויים' : 'הוסף',
@@ -194,7 +194,7 @@ class _SoldiersManagementScreenState extends ConsumerState<SoldiersManagementScr
           HopalFeedback.showSuccess(context, 'החייל נמחק בהצלחה');
         }
       } catch (e) {
-        if (mounted) HopalFeedback.showError(context, 'שגיאה במחיקת החייל: $e');
+        if (mounted) HopalFeedback.showError(context, AppErrorHelper.toHebrew(e, fallback: 'שגיאה במחיקת החייל. נסה שוב.'));
       }
     }
   }

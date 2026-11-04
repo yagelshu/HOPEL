@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:chopel_app/theme/app_theme.dart';
+import 'package:chopel_app/core/utils/app_constants.dart';
 
 class UserManualScreen extends StatelessWidget {
   const UserManualScreen({super.key});
@@ -53,7 +54,7 @@ class UserManualScreen extends StatelessWidget {
             const SizedBox(height: AppTheme.spacing32),
             Center(
               child: Text(
-                'גרסה 1.0.0\nפותח בגאווה עבור צוותי הרפואה בצה"ל',
+                'גרסה ${AppConstants.version}\nפותח בגאווה עבור צוותי הרפואה בצה"ל',
                 textAlign: TextAlign.center,
                 style: TextStyle(color: AppTheme.textSecondary, fontSize: 14),
               ),

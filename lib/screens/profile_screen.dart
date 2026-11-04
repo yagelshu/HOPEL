@@ -25,6 +25,8 @@ import 'package:flutter/services.dart';
 import 'package:chopel_app/core/database/draft_service.dart';
 import 'package:chopel_app/features/medical_cases/providers.dart';
 import 'package:chopel_app/theme/components/hopal_text_field.dart';
+import 'package:chopel_app/core/utils/app_constants.dart';
+import 'package:chopel_app/core/utils/app_error_helper.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
@@ -336,7 +338,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                         }
                       } catch (e) {
                         if (context.mounted) {
-                          HopalFeedback.showError(context, 'שגיאה בסנכרון: $e');
+                          HopalFeedback.showError(context, AppErrorHelper.toHebrew(e, fallback: 'שגיאה בסנכרון הנתונים מול השרת.'));
                         }
                       }
                     },
@@ -659,7 +661,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 ),
                 HopalListTile(
                   title: const Text('אודות המערכת וגרסה'),
-                  subtitle: const Text('גרסה 1.2.0 • לחץ לבדיקת עדכונים'),
+                  subtitle: const Text('גרסה ${AppConstants.version} • לחץ לבדיקת עדכונים'),
                   leadingIcon: LucideIcons.info,
                   onTap: () {
                     HopalBottomSheet.show(
@@ -669,7 +671,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                         mainAxisSize: MainAxisSize.min,
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          Text('גרסת אפליקציה: 1.2.0 (Build 50)', style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.bold)),
+                          Text('גרסת אפליקציה: ${AppConstants.fullVersionLabel}', style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.bold)),
                           const SizedBox(height: 8),
                           Text(
                             'האפליקציה מתעדכנת ברציף. במידה ואתה עובד מהדפדפן (Web/PWA) ולא רואה את השינויים האחרונים, מומלץ לבצע רענון מאולץ (Ctrl + F5 או Shift + טען מחדש) כדי לפנות את זיכרון המטמון.',

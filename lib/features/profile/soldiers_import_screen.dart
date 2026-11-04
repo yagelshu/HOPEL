@@ -8,6 +8,7 @@ import 'package:chopel_app/features/medical_cases/providers.dart';
 import 'package:chopel_app/theme/app_theme.dart';
 import 'package:chopel_app/theme/components/hopal_button.dart';
 import 'package:chopel_app/theme/components/hopal_feedback.dart';
+import 'package:chopel_app/core/utils/app_error_helper.dart';
 
 /// 3 steps: pick file -> map columns -> preview & save.
 class SoldiersImportScreen extends ConsumerStatefulWidget {
@@ -49,7 +50,7 @@ class _SoldiersImportScreenState extends ConsumerState<SoldiersImportScreen> {
     } on FormatException catch (e) {
       if (mounted) HopalFeedback.showError(context, e.message);
     } catch (e) {
-      if (mounted) HopalFeedback.showError(context, 'לא ניתן לקרוא את הקובץ: $e');
+      if (mounted) HopalFeedback.showError(context, AppErrorHelper.toHebrew(e, fallback: 'לא ניתן לקרוא את הקובץ שנבחר. ודא שמדובר בקובץ Excel או CSV תקין.'));
     }
   }
 
@@ -69,7 +70,7 @@ class _SoldiersImportScreenState extends ConsumerState<SoldiersImportScreen> {
       HopalFeedback.showSuccess(context, '${soldiers.length} חיילים נשמרו בהצלחה');
       Navigator.pop(context);
     } catch (e) {
-      if (mounted) HopalFeedback.showError(context, 'שגיאה בשמירה: $e');
+      if (mounted) HopalFeedback.showError(context, AppErrorHelper.toHebrew(e, fallback: 'שגיאה בשמירת רשימת החיילים בשרת.'));
     } finally {
       if (mounted) setState(() => _saving = false);
     }

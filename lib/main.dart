@@ -18,11 +18,26 @@ import 'package:chopel_app/core/database/draft_service.dart';
 void main() async {
   try {
     WidgetsFlutterBinding.ensureInitialized();
-    
+
+    final initialUri = Uri.base;
+    if (initialUri.fragment.contains('type=recovery') ||
+        initialUri.queryParameters['type'] == 'recovery') {
+      AuthService().isPasswordRecovery = true;
+    }
+
     await Supabase.initialize(
       url: 'https://ffnrvjoswyphsduvmhbe.supabase.co',
       anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZmbnJ2am9zd3lwaHNkdXZtaGJlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU2NjI3MDIsImV4cCI6MjEwMTIzODcwMn0.kUelONEPeHZESu6TWwNc-S75uZxV4g0z0HYwjcChFvQ',
+      authOptions: const FlutterAuthClientOptions(
+        authFlowType: AuthFlowType.implicit,
+      ),
     );
+
+    Supabase.instance.client.auth.onAuthStateChange.listen((data) {
+      if (data.event == AuthChangeEvent.passwordRecovery) {
+        AuthService().isPasswordRecovery = true;
+      }
+    });
 
     await DatabaseService().database;
     await DraftService.init();
@@ -68,9 +83,13 @@ class _HopalAppState extends ConsumerState<HopalApp> with WidgetsBindingObserver
     _authSubscription = Supabase.instance.client.auth.onAuthStateChange.listen((data) {
       final AuthChangeEvent event = data.event;
       if (event == AuthChangeEvent.passwordRecovery) {
-        _navigatorKey.currentState?.pushReplacement(
-          MaterialPageRoute(builder: (context) => const UpdatePasswordScreen()),
-        );
+        AuthService().isPasswordRecovery = true;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _navigatorKey.currentState?.pushAndRemoveUntil(
+            MaterialPageRoute(builder: (context) => const UpdatePasswordScreen()),
+            (route) => false,
+          );
+        });
       }
     });
   }
@@ -99,10 +118,10 @@ class _HopalAppState extends ConsumerState<HopalApp> with WidgetsBindingObserver
 
   Future<void> _checkAndLockApp() async {
     if (_isLocked) return;
-    
+
     final prefs = await SharedPreferences.getInstance();
     final useBiometrics = prefs.getBool('use_biometrics') ?? false;
-    
+
     if (useBiometrics && AuthService().isAuthenticated) {
       _isLocked = true;
       await _navigatorKey.currentState?.push(
@@ -115,7 +134,7 @@ class _HopalAppState extends ConsumerState<HopalApp> with WidgetsBindingObserver
   @override
   Widget build(BuildContext context) {
     final themeMode = ref.watch(themeProvider);
-    
+
     return MaterialApp(
       navigatorKey: _navigatorKey,
       debugShowCheckedModeBanner: false,
@@ -136,5 +155,3 @@ class _HopalAppState extends ConsumerState<HopalApp> with WidgetsBindingObserver
     );
   }
 }
-
-

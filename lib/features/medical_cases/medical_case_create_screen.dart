@@ -12,7 +12,8 @@ import 'package:chopel_app/theme/components/hopal_feedback.dart';
 import 'package:chopel_app/theme/components/hopal_segmented_control.dart';
 import 'package:chopel_app/theme/components/hopal_card.dart';
 import 'package:chopel_app/theme/components/hopal_status_badge.dart';
-import 'dart:io';
+import 'package:chopel_app/core/utils/platform_image.dart';
+import 'package:chopel_app/core/utils/app_error_helper.dart';
 import 'package:chopel_app/core/auth/auth_service.dart';
 import 'package:chopel_app/features/medical_cases/providers.dart';
 import 'package:chopel_app/features/dashboard/providers.dart';
@@ -265,7 +266,7 @@ class _MedicalCaseCreateScreenState extends ConsumerState<MedicalCaseCreateScree
                   HopalFeedback.showSuccess(context, 'חייל נוסף בהצלחה');
                 } catch (e) {
                   if (context.mounted) {
-                    HopalFeedback.showError(context, 'שגיאה בהוספת חייל: $e');
+                    HopalFeedback.showError(context, AppErrorHelper.toHebrew(e, fallback: 'שגיאה בהוספת החייל. נסה שוב.'));
                   }
                 }
               },
@@ -591,7 +592,7 @@ class _MedicalCaseCreateScreenState extends ConsumerState<MedicalCaseCreateScree
         }
         return;
       }
-      if (mounted) HopalFeedback.showError(context, 'שגיאה בשמירת התיק: $e');
+      if (mounted) HopalFeedback.showError(context, AppErrorHelper.toHebrew(e, fallback: 'שגיאה בשמירת התיק הרפואי. נסה שוב.'));
       setState(() => _isSaving = false);
       return;
     }
@@ -855,7 +856,7 @@ class _MedicalCaseCreateScreenState extends ConsumerState<MedicalCaseCreateScree
                           border: Border.all(color: AppTheme.borderSubtle, style: BorderStyle.solid, width: 2),
                           borderRadius: AppTheme.radiusMd,
                           image: _imagePath != null
-                              ? DecorationImage(image: FileImage(File(_imagePath!)), fit: BoxFit.cover)
+                              ? DecorationImage(image: resolveLocalOrWebImage(_imagePath!), fit: BoxFit.cover)
                               : null,
                         ),
                         child: _imagePath == null 

@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:chopel_app/core/auth/auth_service.dart';
+import 'package:chopel_app/screens/splash_screen.dart';
 import 'package:chopel_app/theme/app_theme.dart';
 import 'package:chopel_app/theme/components/hopal_button.dart';
 import 'package:chopel_app/theme/components/hopal_text_field.dart';
@@ -39,14 +42,26 @@ class _UpdatePasswordScreenState extends State<UpdatePasswordScreen> {
         UserAttributes(password: password),
       );
 
+      AuthService().isPasswordRecovery = false;
+
+      final currentEmail = Supabase.instance.client.auth.currentUser?.email;
+      if (currentEmail != null) {
+        final prefs = await SharedPreferences.getInstance();
+        if (prefs.getString('saved_email') == currentEmail) {
+          await prefs.setString('saved_password', password);
+        }
+      }
+
       if (mounted) {
         HopalFeedback.showSuccess(context, 'הסיסמה עודכנה בהצלחה!');
-        // We go back to splash screen to route the user properly
-        Navigator.of(context).pushNamedAndRemoveUntil('/', (route) => false);
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (_) => const SplashScreen()),
+          (route) => false,
+        );
       }
     } catch (e) {
       if (mounted) {
-        HopalFeedback.showError(context, 'שגיאה בעדכון הסיסמה: $e');
+        HopalFeedback.showError(context, AuthService.localizeAuthError(e));
       }
     } finally {
       if (mounted) {

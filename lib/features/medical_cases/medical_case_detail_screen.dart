@@ -1,4 +1,4 @@
-import 'dart:io';
+import 'package:chopel_app/core/utils/platform_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -511,7 +511,8 @@ class _MedicalCaseDetailScreenState extends ConsumerState<MedicalCaseDetailScree
                       borderRadius: AppTheme.radiusLg,
                       border: Border.all(color: AppTheme.borderSubtle),
                       image: DecorationImage(
-                        image: FileImage(File(widget.medicalCase.imagePath!)),
+                        image: resolveLocalOrWebImage(widget.medicalCase.imagePath!),
+                        onError: (_, __) {},
                         fit: BoxFit.cover,
                       ),
                     ),

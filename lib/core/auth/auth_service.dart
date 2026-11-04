@@ -1,6 +1,6 @@
 import 'package:supabase_flutter/supabase_flutter.dart' as supa;
 import 'package:local_auth/local_auth.dart';
-import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import 'package:chopel_app/core/database/database_service.dart';
@@ -63,8 +63,13 @@ class AuthService {
 
   AuthService._internal();
 
+  static const String defaultWebRedirectUrl = 'https://yagelshu.github.io/HOPEL/';
+
   User? _currentUser;
   User? get currentUser => _currentUser;
+
+  /// True when the app was opened from a password recovery link
+  bool isPasswordRecovery = false;
   
   void updateCurrentUserDeployment(String? deploymentId, String? deploymentName) {
     if (_currentUser != null) {
@@ -118,7 +123,7 @@ class AuthService {
     }
   }
 
-  final _supabase = supa.Supabase.instance.client;
+  supa.SupabaseClient get _supabase => supa.Supabase.instance.client;
 
   bool get isAuthenticated => _supabase.auth.currentUser != null;
 
@@ -176,6 +181,113 @@ class AuthService {
     return null;
   }
 
+  /// Translates technical Supabase / network exceptions into clean, user-friendly Hebrew.
+  static String localizeAuthError(Object error) {
+    String code = '';
+    String message = '';
+    String? statusCode;
+
+    if (error is supa.AuthException) {
+      code = (error.code ?? '').toLowerCase();
+      message = error.message.toLowerCase();
+      statusCode = error.statusCode;
+    } else {
+      message = error.toString().toLowerCase();
+    }
+
+    // 1. Existing user / email already registered
+    if (code == 'user_already_exists' ||
+        code == 'email_exists' ||
+        message.contains('user already registered') ||
+        message.contains('already registered') ||
+        message.contains('already been registered') ||
+        message.contains('user_already_exists')) {
+      return 'משתמש עם כתובת אימייל זו כבר קיים במערכת. עבור להתחברות או אפס סיסמה.';
+    }
+
+    // 2. Wrong email or password
+    if (code == 'invalid_credentials' ||
+        message.contains('invalid login credentials') ||
+        message.contains('invalid_credentials')) {
+      return 'האימייל או הסיסמה שגויים. בדוק את הפרטים ונסה שוב.';
+    }
+
+    // 3. Unconfirmed email
+    if (code == 'email_not_confirmed' ||
+        message.contains('email not confirmed')) {
+      return 'כתובת האימייל טרם אומתה. בדוק את תיבת הדואר שלך (כולל ספאם).';
+    }
+
+    // 4. Weak password
+    if (code == 'weak_password' ||
+        message.contains('password should be at least') ||
+        message.contains('weak_password')) {
+      return 'הסיסמה קצרה או חלשה מדי – יש לבחור סיסמה בת 6 תווים לפחות.';
+    }
+
+    // 5. Same password during reset
+    if (code == 'same_password' ||
+        message.contains('different from the old password') ||
+        message.contains('same_password')) {
+      return 'הסיסמה החדשה חייבת להיות שונה מהסיסמה הנוכחית.';
+    }
+
+    // 6. Invalid email format
+    if (code == 'validation_failed' ||
+        code == 'invalid_email' ||
+        message.contains('unable to validate email') ||
+        message.contains('invalid format') ||
+        message.contains('validate email address')) {
+      return 'כתובת האימייל שהוזנה אינה תקינה.';
+    }
+
+    // 7. Rate limit / too many attempts
+    if (statusCode == '429' ||
+        code.contains('rate_limit') ||
+        message.contains('rate limit') ||
+        message.contains('only request this after') ||
+        message.contains('too many requests')) {
+      return 'נשלחו יותר מדי בקשות בזמן קצר. אנא המתן כדקה ונסה שוב.';
+    }
+
+    // 8. Expired / invalid recovery link
+    if (code == 'otp_expired' ||
+        code == 'flow_state_expired' ||
+        message.contains('invalid or has expired') ||
+        message.contains('token has expired')) {
+      return 'פג תוקף הקישור לאיפוס הסיסמה. בקש קישור חדש במסך ההתחברות.';
+    }
+
+    // 9. User not found
+    if (code == 'user_not_found' || message.contains('user not found')) {
+      return 'לא נמצא משתמש עם כתובת אימייל זו.';
+    }
+
+    // 10. Network / Offline connectivity
+    if (message.contains('socketexception') ||
+        message.contains('failed host lookup') ||
+        message.contains('failed to fetch') ||
+        message.contains('clientexception') ||
+        message.contains('xmlhttprequest') ||
+        message.contains('network')) {
+      return 'אין חיבור לאינטרנט. בדוק את הקליטה ונסה שוב.';
+    }
+
+    debugPrint('Unhandled Auth Error: $error');
+    return 'אירעה שגיאה בתקשורת מול השרת. אנא נסה שוב בעוד רגע.';
+  }
+
+  String _resolvePasswordResetRedirectUrl() {
+    if (kIsWeb) {
+      final host = Uri.base.host;
+      final isLocal = host == 'localhost' || host == '127.0.0.1';
+      if (!isLocal && Uri.base.origin.startsWith('http')) {
+        return '${Uri.base.origin}${Uri.base.path}';
+      }
+    }
+    return defaultWebRedirectUrl;
+  }
+
   Future<String?> login(String email, String password) async {
     try {
       await _supabase.auth.signInWithPassword(
@@ -185,7 +297,7 @@ class AuthService {
       await loadProfile();
       return null;
     } catch (e) {
-      return e.toString();
+      return localizeAuthError(e);
     }
   }
 
@@ -195,6 +307,14 @@ class AuthService {
         email: email,
         password: password,
       );
+
+      // When "Confirm email" is enabled in Supabase, signing up with an already-registered
+      // email returns a user object with an empty `identities` list instead of throwing.
+      if (response.user != null &&
+          response.user!.identities != null &&
+          response.user!.identities!.isEmpty) {
+        return 'משתמש עם כתובת אימייל זו כבר קיים במערכת. עבור להתחברות או אפס סיסמה.';
+      }
       
       if (response.user != null) {
         try {
@@ -205,7 +325,7 @@ class AuthService {
             'unit_id': null, // User must select or create a unit after login
           });
         } catch (dbError) {
-          print('DB Insert error (probably RLS or Email Confirmation): $dbError');
+          debugPrint('DB Insert error (probably RLS or Email Confirmation): $dbError');
           // Fallback user state
           _currentUser = User(id: response.user!.id, name: name, role: 'COMBAT_MEDIC');
         }
@@ -219,15 +339,19 @@ class AuthService {
         
         return null;
       }
-      return 'Unknown error during sign up';
+      return 'לא ניתן היה להשלים את ההרשמה כרגע. נסה שוב.';
     } catch (e) {
-      return e.toString();
+      return localizeAuthError(e);
     }
   }
 
   Future<void> logout() async {
+    isPasswordRecovery = false;
     await _supabase.auth.signOut();
     _currentUser = null;
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('saved_password');
     
     // Clear local database to prevent data leak between users
     final db = await DatabaseService().database;
@@ -236,10 +360,13 @@ class AuthService {
 
   Future<String?> resetPassword(String email) async {
     try {
-      await _supabase.auth.resetPasswordForEmail(email);
+      await _supabase.auth.resetPasswordForEmail(
+        email,
+        redirectTo: _resolvePasswordResetRedirectUrl(),
+      );
       return null;
     } catch (e) {
-      return e.toString();
+      return localizeAuthError(e);
     }
   }
 

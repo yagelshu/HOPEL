@@ -1,4 +1,5 @@
-import 'dart:io';
+import 'package:chopel_app/core/utils/platform_image.dart';
+import 'package:chopel_app/core/utils/app_error_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -65,7 +66,7 @@ class _EquipmentListScreenState extends ConsumerState<EquipmentListScreen> {
                     borderRadius: AppTheme.radiusMd,
                     border: Border.all(color: AppTheme.borderSubtle),
                     image: imagePath != null 
-                      ? DecorationImage(image: FileImage(File(imagePath!)), fit: BoxFit.cover)
+                      ? DecorationImage(image: resolveLocalOrWebImage(imagePath!), fit: BoxFit.cover)
                       : null,
                   ),
                   child: imagePath == null
@@ -168,7 +169,7 @@ class _EquipmentListScreenState extends ConsumerState<EquipmentListScreen> {
                             Navigator.pop(context);
                             HopalFeedback.showSuccess(context, 'הפריט נמחק בהצלחה');
                           } catch (e) {
-                            if (context.mounted) HopalFeedback.showError(context, 'שגיאה במחיקת פריט: $e');
+                            if (context.mounted) HopalFeedback.showError(context, AppErrorHelper.toHebrew(e, fallback: 'שגיאה במחיקת הפריט. נסה שוב.'));
                           }
                         },
                       ),
@@ -233,7 +234,7 @@ class _EquipmentListScreenState extends ConsumerState<EquipmentListScreen> {
                           HopalFeedback.showSuccess(context, 'השינויים נשמרו בהצלחה');
                         } catch (e) {
                           if (context.mounted) {
-                            HopalFeedback.showError(context, 'שגיאה בשמירת שינויים: $e');
+                            HopalFeedback.showError(context, AppErrorHelper.toHebrew(e, fallback: 'שגיאה בשמירת השינויים. נסה שוב.'));
                           }
                         }
                       },
@@ -716,8 +717,8 @@ class _EquipmentListScreenState extends ConsumerState<EquipmentListScreen> {
                       child: item.imagePath != null
                           ? ClipRRect(
                               borderRadius: AppTheme.radiusSm,
-                              child: Image.file(
-                                File(item.imagePath!),
+                              child: Image(
+                                image: resolveLocalOrWebImage(item.imagePath!),
                                 fit: BoxFit.cover,
                                 errorBuilder: (_, __, ___) => Icon(
                                   item.itemType == 'מתכלה' ? LucideIcons.pill : LucideIcons.briefcase,

@@ -17,18 +17,31 @@ class HopalFeedback {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: AppTheme.backgroundSecondary,
+        shape: RoundedRectangleBorder(
+          borderRadius: AppTheme.radiusLg,
+          side: BorderSide(color: AppTheme.borderStrong),
+        ),
         title: Row(
           children: [
             Icon(LucideIcons.alertCircle, color: AppTheme.criticalRed),
             const SizedBox(width: 8),
-            Text('שגיאה', style: TextStyle(color: AppTheme.textPrimary)),
+            Text('שים לב', style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.bold)),
           ],
         ),
-        content: Text(message, style: TextStyle(color: AppTheme.textPrimary)),
+        content: Text(
+          message,
+          style: TextStyle(color: AppTheme.textPrimary, fontSize: 15, height: 1.45),
+        ),
         actions: [
-          TextButton(
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: AppTheme.primaryGreen,
+              foregroundColor: AppTheme.textPrimary,
+              shape: RoundedRectangleBorder(borderRadius: AppTheme.radiusMd),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+            ),
             onPressed: () => Navigator.pop(ctx),
-            child: Text('הבנתי', style: TextStyle(color: AppTheme.primaryGreen)),
+            child: const Text('הבנתי', style: TextStyle(fontWeight: FontWeight.bold)),
           ),
         ],
       ),

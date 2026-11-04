@@ -5,6 +5,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:chopel_app/theme/app_theme.dart';
 import 'package:chopel_app/theme/components/hopal_button.dart';
 import 'package:chopel_app/theme/components/hopal_feedback.dart';
+import 'package:chopel_app/core/utils/app_error_helper.dart';
 import 'package:chopel_app/core/auth/auth_service.dart';
 import 'package:chopel_app/screens/main_layout_screen.dart';
 import 'package:chopel_app/features/dashboard/providers.dart';
@@ -158,7 +159,9 @@ class _DeploymentSummaryScreenState extends ConsumerState<DeploymentSummaryScree
       
     } catch (e) {
       setState(() => _isArchiving = false);
-      HopalFeedback.showError(context, 'שגיאה בארכוב התעסוקה: $e');
+      if (mounted) {
+        HopalFeedback.showError(context, AppErrorHelper.toHebrew(e, fallback: 'שגיאה בארכוב התעסוקה. בדוק קליטה ונסה שוב.'));
+      }
     }
   }
 
