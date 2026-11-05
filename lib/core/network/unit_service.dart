@@ -13,13 +13,25 @@ class UnitService {
     final user = AuthService().currentUser;
     if (user != null) {
       try {
-        await _supabase.from('users').upsert({
-          'id': user.id,
-          'name': user.name,
-          'role': user.role,
-          'unit_id': unitId,
-          'active_deployment_id': user.activeDeploymentId,
-        });
+        final existingUserRow = await _supabase
+            .from('users')
+            .select('id, unit_id')
+            .eq('id', user.id)
+            .maybeSingle();
+        if (existingUserRow == null) {
+          await _supabase.from('users').insert({
+            'id': user.id,
+            'name': user.name,
+            'role': user.role,
+            'unit_id': unitId,
+            'active_deployment_id': user.activeDeploymentId,
+          });
+        } else if (existingUserRow['unit_id'] != unitId) {
+          await _supabase
+              .from('users')
+              .update({'unit_id': unitId})
+              .eq('id', user.id);
+        }
       } catch (_) {}
     }
 
@@ -64,6 +76,9 @@ class UnitService {
         'active_deployment_id': null,
       });
 
+      AuthService().updateCurrentUserUnit(unitId, name, joinCode, role: 'COMPANY_MEDIC');
+      AuthService().updateCurrentUserDeployment(null, null);
+
       // 3. Seed default equipment (catalog or built-in IDF standard)
       try {
         await seedUnitEquipment(unitId);
@@ -73,7 +88,7 @@ class UnitService {
 
       // Reload profile
       await AuthService().loadProfile();
-      AuthService().updateCurrentUserUnit(unitId, name, joinCode);
+      AuthService().updateCurrentUserUnit(unitId, name, joinCode, role: 'COMPANY_MEDIC');
       AuthService().updateCurrentUserDeployment(null, null);
       return true;
     } catch (e) {

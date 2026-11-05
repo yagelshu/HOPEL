@@ -347,7 +347,7 @@ class _NotesScreenState extends State<NotesScreen> with SingleTickerProviderStat
       ),
       floatingActionButton: showFab
           ? Padding(
-              padding: const EdgeInsets.only(bottom: 100.0),
+              padding: const EdgeInsets.only(bottom: 16.0),
               child: FloatingActionButton.extended(
                 onPressed: () => _showNoteEditorSheet(),
                 backgroundColor: AppTheme.primaryGreen,

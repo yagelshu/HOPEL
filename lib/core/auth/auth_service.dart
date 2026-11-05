@@ -156,12 +156,12 @@ class AuthService {
     }
   }
 
-  void updateCurrentUserUnit(String unitId, String unitName, String joinCode) {
+  void updateCurrentUserUnit(String unitId, String unitName, String joinCode, {String? role}) {
     if (_currentUser != null) {
       _currentUser = User(
         id: _currentUser!.id,
         name: _currentUser!.name,
-        role: _currentUser!.role,
+        role: role ?? _currentUser!.role,
         unitId: unitId,
         unitName: unitName,
         unitJoinCode: joinCode,
@@ -240,6 +240,30 @@ class AuthService {
         map['active_deployment_name'] = map['deployments']['name'];
       }
       _currentUser = User.fromMap(map);
+
+      // Self-heal if a unit founder's role was previously overwritten to COMBAT_MEDIC
+      // leaving the unit without any COMPANY_MEDIC.
+      if (_currentUser != null &&
+          _currentUser!.unitId != null &&
+          _currentUser!.role != 'COMPANY_MEDIC') {
+        try {
+          final existingChiefs = await _supabase
+              .from('users')
+              .select('id')
+              .eq('unit_id', _currentUser!.unitId!)
+              .eq('role', 'COMPANY_MEDIC')
+              .limit(1);
+          if ((existingChiefs as List).isEmpty) {
+            await _supabase
+                .from('users')
+                .update({'role': 'COMPANY_MEDIC'})
+                .eq('id', _currentUser!.id);
+            map['role'] = 'COMPANY_MEDIC';
+            _currentUser = User.fromMap(map);
+          }
+        } catch (_) {}
+      }
+
       if (!isActualCompanyMedic) {
         previewAsCombatMedicNotifier.value = false;
       }

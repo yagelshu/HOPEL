@@ -26,8 +26,9 @@ import 'package:url_launcher/url_launcher.dart';
 
 class MedicalCaseCreateScreen extends ConsumerStatefulWidget {
   final MedicalCase? existingCase;
+  final String? initialSoldierId;
 
-  const MedicalCaseCreateScreen({super.key, this.existingCase});
+  const MedicalCaseCreateScreen({super.key, this.existingCase, this.initialSoldierId});
 
   @override
   ConsumerState<MedicalCaseCreateScreen> createState() => _MedicalCaseCreateScreenState();
@@ -56,6 +57,9 @@ class _MedicalCaseCreateScreenState extends ConsumerState<MedicalCaseCreateScree
       _selectedSeverity = widget.existingCase!.severity ?? 'שגרה';
       _imagePath = widget.existingCase!.imagePath;
     } else {
+      if (widget.initialSoldierId != null) {
+        _selectedSoldierId = widget.initialSoldierId;
+      }
       _loadDraft();
     }
     

@@ -9,7 +9,6 @@ import 'package:chopel_app/features/auth/update_password_screen.dart';
 import 'package:chopel_app/features/onboarding/deployment_selection_screen.dart';
 import 'package:chopel_app/features/onboarding/unit_selection_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:chopel_app/screens/biometric_lock_screen.dart';
 import 'package:chopel_app/core/services/update_service.dart';
 import 'package:chopel_app/core/utils/app_constants.dart';
 
@@ -90,14 +89,13 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
         final useBiometrics = prefs.getBool('use_biometrics') ?? false;
 
         if (useBiometrics) {
-          final canCheck = await AuthService().canUseBiometrics();
-          if (canCheck && mounted) {
+          if (mounted) {
             Navigator.pushReplacement(
               context,
-              MaterialPageRoute(builder: (context) => const BiometricLockScreen()),
+              MaterialPageRoute(builder: (context) => const LoginScreen(isSessionLock: true)),
             );
-            return;
           }
+          return;
         }
 
         if (mounted) {

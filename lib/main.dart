@@ -5,7 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:chopel_app/core/database/database_service.dart';
 
 import 'package:chopel_app/screens/splash_screen.dart';
-import 'package:chopel_app/screens/biometric_lock_screen.dart';
+import 'package:chopel_app/features/auth/login_screen.dart';
 import 'package:chopel_app/theme/app_theme.dart';
 import 'package:chopel_app/theme/theme_provider.dart';
 import 'package:chopel_app/features/auth/update_password_screen.dart';
@@ -135,7 +135,7 @@ class _HopalAppState extends ConsumerState<HopalApp> with WidgetsBindingObserver
     if (useBiometrics && AuthService().isAuthenticated && !AuthService().isPasswordRecovery) {
       _isLocked = true;
       await _navigatorKey.currentState?.push(
-        MaterialPageRoute(builder: (context) => const BiometricLockScreen()),
+        MaterialPageRoute(builder: (context) => const LoginScreen(isSessionLock: true)),
       );
       _isLocked = false;
     }

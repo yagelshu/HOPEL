@@ -10,6 +10,7 @@ import 'package:chopel_app/models/learning_content.dart';
 import 'package:chopel_app/features/learning/learning_content_viewer_screen.dart';
 import 'package:chopel_app/features/learning/medication_guide_screen.dart';
 import 'package:chopel_app/features/learning/meditest_screen.dart';
+import 'package:chopel_app/features/learning/trivia_screen.dart';
 
 class LearningCenterScreen extends ConsumerStatefulWidget {
   const LearningCenterScreen({super.key});
@@ -44,20 +45,17 @@ class _LearningCenterScreenState extends ConsumerState<LearningCenterScreen> {
       backgroundColor: AppTheme.backgroundPrimary,
       body: learningAsync.when(
         data: (contents) {
-          // Filter by search query
           var filteredContents = contents;
           if (_searchQuery.isNotEmpty) {
             filteredContents = contents.where((c) => c.title.toLowerCase().contains(_searchQuery)).toList();
           }
 
-          // Categories
           final allCategories = ['הכל', ...contents.map((c) => c.category).toSet()];
-          
+
           if (_selectedCategory != 'הכל') {
             filteredContents = filteredContents.where((c) => c.category == _selectedCategory).toList();
           }
 
-          // Group by category
           final Map<String, List<LearningContent>> groupedContents = {};
           for (var content in filteredContents) {
             groupedContents.putIfAbsent(content.category, () => []).add(content);
@@ -66,7 +64,7 @@ class _LearningCenterScreenState extends ConsumerState<LearningCenterScreen> {
           return CustomScrollView(
             slivers: [
               SliverAppBar(
-                title: const Text('ידע מקצועי', style: TextStyle(fontWeight: FontWeight.bold)),
+                title: const Text('ידע מקצועי ואימון', style: TextStyle(fontWeight: FontWeight.bold)),
                 floating: true,
                 pinned: true,
                 bottom: PreferredSize(
@@ -81,42 +79,51 @@ class _LearningCenterScreenState extends ConsumerState<LearningCenterScreen> {
                   ),
                 ),
               ),
-              if (contents.isEmpty)
-                const SliverFillRemaining(
-                  hasScrollBody: false,
-                  child: HopalEmptyState(
-                    icon: LucideIcons.bookOpen,
-                    title: 'הספרייה ריקה',
-                    subtitle: 'לא נמצאו פק"לים או מדריכים במערכת.',
-                  ),
-                )
-              else ...[
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: AppTheme.spacing16, vertical: AppTheme.spacing8),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: InkWell(
-                            onTap: () {
-                              Navigator.push(context, MaterialPageRoute(builder: (context) => const MedicationGuideScreen()));
-                            },
-                            borderRadius: AppTheme.radiusMd,
-                            child: Container(
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: AppTheme.spacing16, vertical: AppTheme.spacing8),
+                  child: Column(
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: InkWell(
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(builder: (context) => const MedicationGuideScreen()),
+                                );
+                              },
+                              borderRadius: AppTheme.radiusMd,
+                              child: Container(
                                 padding: const EdgeInsets.all(AppTheme.spacing16),
                                 decoration: BoxDecoration(
                                   color: AppTheme.primaryGreen,
                                   boxShadow: [
-                                    BoxShadow(color: AppTheme.primaryGreen.withValues(alpha: 0.3), blurRadius: 8, offset: Offset(0, 4)),
+                                    BoxShadow(
+                                      color: AppTheme.primaryGreen.withValues(alpha: 0.3),
+                                      blurRadius: 8,
+                                      offset: const Offset(0, 4),
+                                    ),
                                   ],
                                   borderRadius: AppTheme.radiusMd,
                                 ),
                                 child: Column(
                                   children: [
-                                    Icon(LucideIcons.pill, color: Colors.white, size: 32),
-                                    SizedBox(height: AppTheme.spacing8),
-                                    Text('מדריך תרופות', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 16)),
-                                    Text('QXGO', style: TextStyle(fontSize: 14, color: Colors.white.withValues(alpha: 0.8), fontWeight: FontWeight.bold)),
+                                    const Icon(LucideIcons.pill, color: Colors.white, size: 32),
+                                    const SizedBox(height: AppTheme.spacing8),
+                                    const Text(
+                                      'מדריך תרופות',
+                                      style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 16),
+                                    ),
+                                    Text(
+                                      'QXGO',
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        color: Colors.white.withValues(alpha: 0.8),
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
                                   ],
                                 ),
                               ),
@@ -126,7 +133,10 @@ class _LearningCenterScreenState extends ConsumerState<LearningCenterScreen> {
                           Expanded(
                             child: InkWell(
                               onTap: () {
-                                Navigator.push(context, MaterialPageRoute(builder: (context) => const MeditestScreen()));
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(builder: (context) => const MeditestScreen()),
+                                );
                               },
                               borderRadius: AppTheme.radiusMd,
                               child: Container(
@@ -134,25 +144,97 @@ class _LearningCenterScreenState extends ConsumerState<LearningCenterScreen> {
                                 decoration: BoxDecoration(
                                   color: AppTheme.warningAmber,
                                   boxShadow: [
-                                    BoxShadow(color: AppTheme.warningAmber.withValues(alpha: 0.3), blurRadius: 8, offset: Offset(0, 4)),
+                                    BoxShadow(
+                                      color: AppTheme.warningAmber.withValues(alpha: 0.3),
+                                      blurRadius: 8,
+                                      offset: const Offset(0, 4),
+                                    ),
                                   ],
                                   borderRadius: AppTheme.radiusMd,
                                 ),
                                 child: Column(
                                   children: [
-                                    Icon(LucideIcons.brainCircuit, color: Colors.white, size: 32),
-                                    SizedBox(height: AppTheme.spacing8),
-                                    Text('מבחני ריענון', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 16)),
-                                    Text('Meditest', style: TextStyle(fontSize: 14, color: Colors.white.withValues(alpha: 0.8), fontWeight: FontWeight.bold)),
+                                    const Icon(LucideIcons.brainCircuit, color: Colors.white, size: 32),
+                                    const SizedBox(height: AppTheme.spacing8),
+                                    const Text(
+                                      'מבחני ריענון',
+                                      style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 16),
+                                    ),
+                                    Text(
+                                      'Meditest',
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        color: Colors.white.withValues(alpha: 0.8),
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
                                   ],
                                 ),
+                              ),
                             ),
                           ),
+                        ],
+                      ),
+                      const SizedBox(height: AppTheme.spacing12),
+                      InkWell(
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (context) => const TriviaScreen()),
+                          );
+                        },
+                        borderRadius: AppTheme.radiusMd,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: AppTheme.spacing16, vertical: 14),
+                          decoration: BoxDecoration(
+                            color: AppTheme.backgroundSecondary,
+                            borderRadius: AppTheme.radiusMd,
+                            border: Border.all(color: AppTheme.borderSubtle),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(LucideIcons.brain, color: AppTheme.primaryGreen, size: 20),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'תרגול יומי לחובש (טריוויה רפואית)',
+                                      style: TextStyle(
+                                        color: AppTheme.textPrimary,
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                    Text(
+                                      'צבירת נקודות כשירות בתרגול שאלות קצר',
+                                      style: TextStyle(color: AppTheme.textSecondary, fontSize: 12),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              Icon(LucideIcons.chevronLeft, color: AppTheme.textSecondary, size: 18),
+                            ],
+                          ),
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
                 ),
+              ),
+              if (contents.isEmpty)
+                const SliverToBoxAdapter(
+                  child: Padding(
+                    padding: EdgeInsets.only(top: AppTheme.spacing32),
+                    child: HopalEmptyState(
+                      icon: LucideIcons.bookOpen,
+                      title: 'אין פק"לים נוספים בספרייה',
+                      subtitle: 'השתמש במדריך התרופות, במבחני הריענון ובטריוויה היומית למעלה.',
+                    ),
+                  ),
+                )
+              else ...[
                 SliverToBoxAdapter(
                   child: SingleChildScrollView(
                     scrollDirection: Axis.horizontal,
@@ -170,30 +252,33 @@ class _LearningCenterScreenState extends ConsumerState<LearningCenterScreen> {
                             },
                             backgroundColor: AppTheme.backgroundSecondary,
                             selectedColor: AppTheme.primaryGreen,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: BorderSide(color: isSelected ? AppTheme.primaryGreen : AppTheme.borderSubtle)),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(20),
+                              side: BorderSide(color: isSelected ? AppTheme.primaryGreen : AppTheme.borderSubtle),
+                            ),
                           ),
                         );
                       }).toList(),
                     ),
                   ),
                 ),
-              ],
-              ...groupedContents.entries.map((entry) {
-                final category = entry.key;
-                final items = entry.value;
-                return [
-                  _buildSectionHeader(category, LucideIcons.folder),
-                  SliverPadding(
-                    padding: const EdgeInsets.symmetric(horizontal: AppTheme.spacing16),
-                    sliver: SliverList(
-                      delegate: SliverChildBuilderDelegate(
-                        (context, index) => _buildListCard(items[index]),
-                        childCount: items.length,
+                ...groupedContents.entries.map((entry) {
+                  final category = entry.key;
+                  final items = entry.value;
+                  return [
+                    _buildSectionHeader(category, LucideIcons.folder),
+                    SliverPadding(
+                      padding: const EdgeInsets.symmetric(horizontal: AppTheme.spacing16),
+                      sliver: SliverList(
+                        delegate: SliverChildBuilderDelegate(
+                          (context, index) => _buildListCard(items[index]),
+                          childCount: items.length,
+                        ),
                       ),
                     ),
-                  ),
-                ];
-              }).expand((e) => e),
+                  ];
+                }).expand((e) => e),
+              ],
               const SliverToBoxAdapter(child: SizedBox(height: 120)), // Bottom nav padding
             ],
           );
@@ -218,7 +303,6 @@ class _LearningCenterScreenState extends ConsumerState<LearningCenterScreen> {
       ),
     );
   }
-
 
   Widget _buildListCard(LearningContent item) {
     final isVideo = item.type == 'VIDEO';

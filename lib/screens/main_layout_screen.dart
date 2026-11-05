@@ -5,9 +5,9 @@ import 'package:chopel_app/core/auth/auth_service.dart';
 import 'package:chopel_app/theme/app_theme.dart';
 import 'package:chopel_app/features/dashboard/dashboard_screen.dart';
 import 'package:chopel_app/features/medical_cases/medical_cases_list_screen.dart';
+import 'package:chopel_app/features/profile/soldiers_management_screen.dart';
 import 'package:chopel_app/features/equipment/equipment_list_screen.dart';
 import 'package:chopel_app/features/learning/learning_center_screen.dart';
-import 'package:chopel_app/features/notes/notes_screen.dart';
 
 class MainLayoutScreen extends StatefulWidget {
   final bool animateEntrance;
@@ -28,11 +28,11 @@ class _MainLayoutScreenState extends State<MainLayoutScreen> {
       case 1:
         return const MedicalCasesListScreen();
       case 2:
-        return const EquipmentListScreen();
+        return const SoldiersManagementScreen(isEmbeddedTab: true);
       case 3:
-        return const LearningCenterScreen();
+        return const EquipmentListScreen();
       case 4:
-        return const NotesScreen();
+        return const LearningCenterScreen();
       default:
         return DashboardScreen(animateEntrance: widget.animateEntrance);
     }
@@ -124,9 +124,9 @@ class _MainLayoutScreenState extends State<MainLayoutScreen> {
                       children: [
                         _buildNavItem(0, LucideIcons.layoutDashboard, 'בית'),
                         _buildNavItem(1, LucideIcons.activity, 'פניות'),
-                        _buildNavItem(2, LucideIcons.briefcase, 'ציוד'),
-                        _buildNavItem(3, LucideIcons.bookOpen, 'למידה'),
-                        _buildNavItem(4, LucideIcons.notebook, 'יומן'),
+                        _buildNavItem(2, LucideIcons.users, 'חיילים'),
+                        _buildNavItem(3, LucideIcons.briefcase, 'ציוד'),
+                        _buildNavItem(4, LucideIcons.bookOpen, 'ידע'),
                       ],
                     ),
                   ),

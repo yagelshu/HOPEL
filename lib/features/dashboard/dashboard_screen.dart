@@ -24,8 +24,7 @@ import 'package:chopel_app/features/medical_cases/providers.dart';
 import 'package:chopel_app/features/medical_cases/medical_case_create_screen.dart';
 import 'package:chopel_app/features/equipment/equipment_list_screen.dart';
 import 'package:chopel_app/screens/profile_screen.dart';
-import 'package:chopel_app/features/profile/soldiers_management_screen.dart';
-import 'package:chopel_app/features/learning/trivia_screen.dart';
+import 'package:chopel_app/features/notes/notes_screen.dart';
 import 'package:chopel_app/features/onboarding/walkthrough_dialog.dart';
 import 'package:chopel_app/core/database/draft_service.dart';
 import 'package:chopel_app/core/services/standby_medics_service.dart';
@@ -132,7 +131,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
           data: (metrics) {
             return RefreshIndicator(
               onRefresh: () async {
-                return ref.refresh(dashboardMetricsProvider);
+                await AuthService().loadProfile();
+                ref.invalidate(dashboardMetricsProvider);
+                await ref.read(dashboardMetricsProvider.future);
+                if (mounted) setState(() {});
               },
               color: AppTheme.primaryGreen,
               backgroundColor: AppTheme.backgroundSecondary,
@@ -602,80 +604,42 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
   }
 
   Widget _buildQuickActions() {
-    final isCompanyMedic = AuthService().isCompanyMedic;
-
     return Padding(
       padding: const EdgeInsets.fromLTRB(AppTheme.spacing16, AppTheme.spacing32, AppTheme.spacing16, 0),
-      child: Column(
+      child: Row(
         children: [
-          Row(
-            children: [
-              Expanded(
-                flex: 3,
-                child: HopalButton(
-                  label: 'פנייה חדשה',
-                  icon: LucideIcons.plusCircle,
-                  isExpanded: true,
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const MedicalCaseCreateScreen(),
-                      ),
-                    );
-                  },
-                ),
-              ),
-              if (isCompanyMedic) ...[
-                const SizedBox(width: AppTheme.spacing12),
-                Expanded(
-                  flex: 2,
-                  child: HopalButton(
-                    label: 'מאגר חיילים',
-                    icon: LucideIcons.users,
-                    isExpanded: true,
-                    variant: HopalButtonVariant.secondary,
-                    onPressed: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => const SoldiersManagementScreen(),
-                        ),
-                      );
-                    },
+          Expanded(
+            flex: 3,
+            child: HopalButton(
+              label: 'פנייה חדשה',
+              icon: LucideIcons.plusCircle,
+              isExpanded: true,
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const MedicalCaseCreateScreen(),
                   ),
-                ),
-              ],
-            ],
+                );
+              },
+            ),
           ),
-          const SizedBox(height: AppTheme.spacing12),
-          InkWell(
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const TriviaScreen(),
-                ),
-              );
-            },
-            borderRadius: AppTheme.radiusMd,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: AppTheme.spacing16, vertical: 10),
-              decoration: BoxDecoration(
-                color: AppTheme.backgroundSecondary,
-                borderRadius: AppTheme.radiusMd,
-                border: Border.all(color: AppTheme.borderSubtle),
-              ),
-              child: Row(
-                children: [
-                  Icon(LucideIcons.brain, color: AppTheme.primaryGreen, size: 18),
-                  const SizedBox(width: 10),
-                  Text('תרגול יומי לחובש (טריוויה רפואית)',
-                      style: TextStyle(color: AppTheme.textPrimary, fontSize: 13, fontWeight: FontWeight.w600)),
-                  const Spacer(),
-                  Icon(LucideIcons.chevronLeft, color: AppTheme.textSecondary, size: 16),
-                ],
-              ),
+          const SizedBox(width: AppTheme.spacing12),
+          Expanded(
+            flex: 2,
+            child: HopalButton(
+              label: 'יומן והודעות',
+              icon: LucideIcons.notebookPen,
+              isExpanded: true,
+              variant: HopalButtonVariant.secondary,
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const NotesScreen(),
+                  ),
+                );
+              },
             ),
           ),
         ],
@@ -1417,6 +1381,149 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
 
     void sortEvents() => events.sort((a, b) => (a['time'] ?? '').toString().compareTo((b['time'] ?? '').toString()));
 
+    Future<void> openTaskDialog(StateSetter setModalState, {Map<String, dynamic>? existingEvent}) async {
+      final isEdit = existingEvent != null;
+      final now = DateTime.now();
+      final defaultTime = '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
+      final timeController = TextEditingController(text: (existingEvent?['time'] ?? defaultTime).toString());
+      final titleController = TextEditingController(text: (existingEvent?['title'] ?? '').toString());
+      final actorController = TextEditingController(
+        text: (existingEvent?['actor'] ?? (AuthService().currentUser?.name ?? 'חופ"ל')).toString(),
+      );
+
+      final result = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: AppTheme.backgroundSecondary,
+          title: Text(
+            isEdit ? 'עריכת משימה בלו"ז' : 'הוספת משימה ללו"ז',
+            style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.bold),
+          ),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: timeController,
+                  style: TextStyle(color: AppTheme.textPrimary),
+                  decoration: InputDecoration(
+                    labelText: 'שעה (HH:MM)',
+                    labelStyle: TextStyle(color: AppTheme.textSecondary),
+                    suffixIcon: IconButton(
+                      icon: Icon(LucideIcons.clock, color: AppTheme.primaryGreen, size: 18),
+                      tooltip: 'בחירת שעה',
+                      onPressed: () async {
+                        final parts = timeController.text.split(':');
+                        final initialHour = parts.length == 2 ? (int.tryParse(parts[0]) ?? now.hour) : now.hour;
+                        final initialMin = parts.length == 2 ? (int.tryParse(parts[1]) ?? now.minute) : now.minute;
+                        final picked = await showTimePicker(
+                          context: ctx,
+                          initialTime: TimeOfDay(hour: initialHour.clamp(0, 23), minute: initialMin.clamp(0, 59)),
+                        );
+                        if (picked != null) {
+                          timeController.text =
+                              '${picked.hour.toString().padLeft(2, '0')}:${picked.minute.toString().padLeft(2, '0')}';
+                        }
+                      },
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: titleController,
+                  autofocus: !isEdit,
+                  style: TextStyle(color: AppTheme.textPrimary),
+                  decoration: InputDecoration(
+                    labelText: 'שם המשימה *',
+                    labelStyle: TextStyle(color: AppTheme.textSecondary),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: actorController,
+                  style: TextStyle(color: AppTheme.textPrimary),
+                  decoration: InputDecoration(
+                    labelText: 'אחראי ביצוע (למשל: חופ"ל / חובש תורן)',
+                    labelStyle: TextStyle(color: AppTheme.textSecondary),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text('ביטול', style: TextStyle(color: AppTheme.textSecondary)),
+            ),
+            FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: AppTheme.primaryGreen,
+                foregroundColor: Colors.white,
+              ),
+              onPressed: () => Navigator.pop(ctx, true),
+              child: Text(
+                isEdit ? 'שמור שינויים' : 'הוסף',
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
+        ),
+      );
+
+      final title = titleController.text.trim();
+      if (result != true || title.isEmpty) return;
+
+      final cleanTime = timeController.text.trim().isEmpty ? '08:00' : timeController.text.trim();
+      final cleanActor = actorController.text.trim().isEmpty ? 'חופ"ל' : actorController.text.trim();
+
+      try {
+        if (isEdit) {
+          await schedule
+              .update({
+                'time': cleanTime,
+                'title': title,
+                'actor': cleanActor,
+              })
+              .eq('id', existingEvent['id']);
+          setModalState(() {
+            existingEvent['time'] = cleanTime;
+            existingEvent['title'] = title;
+            existingEvent['actor'] = cleanActor;
+            sortEvents();
+          });
+        } else {
+          final saved = await schedule
+              .insert({
+                'unit_id': AuthService().currentUser!.unitId,
+                'time': cleanTime,
+                'title': title,
+                'icon': 'clock',
+                'is_done': false,
+                'actor': cleanActor,
+              })
+              .select()
+              .single();
+          setModalState(() {
+            events.add({
+              ...saved,
+              'icon': (saved['icon'] ?? 'clock').toString().split('@').first,
+              'is_done': saved['is_done'] == true,
+              'time': (saved['time'] ?? '').toString(),
+            });
+            sortEvents();
+          });
+        }
+        ref.invalidate(dashboardMetricsProvider);
+      } catch (e) {
+        if (context.mounted) {
+          HopalFeedback.showError(
+            context,
+            AppErrorHelper.toHebrew(e, fallback: 'המשימה לא נשמרה. בדוק חיבור ונסה שוב.'),
+          );
+        }
+      }
+    }
+
     HopalBottomSheet.show(
       context: context,
       title: 'עריכת לו"ז יומי קבוע',
@@ -1427,7 +1534,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Text(
-                'המשימות ברשימה נשמרות באופן קבוע ומתאפסות אוטומטית בתחילת כל יום חדש.',
+                'המשימות נשמרות קבוע ומתאפסות אוטומטית בתחילת כל יום. לחץ על משימה לעריכת השעה או השם.',
                 style: TextStyle(color: AppTheme.textSecondary, fontSize: 13),
               ),
               const SizedBox(height: AppTheme.spacing12),
@@ -1437,39 +1544,81 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
                   child: Text('הלו"ז ריק. השתמש בכפתור למטה כדי להוסיף משימות קבועות.', style: TextStyle(color: AppTheme.textSecondary)),
                 ),
               ...events.map((event) {
-                return CheckboxListTile(
-                  title: Text(event['title'] ?? '', style: TextStyle(color: AppTheme.textPrimary)),
-                  subtitle: Text(event['time'] ?? '', style: TextStyle(color: AppTheme.textSecondary)),
-                  value: event['is_done'] == true,
-                  activeColor: AppTheme.primaryGreen,
-                  onChanged: (val) async {
-                    final nextDone = val == true;
-                    final baseIcon = (event['icon'] ?? 'clock').toString();
-                    setModalState(() => event['is_done'] = nextDone);
-                    try {
-                      await schedule
-                          .update({
-                            'is_done': nextDone,
-                            'icon': encodeScheduleIconForToday(baseIcon, isDone: nextDone),
-                          })
-                          .eq('id', event['id']);
-                      ref.invalidate(dashboardMetricsProvider);
-                    } catch (e) {
-                      setModalState(() => event['is_done'] = !nextDone);
-                      if (context.mounted) HopalFeedback.showError(context, AppErrorHelper.toHebrew(e, fallback: 'שגיאה בעדכון המשימה בלו"ז.'));
-                    }
-                  },
-                  secondary: IconButton(
-                    icon: Icon(LucideIcons.trash2, color: AppTheme.criticalRed),
-                    onPressed: () async {
-                      try {
-                        await schedule.delete().eq('id', event['id']);
-                        setModalState(() => events.remove(event));
-                        ref.invalidate(dashboardMetricsProvider);
-                      } catch (e) {
-                        if (context.mounted) HopalFeedback.showError(context, AppErrorHelper.toHebrew(e, fallback: 'שגיאה במחיקת המשימה מהלו"ז.'));
-                      }
-                    },
+                final actor = (event['actor'] ?? '').toString();
+                final timeLabel = (event['time'] ?? '').toString();
+                final sub = actor.isNotEmpty ? '$timeLabel • $actor' : timeLabel;
+
+                return Container(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  decoration: BoxDecoration(
+                    color: AppTheme.backgroundSecondary,
+                    borderRadius: AppTheme.radiusMd,
+                    border: Border.all(color: AppTheme.borderSubtle),
+                  ),
+                  child: ListTile(
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+                    onTap: () => openTaskDialog(setModalState, existingEvent: event),
+                    leading: Checkbox(
+                      value: event['is_done'] == true,
+                      activeColor: AppTheme.primaryGreen,
+                      onChanged: (val) async {
+                        final nextDone = val == true;
+                        final baseIcon = (event['icon'] ?? 'clock').toString();
+                        setModalState(() => event['is_done'] = nextDone);
+                        try {
+                          await schedule
+                              .update({
+                                'is_done': nextDone,
+                                'icon': encodeScheduleIconForToday(baseIcon, isDone: nextDone),
+                              })
+                              .eq('id', event['id']);
+                          ref.invalidate(dashboardMetricsProvider);
+                        } catch (e) {
+                          setModalState(() => event['is_done'] = !nextDone);
+                          if (context.mounted) {
+                            HopalFeedback.showError(
+                              context,
+                              AppErrorHelper.toHebrew(e, fallback: 'שגיאה בעדכון המשימה בלו"ז.'),
+                            );
+                          }
+                        }
+                      },
+                    ),
+                    title: Text(
+                      event['title'] ?? '',
+                      style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.w600, fontSize: 14),
+                    ),
+                    subtitle: Text(sub, style: TextStyle(color: AppTheme.textSecondary, fontSize: 12)),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        IconButton(
+                          tooltip: 'ערוך משימה',
+                          icon: Icon(LucideIcons.pencil, color: AppTheme.infoBlue, size: 18),
+                          visualDensity: VisualDensity.compact,
+                          onPressed: () => openTaskDialog(setModalState, existingEvent: event),
+                        ),
+                        IconButton(
+                          tooltip: 'מחק משימה',
+                          icon: Icon(LucideIcons.trash2, color: AppTheme.criticalRed, size: 18),
+                          visualDensity: VisualDensity.compact,
+                          onPressed: () async {
+                            try {
+                              await schedule.delete().eq('id', event['id']);
+                              setModalState(() => events.remove(event));
+                              ref.invalidate(dashboardMetricsProvider);
+                            } catch (e) {
+                              if (context.mounted) {
+                                HopalFeedback.showError(
+                                  context,
+                                  AppErrorHelper.toHebrew(e, fallback: 'שגיאה במחיקת המשימה מהלו"ז.'),
+                                );
+                              }
+                            }
+                          },
+                        ),
+                      ],
+                    ),
                   ),
                 );
               }),
@@ -1479,76 +1628,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
                 label: 'הוסף משימה קבועה',
                 icon: LucideIcons.plus,
                 variant: HopalButtonVariant.secondary,
-                onPressed: () async {
-                  final now = DateTime.now();
-                  final timeController = TextEditingController(
-                      text: '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}');
-                  final titleController = TextEditingController();
-
-                  final result = await showDialog<bool>(
-                    context: context,
-                    builder: (ctx) => AlertDialog(
-                      backgroundColor: AppTheme.backgroundSecondary,
-                      title: Text('הוספת משימה ללו"ז', style: TextStyle(color: AppTheme.textPrimary)),
-                      content: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          TextField(
-                            controller: timeController,
-                            style: TextStyle(color: AppTheme.textPrimary),
-                            decoration: InputDecoration(labelText: 'שעה (HH:MM)', labelStyle: TextStyle(color: AppTheme.textSecondary)),
-                          ),
-                          TextField(
-                            controller: titleController,
-                            autofocus: true,
-                            style: TextStyle(color: AppTheme.textPrimary),
-                            decoration: InputDecoration(labelText: 'שם המשימה', labelStyle: TextStyle(color: AppTheme.textSecondary)),
-                          ),
-                        ],
-                      ),
-                      actions: [
-                        TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text('ביטול', style: TextStyle(color: AppTheme.textSecondary))),
-                        FilledButton(
-                          style: FilledButton.styleFrom(
-                            backgroundColor: AppTheme.primaryGreen,
-                            foregroundColor: Colors.white,
-                          ),
-                          onPressed: () => Navigator.pop(ctx, true),
-                          child: const Text('הוסף', style: TextStyle(fontWeight: FontWeight.bold)),
-                        ),
-                      ],
-                    ),
-                  );
-
-                  final title = titleController.text.trim();
-                  if (result != true || title.isEmpty) return;
-
-                  try {
-                    final saved = await schedule
-                        .insert({
-                          'unit_id': AuthService().currentUser!.unitId,
-                          'time': timeController.text.trim().isEmpty ? '00:00' : timeController.text.trim(),
-                          'title': title,
-                          'icon': 'clock',
-                          'is_done': false,
-                          'actor': AuthService().currentUser?.name ?? 'חופ"ל',
-                        })
-                        .select()
-                        .single();
-                    setModalState(() {
-                      events.add({
-                        ...saved,
-                        'icon': (saved['icon'] ?? 'clock').toString().split('@').first,
-                        'is_done': saved['is_done'] == true,
-                        'time': (saved['time'] ?? '').toString(),
-                      });
-                      sortEvents();
-                    });
-                    ref.invalidate(dashboardMetricsProvider);
-                  } catch (e) {
-                    if (context.mounted) HopalFeedback.showError(context, AppErrorHelper.toHebrew(e, fallback: 'המשימה לא נשמרה. בדוק חיבור ונסה שוב.'));
-                  }
-                },
+                onPressed: () => openTaskDialog(setModalState),
               ),
               const SizedBox(height: AppTheme.spacing16),
               HopalButton(
