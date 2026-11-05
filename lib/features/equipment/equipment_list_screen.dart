@@ -495,21 +495,25 @@ class _EquipmentListScreenState extends ConsumerState<EquipmentListScreen> {
   @override
   Widget build(BuildContext context) {
     final equipmentAsync = ref.watch(equipmentProvider);
-    final canEdit = AuthService().currentUser != null;
 
-    return Scaffold(
-      backgroundColor: AppTheme.backgroundPrimary,
-      floatingActionButton: canEdit
-          ? Padding(
-              padding: const EdgeInsets.only(bottom: 120.0),
-              child: FloatingActionButton(
-                onPressed: () => _showAddOrEditSheet(context),
-                backgroundColor: AppTheme.primaryGreen,
-                child: const Icon(LucideIcons.plus, color: Colors.white),
-              ),
-            )
-          : null,
-      body: equipmentAsync.when(
+    return ValueListenableBuilder<bool>(
+      valueListenable: AuthService().previewAsCombatMedicNotifier,
+      builder: (context, _, __) {
+        final isCompanyMedic = AuthService().isCompanyMedic;
+
+        return Scaffold(
+          backgroundColor: AppTheme.backgroundPrimary,
+          floatingActionButton: isCompanyMedic
+              ? Padding(
+                  padding: const EdgeInsets.only(bottom: 120.0),
+                  child: FloatingActionButton(
+                    onPressed: () => _showAddOrEditSheet(context),
+                    backgroundColor: AppTheme.primaryGreen,
+                    child: const Icon(LucideIcons.plus, color: Colors.white),
+                  ),
+                )
+              : null,
+          body: equipmentAsync.when(
         data: (eqList) {
           if (eqList.isEmpty) {
             return HopalEmptyState(
@@ -581,7 +585,7 @@ class _EquipmentListScreenState extends ConsumerState<EquipmentListScreen> {
                             onPressed: _showCatCheckModal,
                           ),
                         ),
-                        if (missingItems.isNotEmpty) ...[
+                        if (isCompanyMedic && missingItems.isNotEmpty) ...[
                           const SizedBox(width: AppTheme.spacing8),
                           Expanded(
                             flex: 4,
@@ -590,9 +594,9 @@ class _EquipmentListScreenState extends ConsumerState<EquipmentListScreen> {
                               icon: LucideIcons.messageCircle,
                               onPressed: () async {
                                 final text = 'היי החוג"ד, להלן חוסרים בציוד:\n${missingItems.map((e) => '- ${e.name} (חסר: ${e.minimumRequired - e.quantity})').join('\n')}';
-                                final url = Uri.parse('whatsapp://send?text=${Uri.encodeComponent(text)}');
+                                final url = Uri.parse('https://wa.me/?text=${Uri.encodeComponent(text)}');
                                 if (await canLaunchUrl(url)) {
-                                  await launchUrl(url);
+                                  await launchUrl(url, mode: LaunchMode.externalApplication);
                                 } else {
                                   if (context.mounted) HopalFeedback.showError(context, 'לא ניתן לפתוח את WhatsApp');
                                 }
@@ -667,7 +671,9 @@ class _EquipmentListScreenState extends ConsumerState<EquipmentListScreen> {
             onPressed: () => ref.read(equipmentProvider.notifier).refresh(),
           ),
         ),
-      ),
+          ),
+        );
+      },
     );
   }
 
@@ -746,12 +752,9 @@ class _EquipmentListScreenState extends ConsumerState<EquipmentListScreen> {
             return Padding(
               padding: const EdgeInsets.only(bottom: AppTheme.spacing8),
               child: HopalCard(
-                onTap: () {
-                  final canEdit = AuthService().currentUser != null;
-                  if (canEdit) {
-                    _showAddOrEditSheet(context, item: item);
-                  }
-                },
+                onTap: AuthService().isCompanyMedic
+                    ? () => _showAddOrEditSheet(context, item: item)
+                    : null,
                 child: Row(
                   children: [
                     Container(

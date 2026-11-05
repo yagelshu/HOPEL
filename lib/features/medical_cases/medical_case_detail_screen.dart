@@ -1,4 +1,5 @@
 import 'package:chopel_app/core/utils/platform_image.dart';
+import 'package:chopel_app/core/utils/app_error_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -32,7 +33,7 @@ class _MedicalCaseDetailScreenState extends ConsumerState<MedicalCaseDetailScree
   late String _currentStatus;
   late String _currentDescription;
   bool _isUpdating = false;
-  
+
   String _soldierName = 'טוען...';
   String _soldierContext = 'טוען נתונים...';
   String _soldierPhone = '';
@@ -45,7 +46,7 @@ class _MedicalCaseDetailScreenState extends ConsumerState<MedicalCaseDetailScree
     _currentDescription = widget.medicalCase.description ?? 'ללא תיאור מפורט';
     _loadSoldierDetails();
   }
-  
+
   Future<void> _loadSoldierDetails() async {
     try {
       final sb = Supabase.instance.client;
@@ -54,11 +55,11 @@ class _MedicalCaseDetailScreenState extends ConsumerState<MedicalCaseDetailScree
           .select('*, unit:units(name)')
           .eq('id', widget.medicalCase.soldierId)
           .maybeSingle();
-          
+
       if (soldierRes != null) {
         final unitName = (soldierRes['unit'] as Map<String, dynamic>?)?['name'] ?? 'יחידה לא ידועה';
         final soldier = Soldier.fromMap(soldierRes);
-        
+
         if (mounted) {
           setState(() {
             _soldier = soldier;
@@ -86,7 +87,7 @@ class _MedicalCaseDetailScreenState extends ConsumerState<MedicalCaseDetailScree
     if (_currentStatus == newStatus) return;
 
     final updatedCase = widget.medicalCase.toMap();
-    
+
     if (newStatus == 'COMPLETED') {
       final String? notes = await showModalBottomSheet<String>(
         context: context,
@@ -160,7 +161,7 @@ class _MedicalCaseDetailScreenState extends ConsumerState<MedicalCaseDetailScree
         .from('medical_cases')
         .update(updatedCase)
         .eq('id', widget.medicalCase.id);
-    
+
     if (!mounted) return;
 
     setState(() {
@@ -279,293 +280,302 @@ class _MedicalCaseDetailScreenState extends ConsumerState<MedicalCaseDetailScree
 
   @override
   Widget build(BuildContext context) {
-    final user = AuthService().currentUser;
-    final isCompanyMedic = user?.role == 'COMPANY_MEDIC';
+    return ValueListenableBuilder<bool>(
+      valueListenable: AuthService().previewAsCombatMedicNotifier,
+      builder: (context, _, __) {
+        final isCompanyMedic = AuthService().isCompanyMedic;
 
-    return Scaffold(
-      backgroundColor: AppTheme.backgroundPrimary,
-      body: CustomScrollView(
-        slivers: [
-          SliverAppBar(
-            title: Text('תיק רפואי פעיל', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppTheme.textPrimary)),
-            backgroundColor: AppTheme.backgroundPrimary,
-            elevation: 0,
-            centerTitle: true,
-            pinned: true,
-            floating: true,
-            leading: IconButton(
-              icon: Icon(LucideIcons.arrowRight, color: AppTheme.textPrimary),
-              onPressed: () => Navigator.pop(context),
-            ),
-            actions: [
-              IconButton(
-                icon: Icon(LucideIcons.share2, color: AppTheme.primaryGreen),
-                tooltip: 'שיתוף תיק לרופא',
-                onPressed: _shareWithDoctor,
-              ),
-              IconButton(
-                icon: Icon(LucideIcons.edit2, color: AppTheme.infoBlue),
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => MedicalCaseCreateScreen(existingCase: widget.medicalCase),
-                    ),
-                  ).then((_) {
-                    if (context.mounted) Navigator.pop(context);
-                  });
-                },
-              ),
-              IconButton(
-                icon: Icon(LucideIcons.trash2, color: AppTheme.criticalRed),
-                onPressed: () async {
-                  final confirm = await showDialog<bool>(
-                    context: context,
-                    builder: (context) => AlertDialog(
-                      backgroundColor: AppTheme.backgroundSecondary,
-                      title: Text('מחיקת תיק רפואי', style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.bold)),
-                      content: Text('האם אתה בטוח שברצונך למחוק את התיק הזה לחלוטין? פעולה זו אינה הפיכה.', style: TextStyle(color: AppTheme.textSecondary)),
-                      actions: [
-                        TextButton(
-                          onPressed: () => Navigator.pop(context, false),
-                          child: Text('ביטול', style: TextStyle(color: AppTheme.textSecondary)),
-                        ),
-                        TextButton(
-                          onPressed: () => Navigator.pop(context, true),
-                          child: Text('מחק תיק', style: TextStyle(color: AppTheme.criticalRed, fontWeight: FontWeight.bold)),
-                        ),
-                      ],
-                    ),
-                  );
-
-                  if (confirm == true) {
-                    try {
-                      await Supabase.instance.client
-                          .from('medical_cases')
-                          .delete()
-                          .eq('id', widget.medicalCase.id);
-                      
-                      if (context.mounted) {
-                        HopalFeedback.showSuccess(context, 'התיק נמחק בהצלחה');
-                        Navigator.pop(context);
-                      }
-                    } catch (e) {
-                      if (context.mounted) {
-                        HopalFeedback.showError(context, 'שגיאה במחיקת התיק');
-                      }
-                    }
-                  }
-                },
-              ),
-            ],
-          ),
-          SliverPadding(
-            padding: const EdgeInsets.symmetric(horizontal: AppTheme.spacing16, vertical: AppTheme.spacing24),
-            sliver: SliverList(
-              delegate: SliverChildListDelegate([
-                // Header
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Hero(
-                            tag: 'soldier_name_${widget.medicalCase.id}',
-                            child: Material(
-                              type: MaterialType.transparency,
-                              child: Text(_soldierName, style: Theme.of(context).textTheme.headlineMedium),
-                            ),
-                          ),
-                          const SizedBox(height: AppTheme.spacing4),
-                          Text('תיק רפואי', style: TextStyle(fontSize: 16, color: AppTheme.textSecondary, fontWeight: FontWeight.w500)),
-                          const SizedBox(height: AppTheme.spacing4),
-                          Text(_soldierContext, style: TextStyle(fontSize: 14, color: AppTheme.textSecondary)),
-                        ],
-                      ),
-                    ),
-                    _buildOutcomeBadge(),
-                  ],
+        return Scaffold(
+          backgroundColor: AppTheme.backgroundPrimary,
+          body: CustomScrollView(
+            slivers: [
+              SliverAppBar(
+                title: Text('תיק רפואי פעיל', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppTheme.textPrimary)),
+                backgroundColor: AppTheme.backgroundPrimary,
+                elevation: 0,
+                centerTitle: true,
+                pinned: true,
+                floating: true,
+                leading: IconButton(
+                  icon: Icon(LucideIcons.arrowRight, color: AppTheme.textPrimary),
+                  onPressed: () => Navigator.pop(context),
                 ),
-                
-                if (_soldier != null && _soldier!.hasAllergies) ...[
-                  const SizedBox(height: AppTheme.spacing16),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: AppTheme.spacing16, vertical: AppTheme.spacing12),
-                    decoration: BoxDecoration(
-                      color: AppTheme.criticalRed.withValues(alpha: 0.15),
-                      borderRadius: AppTheme.radiusMd,
-                      border: Border.all(color: AppTheme.criticalRed.withValues(alpha: 0.5)),
+                actions: [
+                  IconButton(
+                    icon: Icon(LucideIcons.share2, color: AppTheme.primaryGreen),
+                    tooltip: 'שיתוף תיק לרופא',
+                    onPressed: _shareWithDoctor,
+                  ),
+                  IconButton(
+                    icon: Icon(LucideIcons.edit2, color: AppTheme.infoBlue),
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => MedicalCaseCreateScreen(existingCase: widget.medicalCase),
+                        ),
+                      ).then((_) {
+                        if (context.mounted) Navigator.pop(context);
+                      });
+                    },
+                  ),
+                  if (isCompanyMedic)
+                    IconButton(
+                      icon: Icon(LucideIcons.trash2, color: AppTheme.criticalRed),
+                      tooltip: 'מחיקת תיק רפואי',
+                      onPressed: () async {
+                        final confirm = await showDialog<bool>(
+                          context: context,
+                          builder: (context) => AlertDialog(
+                            backgroundColor: AppTheme.backgroundSecondary,
+                            title: Text('מחיקת תיק רפואי', style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.bold)),
+                            content: Text('האם אתה בטוח שברצונך למחוק את התיק הזה לחלוטין? פעולה זו אינה הפיכה.', style: TextStyle(color: AppTheme.textSecondary)),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.pop(context, false),
+                                child: Text('ביטול', style: TextStyle(color: AppTheme.textSecondary)),
+                              ),
+                              TextButton(
+                                onPressed: () => Navigator.pop(context, true),
+                                child: Text('מחק תיק', style: TextStyle(color: AppTheme.criticalRed, fontWeight: FontWeight.bold)),
+                              ),
+                            ],
+                          ),
+                        );
+
+                        if (confirm == true) {
+                          try {
+                            await Supabase.instance.client
+                                .from('medical_cases')
+                                .delete()
+                                .eq('id', widget.medicalCase.id);
+
+                            if (context.mounted) {
+                              HopalFeedback.showSuccess(context, 'התיק נמחק בהצלחה');
+                              Navigator.pop(context);
+                            }
+                          } catch (e) {
+                            if (context.mounted) {
+                              HopalFeedback.showError(
+                                context,
+                                AppErrorHelper.toHebrew(e, fallback: 'שגיאה במחיקת התיק'),
+                              );
+                            }
+                          }
+                        }
+                      },
                     ),
-                    child: Row(
+                ],
+              ),
+              SliverPadding(
+                padding: const EdgeInsets.symmetric(horizontal: AppTheme.spacing16, vertical: AppTheme.spacing24),
+                sliver: SliverList(
+                  delegate: SliverChildListDelegate([
+                    // Header
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Icon(LucideIcons.alertTriangle, color: AppTheme.criticalRed, size: 20),
-                        const SizedBox(width: AppTheme.spacing12),
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(
-                                'אזהרה רפואית: אלרגיה / רגישות ידועה',
-                                style: TextStyle(color: AppTheme.criticalRed, fontWeight: FontWeight.bold, fontSize: 13),
+                              Hero(
+                                tag: 'soldier_name_${widget.medicalCase.id}',
+                                child: Material(
+                                  type: MaterialType.transparency,
+                                  child: Text(_soldierName, style: Theme.of(context).textTheme.headlineMedium),
+                                ),
                               ),
-                              Text(
-                                _soldier!.allergies!,
-                                style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.w600, fontSize: 14),
-                              ),
+                              const SizedBox(height: AppTheme.spacing4),
+                              Text('תיק רפואי', style: TextStyle(fontSize: 16, color: AppTheme.textSecondary, fontWeight: FontWeight.w500)),
+                              const SizedBox(height: AppTheme.spacing4),
+                              Text(_soldierContext, style: TextStyle(fontSize: 14, color: AppTheme.textSecondary)),
                             ],
                           ),
                         ),
+                        _buildOutcomeBadge(),
                       ],
                     ),
-                  ),
-                ],
-                
-                const SizedBox(height: AppTheme.spacing32),
-                
-                Text('תיאור תסמינים וסיכום:', style: TextStyle(fontSize: 14, color: AppTheme.textSecondary, fontWeight: FontWeight.bold)),
-                const SizedBox(height: AppTheme.spacing8),
-                Text(_currentDescription, style: TextStyle(fontSize: 16, color: AppTheme.textPrimary, height: 1.5)),
-                
-                const SizedBox(height: AppTheme.spacing24),
-                
-                // Contact Actions
-                Row(
-                  children: [
-                    Expanded(
-                      flex: 3,
-                      child: TextButton.icon(
-                        onPressed: _shareWithDoctor,
-                        icon: const Icon(LucideIcons.stethoscope, size: 18),
-                        label: const Text('התייעצות רופא (WhatsApp)', overflow: TextOverflow.ellipsis),
-                        style: TextButton.styleFrom(
-                          foregroundColor: AppTheme.primaryGreen,
-                          backgroundColor: AppTheme.primaryGreen.withValues(alpha: 0.1),
-                          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                        ),
-                      ),
-                    ),
-                    if (_soldierPhone.isNotEmpty) ...[
-                      const SizedBox(width: AppTheme.spacing8),
-                      IconButton(
-                        tooltip: 'חיוג לחייל',
-                        icon: Icon(LucideIcons.phone, color: AppTheme.primaryGreen),
-                        style: IconButton.styleFrom(
-                          backgroundColor: AppTheme.primaryGreen.withValues(alpha: 0.1),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                        ),
-                        onPressed: () async {
-                          final uri = Uri.parse('tel:${_soldierPhone.replaceAll(RegExp(r'\D'), '')}');
-                          if (await canLaunchUrl(uri)) await launchUrl(uri);
-                        },
-                      ),
-                      IconButton(
-                        tooltip: 'הודעה לחייל',
-                        icon: Icon(LucideIcons.messageCircle, color: AppTheme.infoBlue),
-                        style: IconButton.styleFrom(
-                          backgroundColor: AppTheme.infoBlue.withValues(alpha: 0.1),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                        ),
-                        onPressed: () async {
-                          final text = Uri.encodeComponent('היי $_soldierName, מה המצב?');
-                          var formattedPhone = _soldierPhone.replaceAll(RegExp(r'\D'), '');
-                          if (formattedPhone.startsWith('0')) formattedPhone = '972${formattedPhone.substring(1)}';
-                          final url = Uri.parse('https://wa.me/$formattedPhone?text=$text');
-                          if (await canLaunchUrl(url)) {
-                            await launchUrl(url, mode: LaunchMode.externalApplication);
-                          }
-                        },
-                      ),
-                    ],
-                  ],
-                ),
-                
-                const SizedBox(height: AppTheme.spacing40),
 
-                // Inline Status Update (Pills)
-                if (isCompanyMedic) ...[
-                  Text('החלטת חופ"ל:', style: TextStyle(fontSize: 14, color: AppTheme.textSecondary, fontWeight: FontWeight.bold)),
-                  const SizedBox(height: AppTheme.spacing16),
-                  Wrap(
-                    spacing: AppTheme.spacing8,
-                    runSpacing: AppTheme.spacing8,
-                    children: [
-                      _buildStatusPill('טיפול הושלם', 'COMPLETED', AppTheme.successGreen),
-                      _buildStatusPill('נדרש המשך טיפול', 'REQUIRES_ATTENTION', AppTheme.warningAmber),
+                    if (_soldier != null && _soldier!.hasAllergies) ...[
+                      const SizedBox(height: AppTheme.spacing16),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: AppTheme.spacing16, vertical: AppTheme.spacing12),
+                        decoration: BoxDecoration(
+                          color: AppTheme.criticalRed.withValues(alpha: 0.15),
+                          borderRadius: AppTheme.radiusMd,
+                          border: Border.all(color: AppTheme.criticalRed.withValues(alpha: 0.5)),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(LucideIcons.alertTriangle, color: AppTheme.criticalRed, size: 20),
+                            const SizedBox(width: AppTheme.spacing12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'אזהרה רפואית: אלרגיה / רגישות ידועה',
+                                    style: TextStyle(color: AppTheme.criticalRed, fontWeight: FontWeight.bold, fontSize: 13),
+                                  ),
+                                  Text(
+                                    _soldier!.allergies!,
+                                    style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.w600, fontSize: 14),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     ],
-                  ),
-                  const SizedBox(height: AppTheme.spacing48),
-                ],
-                
-                // Image Viewer (If exists)
-                if (widget.medicalCase.imagePath != null && widget.medicalCase.imagePath!.isNotEmpty) ...[
-                  Text('צילום מצורף:', style: TextStyle(fontSize: 14, color: AppTheme.textSecondary, fontWeight: FontWeight.bold)),
-                  const SizedBox(height: AppTheme.spacing16),
-                  Container(
-                    width: double.infinity,
-                    height: 250,
-                    decoration: BoxDecoration(
-                      borderRadius: AppTheme.radiusLg,
-                      border: Border.all(color: AppTheme.borderSubtle),
-                      image: DecorationImage(
-                        image: resolveLocalOrWebImage(widget.medicalCase.imagePath!),
-                        onError: (_, __) {},
-                        fit: BoxFit.cover,
+
+                    const SizedBox(height: AppTheme.spacing32),
+
+                    Text('תיאור תסמינים וסיכום:', style: TextStyle(fontSize: 14, color: AppTheme.textSecondary, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: AppTheme.spacing8),
+                    Text(_currentDescription, style: TextStyle(fontSize: 16, color: AppTheme.textPrimary, height: 1.5)),
+
+                    const SizedBox(height: AppTheme.spacing24),
+
+                    // Contact Actions
+                    Row(
+                      children: [
+                        Expanded(
+                          flex: 3,
+                          child: TextButton.icon(
+                            onPressed: _shareWithDoctor,
+                            icon: const Icon(LucideIcons.stethoscope, size: 18),
+                            label: const Text('התייעצות רופא (WhatsApp)', overflow: TextOverflow.ellipsis),
+                            style: TextButton.styleFrom(
+                              foregroundColor: AppTheme.primaryGreen,
+                              backgroundColor: AppTheme.primaryGreen.withValues(alpha: 0.1),
+                              padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                            ),
+                          ),
+                        ),
+                        if (_soldierPhone.isNotEmpty) ...[
+                          const SizedBox(width: AppTheme.spacing8),
+                          IconButton(
+                            tooltip: 'חיוג לחייל',
+                            icon: Icon(LucideIcons.phone, color: AppTheme.primaryGreen),
+                            style: IconButton.styleFrom(
+                              backgroundColor: AppTheme.primaryGreen.withValues(alpha: 0.1),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                            ),
+                            onPressed: () async {
+                              final uri = Uri.parse('tel:${_soldierPhone.replaceAll(RegExp(r'\D'), '')}');
+                              if (await canLaunchUrl(uri)) await launchUrl(uri);
+                            },
+                          ),
+                          IconButton(
+                            tooltip: 'הודעה לחייל',
+                            icon: Icon(LucideIcons.messageCircle, color: AppTheme.infoBlue),
+                            style: IconButton.styleFrom(
+                              backgroundColor: AppTheme.infoBlue.withValues(alpha: 0.1),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                            ),
+                            onPressed: () async {
+                              final text = Uri.encodeComponent('היי $_soldierName, מה המצב?');
+                              var formattedPhone = _soldierPhone.replaceAll(RegExp(r'\D'), '');
+                              if (formattedPhone.startsWith('0')) formattedPhone = '972${formattedPhone.substring(1)}';
+                              final url = Uri.parse('https://wa.me/$formattedPhone?text=$text');
+                              if (await canLaunchUrl(url)) {
+                                await launchUrl(url, mode: LaunchMode.externalApplication);
+                              }
+                            },
+                          ),
+                        ],
+                      ],
+                    ),
+
+                    const SizedBox(height: AppTheme.spacing40),
+
+                    // Inline Status Update (Pills)
+                    if (isCompanyMedic) ...[
+                      Text('החלטת חופ"ל:', style: TextStyle(fontSize: 14, color: AppTheme.textSecondary, fontWeight: FontWeight.bold)),
+                      const SizedBox(height: AppTheme.spacing16),
+                      Wrap(
+                        spacing: AppTheme.spacing8,
+                        runSpacing: AppTheme.spacing8,
+                        children: [
+                          _buildStatusPill('טיפול הושלם', 'COMPLETED', AppTheme.successGreen),
+                          _buildStatusPill('נדרש המשך טיפול', 'REQUIRES_ATTENTION', AppTheme.warningAmber),
+                        ],
+                      ),
+                      const SizedBox(height: AppTheme.spacing48),
+                    ],
+
+                    // Image Viewer (If exists)
+                    if (widget.medicalCase.imagePath != null && widget.medicalCase.imagePath!.isNotEmpty) ...[
+                      Text('צילום מצורף:', style: TextStyle(fontSize: 14, color: AppTheme.textSecondary, fontWeight: FontWeight.bold)),
+                      const SizedBox(height: AppTheme.spacing16),
+                      Container(
+                        width: double.infinity,
+                        height: 250,
+                        decoration: BoxDecoration(
+                          borderRadius: AppTheme.radiusLg,
+                          border: Border.all(color: AppTheme.borderSubtle),
+                          image: DecorationImage(
+                            image: resolveLocalOrWebImage(widget.medicalCase.imagePath!),
+                            onError: (_, __) {},
+                            fit: BoxFit.cover,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: AppTheme.spacing48),
+                    ],
+
+                    // Timeline (Visual Centerpiece)
+                    Text('רצף טיפולי (Timeline)', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppTheme.textPrimary)),
+                    const SizedBox(height: AppTheme.spacing24),
+                    HopalCard(
+                      padding: const EdgeInsets.symmetric(horizontal: AppTheme.spacing24, vertical: AppTheme.spacing32),
+                      child: HopalTimeline(
+                        events: [
+                          HopalTimelineEvent(
+                            title: 'פניה נפתחה',
+                            time: DateFormatter.formatRelative(widget.medicalCase.createdDate),
+                            actor: 'מערכת',
+                            icon: LucideIcons.filePlus2,
+                            isLast: _currentStatus != 'COMPLETED',
+                          ),
+                          if (_currentStatus == 'COMPLETED')
+                            HopalTimelineEvent(
+                              title: 'התיק נסגר רפואית',
+                              time: DateFormatter.formatRelative(widget.medicalCase.closedDate ?? DateTime.now().toIso8601String()),
+                              actor: 'רופא / חופ"ל',
+                              icon: LucideIcons.checkCircle2,
+                              iconColor: AppTheme.successGreen,
+                              isLast: true,
+                            ),
+                        ],
                       ),
                     ),
-                  ),
-                  const SizedBox(height: AppTheme.spacing48),
-                ],
-                
-                // Timeline (Visual Centerpiece)
-                Text('רצף טיפולי (Timeline)', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppTheme.textPrimary)),
-                const SizedBox(height: AppTheme.spacing24),
-                HopalCard(
-                  padding: const EdgeInsets.symmetric(horizontal: AppTheme.spacing24, vertical: AppTheme.spacing32),
-                  child: HopalTimeline(
-                    events: [
-                      HopalTimelineEvent(
-                        title: 'פניה נפתחה',
-                        time: DateFormatter.formatRelative(widget.medicalCase.createdDate),
-                        actor: 'מערכת',
-                        icon: LucideIcons.filePlus2,
-                        isLast: _currentStatus != 'COMPLETED',
-                      ),
-                      if (_currentStatus == 'COMPLETED')
-                        HopalTimelineEvent(
-                          title: 'התיק נסגר רפואית',
-                          time: DateFormatter.formatRelative(widget.medicalCase.closedDate ?? DateTime.now().toIso8601String()),
-                          actor: 'רופא / חופ"ל',
-                          icon: LucideIcons.checkCircle2,
-                          iconColor: AppTheme.successGreen,
-                          isLast: true,
-                        ),
-                    ],
-                  ),
+
+                    const SizedBox(height: AppTheme.spacing64),
+                  ]),
                 ),
-                
-                const SizedBox(height: AppTheme.spacing64),
-              ]),
-            ),
+              ),
+            ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 
   Widget _buildOutcomeBadge() {
     if (_currentStatus == 'REQUIRES_ATTENTION') {
       return const HopalStatusBadge(label: 'בטיפול / מעקב', icon: LucideIcons.stethoscope, variant: HopalStatusBadgeVariant.warning);
-    } 
+    }
     return const HopalStatusBadge(label: 'טופל', icon: LucideIcons.checkCircle2, variant: HopalStatusBadgeVariant.neutral);
   }
 
   Widget _buildStatusPill(String label, String value, Color color) {
     final isSelected = _currentStatus == value;
-    
+
     return GestureDetector(
       onTap: _isUpdating ? null : () => _updateStatus(value),
       child: AnimatedContainer(
@@ -596,6 +606,4 @@ class _MedicalCaseDetailScreenState extends ConsumerState<MedicalCaseDetailScree
       ),
     );
   }
-
-
 }

@@ -4,7 +4,8 @@ import 'web_biometrics_stub.dart'
 class WebBiometrics {
   static Future<bool> isAvailable() => webBiometricsIsAvailable();
 
-  static Future<String?> register({
+  /// Returns `'OK:<credentialId>'` on success, or `'ERR:<reason>'` on failure.
+  static Future<String> register({
     required String userId,
     required String userName,
   }) =>

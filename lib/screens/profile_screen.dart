@@ -39,7 +39,6 @@ class ProfileScreen extends ConsumerStatefulWidget {
 
 class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   final String _syncTime = '15 דקות';
-  bool _notificationsEnabled = true;
   bool _biometricsEnabled = false;
   bool _canCheckBiometrics = false;
   String _doctorName = '';
@@ -68,36 +67,28 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     if (mounted) {
       setState(() {
         _canCheckBiometrics = canCheck;
-        _biometricsEnabled = canCheck && (prefs.getBool('use_biometrics') ?? false);
+        _biometricsEnabled = prefs.getBool('use_biometrics') ?? false;
       });
     }
   }
 
   Future<void> _toggleBiometrics() async {
-    if (!_canCheckBiometrics) {
-      HopalFeedback.showInfo(
-        context,
-        'במכשיר או בדפדפן זה לא זוהה חיישן ביומטרי פעיל (טביעת אצבע / זיהוי פנים).',
-      );
-      return;
-    }
-
     if (_biometricsEnabled) {
       await AuthService().disableBiometrics();
       if (!mounted) return;
       setState(() => _biometricsEnabled = false);
       HopalFeedback.showSuccess(context, 'אבטחה ביומטרית כובתה');
     } else {
-      final enabled = await AuthService().enableBiometrics();
+      final error = await AuthService().enableBiometrics();
       if (!mounted) return;
-      if (enabled) {
-        setState(() => _biometricsEnabled = true);
+      if (error == null) {
+        setState(() {
+          _biometricsEnabled = true;
+          _canCheckBiometrics = true;
+        });
         HopalFeedback.showSuccess(context, 'אבטחה ביומטרית הופעלה בהצלחה');
       } else {
-        HopalFeedback.showError(
-          context,
-          'הפעלת האבטחה הביומטרית לא הושלמה. ודא שמוגדרת נעילת טביעת אצבע או פנים במכשיר.',
-        );
+        HopalFeedback.showError(context, error);
       }
     }
   }
@@ -605,363 +596,434 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     final isDarkMode = ref.watch(themeProvider) == ThemeMode.dark;
     final currentThemeStr = isDarkMode ? 'מבצעית' : 'בהירה';
 
-    return Scaffold(
-      backgroundColor: AppTheme.backgroundPrimary,
-      body: CustomScrollView(
-        slivers: [
-          const SliverAppBar(
-            title: Text('הגדרות ופרופיל', style: TextStyle(fontWeight: FontWeight.bold)),
-            floating: true,
-            pinned: true,
-          ),
-          SliverPadding(
-            padding: const EdgeInsets.symmetric(horizontal: AppTheme.spacing16, vertical: AppTheme.spacing24),
-            sliver: SliverList(
-              delegate: SliverChildListDelegate([
-                HopalCard(
-                  padding: const EdgeInsets.all(AppTheme.spacing24),
-                  child: Row(
-                    children: [
+    return ValueListenableBuilder<bool>(
+      valueListenable: AuthService().previewAsCombatMedicNotifier,
+      builder: (context, _, __) {
+        final isCompanyMedic = AuthService().isCompanyMedic;
+        final isActualCompanyMedic = AuthService().isActualCompanyMedic;
+        final isPreviewingAsMedic = AuthService().isPreviewingAsCombatMedic;
+
+        return Scaffold(
+          backgroundColor: AppTheme.backgroundPrimary,
+          body: CustomScrollView(
+            slivers: [
+              const SliverAppBar(
+                title: Text('הגדרות ופרופיל', style: TextStyle(fontWeight: FontWeight.bold)),
+                floating: true,
+                pinned: true,
+              ),
+              SliverPadding(
+                padding: const EdgeInsets.symmetric(horizontal: AppTheme.spacing16, vertical: AppTheme.spacing24),
+                sliver: SliverList(
+                  delegate: SliverChildListDelegate([
+                    if (isPreviewingAsMedic) ...[
                       Container(
-                        width: 64,
-                        height: 64,
+                        padding: const EdgeInsets.symmetric(horizontal: AppTheme.spacing16, vertical: 12),
                         decoration: BoxDecoration(
-                          color: AppTheme.primaryGreen.withValues(alpha: 0.15),
-                          shape: BoxShape.circle,
-                          border: Border.all(color: AppTheme.primaryGreen),
+                          color: AppTheme.warningAmber.withValues(alpha: 0.16),
+                          borderRadius: AppTheme.radiusMd,
+                          border: Border.all(color: AppTheme.warningAmber),
                         ),
-                        child: Icon(LucideIcons.user, size: 32, color: AppTheme.primaryGreen),
-                      ),
-                      const SizedBox(width: AppTheme.spacing24),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                        child: Row(
                           children: [
-                            Text(user?.name ?? 'משתמש', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: AppTheme.textPrimary)),
-                            const SizedBox(height: AppTheme.spacing4),
-                            Text(user?.role == 'COMPANY_MEDIC' ? 'חופ"ל' : 'חובש קרבי', style: TextStyle(fontSize: 16, color: AppTheme.militaryOlive)),
-                            const SizedBox(height: AppTheme.spacing4),
-                            Row(
-                              children: [
-                                Icon(LucideIcons.award, color: AppTheme.warningAmber, size: 16),
-                                const SizedBox(width: 4),
-                                Text('${user?.competencePoints ?? 0} נקודות כשירות', style: TextStyle(fontSize: 14, color: AppTheme.warningAmber, fontWeight: FontWeight.bold)),
-                              ],
-                            ),
-                            const SizedBox(height: AppTheme.spacing4),
-                            Wrap(
-                              spacing: AppTheme.spacing8,
-                              runSpacing: 4,
-                              crossAxisAlignment: WrapCrossAlignment.center,
-                              children: [
-                                Text(user?.unitName ?? 'יחידה לא ידועה', style: TextStyle(fontSize: 14, color: AppTheme.textSecondary)),
-                                if (user?.unitJoinCode != null)
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                    decoration: BoxDecoration(
-                                      color: AppTheme.primaryGreen.withValues(alpha: 0.1),
-                                      borderRadius: BorderRadius.circular(4),
-                                    ),
-                                    child: Text('קוד: ${user!.unitJoinCode}', style: TextStyle(fontSize: 12, color: AppTheme.primaryGreen, fontWeight: FontWeight.bold)),
-                                  ),
-                              ],
-                            ),
-                            if (user?.activeDeploymentName != null) ...[
-                              const SizedBox(height: AppTheme.spacing4),
-                              Row(
-                                children: [
-                                  Icon(LucideIcons.mapPin, color: AppTheme.primaryGreen, size: 14),
-                                  const SizedBox(width: 4),
-                                  Expanded(
-                                    child: Text(
-                                      'תעסוקה פעילה: ${user!.activeDeploymentName}',
-                                      style: TextStyle(fontSize: 13, color: AppTheme.textSecondary),
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
-                                ],
+                            Icon(LucideIcons.eye, size: 18, color: AppTheme.warningAmber),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'תצוגת חובש פעילה – כך החובשים שלך רואים את המסכים',
+                                style: TextStyle(
+                                  color: AppTheme.textPrimary,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.bold,
+                                ),
                               ),
-                            ],
+                            ),
+                            TextButton(
+                              style: TextButton.styleFrom(
+                                backgroundColor: AppTheme.warningAmber,
+                                foregroundColor: Colors.black,
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                minimumSize: Size.zero,
+                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              ),
+                              onPressed: () => AuthService().setCombatMedicPreview(false),
+                              child: const Text('חזרה לחופ"ל', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                            ),
                           ],
                         ),
                       ),
+                      const SizedBox(height: AppTheme.spacing16),
                     ],
-                  ),
-                ),
-
-                if (user?.unitJoinCode != null) ...[
-                  const SizedBox(height: AppTheme.spacing16),
-                  HopalButton(
-                    label: 'הזמן חובשים לפלוגה',
-                    icon: LucideIcons.userPlus,
-                    variant: HopalButtonVariant.secondary,
-                    onPressed: () async {
-                      final message = 'היי! מוזמן להצטרף לסביבת הפלוגה שלנו באפליקציית HOPAL.\nקוד ההצטרפות שלנו הוא: *${user!.unitJoinCode}*';
-                      await Share.share(message);
-                    },
-                  ),
-                ],
-
-                const SizedBox(height: AppTheme.spacing32),
-
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: AppTheme.spacing16),
-                  child: Text('פלוגה ותעסוקה', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppTheme.textPrimary)),
-                ),
-                const SizedBox(height: AppTheme.spacing12),
-                HopalCard(
-                  padding: EdgeInsets.zero,
-                  child: Column(
-                    children: [
-                      HopalListTile(
-                        title: const Text('עריכת פרטי פלוגה ותעסוקה'),
-                        subtitle: Text(
-                          '${user?.unitName ?? 'ללא פלוגה'} • ${user?.activeDeploymentName ?? 'ללא תעסוקה פעילה'}',
-                          style: TextStyle(color: AppTheme.textSecondary, fontSize: 13),
-                        ),
-                        leadingIcon: LucideIcons.pencil,
-                        onTap: () => _showEditUnitAndDeploymentSheet(context),
+                    HopalCard(
+                      padding: const EdgeInsets.all(AppTheme.spacing24),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 64,
+                            height: 64,
+                            decoration: BoxDecoration(
+                              color: AppTheme.primaryGreen.withValues(alpha: 0.15),
+                              shape: BoxShape.circle,
+                              border: Border.all(color: AppTheme.primaryGreen),
+                            ),
+                            child: Icon(LucideIcons.user, size: 32, color: AppTheme.primaryGreen),
+                          ),
+                          const SizedBox(width: AppTheme.spacing24),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(user?.name ?? 'משתמש', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: AppTheme.textPrimary)),
+                                const SizedBox(height: AppTheme.spacing4),
+                                Text(isCompanyMedic ? 'חופ"ל' : 'חובש קרבי', style: TextStyle(fontSize: 16, color: AppTheme.militaryOlive)),
+                                const SizedBox(height: AppTheme.spacing4),
+                                Row(
+                                  children: [
+                                    Icon(LucideIcons.award, color: AppTheme.warningAmber, size: 16),
+                                    const SizedBox(width: 4),
+                                    Text('${user?.competencePoints ?? 0} נקודות כשירות', style: TextStyle(fontSize: 14, color: AppTheme.warningAmber, fontWeight: FontWeight.bold)),
+                                  ],
+                                ),
+                                const SizedBox(height: AppTheme.spacing4),
+                                Wrap(
+                                  spacing: AppTheme.spacing8,
+                                  runSpacing: 4,
+                                  crossAxisAlignment: WrapCrossAlignment.center,
+                                  children: [
+                                    Text(user?.unitName ?? 'יחידה לא ידועה', style: TextStyle(fontSize: 14, color: AppTheme.textSecondary)),
+                                    if (isCompanyMedic && user?.unitJoinCode != null)
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: AppTheme.primaryGreen.withValues(alpha: 0.1),
+                                          borderRadius: BorderRadius.circular(4),
+                                        ),
+                                        child: Text('קוד: ${user!.unitJoinCode}', style: TextStyle(fontSize: 12, color: AppTheme.primaryGreen, fontWeight: FontWeight.bold)),
+                                      ),
+                                  ],
+                                ),
+                                if (user?.activeDeploymentName != null) ...[
+                                  const SizedBox(height: AppTheme.spacing4),
+                                  Row(
+                                    children: [
+                                      Icon(LucideIcons.mapPin, color: AppTheme.primaryGreen, size: 14),
+                                      const SizedBox(width: 4),
+                                      Expanded(
+                                        child: Text(
+                                          'תעסוקה פעילה: ${user!.activeDeploymentName}',
+                                          style: TextStyle(fontSize: 13, color: AppTheme.textSecondary),
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                        ],
                       ),
-                      HopalListTile(
-                        title: const Text('סיום תעסוקה ופתיחת חדשה'),
-                        subtitle: const Text('ארכוב התעסוקה הנוכחית ומעבר לתעסוקה חדשה'),
-                        leadingIcon: LucideIcons.tent,
-                        onTap: () {
+                    ),
+
+                    if (isCompanyMedic && user?.unitJoinCode != null) ...[
+                      const SizedBox(height: AppTheme.spacing16),
+                      HopalButton(
+                        label: 'הזמן חובשים לפלוגה',
+                        icon: LucideIcons.userPlus,
+                        variant: HopalButtonVariant.secondary,
+                        onPressed: () async {
+                          final message = 'היי! מוזמן להצטרף לסביבת הפלוגה שלנו באפליקציית HOPAL.\nקוד ההצטרפות שלנו הוא: *${user!.unitJoinCode}*';
+                          await Share.share(message);
+                        },
+                      ),
+                    ],
+
+                    const SizedBox(height: AppTheme.spacing32),
+
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: AppTheme.spacing16),
+                      child: Text('פלוגה ותעסוקה', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppTheme.textPrimary)),
+                    ),
+                    const SizedBox(height: AppTheme.spacing12),
+                    HopalCard(
+                      padding: EdgeInsets.zero,
+                      child: Column(
+                        children: [
+                          if (isCompanyMedic) ...[
+                            HopalListTile(
+                              title: const Text('עריכת פרטי פלוגה ותעסוקה'),
+                              subtitle: Text(
+                                '${user?.unitName ?? 'ללא פלוגה'} • ${user?.activeDeploymentName ?? 'ללא תעסוקה פעילה'}',
+                                style: TextStyle(color: AppTheme.textSecondary, fontSize: 13),
+                              ),
+                              leadingIcon: LucideIcons.pencil,
+                              onTap: () => _showEditUnitAndDeploymentSheet(context),
+                            ),
+                            HopalListTile(
+                              title: const Text('ניהול חיילים בפלוגה'),
+                              subtitle: const Text('עריכה ומחיקת חיילים מהמאגר'),
+                              leadingIcon: LucideIcons.users,
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) => const SoldiersManagementScreen(),
+                                  ),
+                                );
+                              },
+                            ),
+                          ],
+                          HopalListTile(
+                            title: const Text('החלפת פלוגה'),
+                            subtitle: const Text('הקמת פלוגה חדשה או הצטרפות באמצעות קוד'),
+                            leadingIcon: LucideIcons.arrowLeftRight,
+                            onTap: () => _confirmSwitchUnit(context),
+                          ),
+                          if (isActualCompanyMedic)
+                            HopalListTile(
+                              title: const Text('תצוגת חובש (בדיקת הרשאות)'),
+                              subtitle: Text(
+                                isPreviewingAsMedic
+                                    ? 'מופעל – מוצגים מסכי חובש ללא כפתורי ניהול'
+                                    : 'צפה באפליקציה בדיוק כפי שהחובשים שלך רואים אותה',
+                                style: TextStyle(
+                                  color: isPreviewingAsMedic ? AppTheme.warningAmber : AppTheme.textSecondary,
+                                  fontSize: 13,
+                                ),
+                              ),
+                              leadingIcon: LucideIcons.eye,
+                              trailing: Switch(
+                                value: isPreviewingAsMedic,
+                                onChanged: (val) {
+                                  AuthService().setCombatMedicPreview(val);
+                                  if (val) {
+                                    HopalFeedback.showInfo(
+                                      context,
+                                      'תצוגת חובש הופעלה – חזור למסך הבית כדי לראות את האפליקציה מעיני חובש',
+                                    );
+                                  }
+                                },
+                                activeTrackColor: AppTheme.warningAmber,
+                              ),
+                              onTap: () {
+                                final next = !isPreviewingAsMedic;
+                                AuthService().setCombatMedicPreview(next);
+                                if (next) {
+                                  HopalFeedback.showInfo(
+                                    context,
+                                    'תצוגת חובש הופעלה – חזור למסך הבית כדי לראות את האפליקציה מעיני חובש',
+                                  );
+                                }
+                              },
+                            ),
+                        ],
+                      ),
+                    ),
+
+                    const SizedBox(height: AppTheme.spacing32),
+
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: AppTheme.spacing16),
+                      child: Text('מערכת וסנכרון', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppTheme.textPrimary)),
+                    ),
+                    const SizedBox(height: AppTheme.spacing12),
+                    HopalCard(
+                      padding: EdgeInsets.zero,
+                      child: Column(
+                        children: [
+                          if (isCompanyMedic)
+                            HopalListTile(
+                              title: const Text('רופא הגדוד (התייעצות WhatsApp)'),
+                              subtitle: Text(
+                                _doctorPhone.isNotEmpty
+                                    ? '${_doctorName.isNotEmpty ? '$_doctorName • ' : ''}$_doctorPhone'
+                                    : 'טרם הוגדר מספר (לחץ להגדרה מהירה)',
+                                style: TextStyle(
+                                  color: _doctorPhone.isNotEmpty ? AppTheme.primaryGreen : AppTheme.warningAmber,
+                                  fontSize: 13,
+                                ),
+                              ),
+                              leadingIcon: LucideIcons.stethoscope,
+                              onTap: () => _showDoctorSettingsDialog(context),
+                            ),
+                          HopalListTile(
+                            title: const Text('מצב סנכרון'),
+                            subtitle: Text(_syncTime == 'כעת' ? 'סונכרן כעת' : 'מחובר לרשת (מקוון)'),
+                            leadingIcon: LucideIcons.wifi,
+                            onTap: () => _showSyncStatus(context),
+                          ),
+                          HopalListTile(
+                            title: const Text('סנכרון טיוטות מקומיות (אופליין)'),
+                            subtitle: const Text('שלח תיקים שנשמרו כשלא הייתה קליטה'),
+                            leadingIcon: LucideIcons.cloudLightning,
+                            onTap: () async {
+                              final hasDrafts = await DraftService.hasDrafts();
+                              if (!hasDrafts) {
+                                if (context.mounted) HopalFeedback.showSuccess(context, 'אין טיוטות שממתינות לסנכרון');
+                                return;
+                              }
+                              if (context.mounted) HopalFeedback.showSuccess(context, 'מסנכרן טיוטות מול השרת...');
+                              final count = await DraftService.syncDrafts();
+                              if (context.mounted) {
+                                if (count > 0) {
+                                  HopalFeedback.showSuccess(context, '$count טיוטות סונכרנו בהצלחה!');
+                                  ref.read(medicalCasesProvider.notifier).refresh();
+                                } else {
+                                  HopalFeedback.showError(context, 'שגיאה בסנכרון. אנא ודא שיש חיבור אינטרנט תקין.');
+                                }
+                              }
+                            },
+                          ),
+                          HopalListTile(
+                            title: const Text('הגדרות תצוגה'),
+                            subtitle: Text('ערכת נושא $currentThemeStr'),
+                            leadingIcon: LucideIcons.monitor,
+                            onTap: () => _showThemeSettings(context),
+                          ),
+                          HopalListTile(
+                            title: const Text('אבטחה ביומטרית'),
+                            subtitle: Text(
+                              _biometricsEnabled
+                                  ? 'זיהוי פנים / טביעת אצבע מופעל'
+                                  : (_canCheckBiometrics
+                                      ? 'לחץ להפעלת טביעת אצבע / זיהוי פנים'
+                                      : 'לחץ להפעלה (מומלץ בדפדפן Chrome / Safari)'),
+                              style: TextStyle(
+                                color: _biometricsEnabled ? AppTheme.primaryGreen : AppTheme.textSecondary,
+                                fontSize: 13,
+                              ),
+                            ),
+                            leadingIcon: LucideIcons.fingerprint,
+                            trailing: Switch(
+                              value: _biometricsEnabled,
+                              onChanged: (_) => _toggleBiometrics(),
+                              activeTrackColor: AppTheme.primaryGreen,
+                            ),
+                            onTap: _toggleBiometrics,
+                          ),
+                          HopalListTile(
+                            title: const Text('שינוי סיסמה'),
+                            subtitle: const Text('בחירת סיסמה חדשה לחשבון שלך'),
+                            leadingIcon: LucideIcons.keyRound,
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => const UpdatePasswordScreen(),
+                                ),
+                              );
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    const SizedBox(height: AppTheme.spacing32),
+
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: AppTheme.spacing16),
+                      child: Text('תמיכה ואודות', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppTheme.textPrimary)),
+                    ),
+                    const SizedBox(height: AppTheme.spacing12),
+                    HopalCard(
+                      padding: EdgeInsets.zero,
+                      child: Column(
+                        children: [
+                          HopalListTile(
+                            title: const Text('מדריך למשתמש'),
+                            leadingIcon: LucideIcons.helpCircle,
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => const UserManualScreen(),
+                                ),
+                              );
+                            },
+                          ),
+                          HopalListTile(
+                            title: const Text('דיווח על תקלה / פידבק'),
+                            subtitle: const Text('Gmail • WhatsApp • העתקת מייל'),
+                            leadingIcon: LucideIcons.messageSquare,
+                            trailing: Icon(LucideIcons.chevronLeft, color: AppTheme.textSecondary, size: 18),
+                            onTap: () => _showFeedbackSheet(context),
+                          ),
+                          HopalListTile(
+                            title: const Text('אודות המערכת וגרסה'),
+                            subtitle: const Text('גרסה ${AppConstants.version} • לחץ לבדיקת עדכונים'),
+                            leadingIcon: LucideIcons.info,
+                            onTap: () {
+                              HopalBottomSheet.show(
+                                context: context,
+                                title: 'אודות HOPAL',
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                                  children: [
+                                    Text('גרסת אפליקציה: ${AppConstants.fullVersionLabel}', style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.bold)),
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      'האפליקציה מתעדכנת ברציף. במידה ואתה עובד מהדפדפן (Web/PWA) ולא רואה את השינויים האחרונים, מומלץ לבצע רענון מאולץ (Ctrl + F5 או Shift + טען מחדש) כדי לפנות את זיכרון המטמון.',
+                                      style: TextStyle(color: AppTheme.textSecondary, fontSize: 13, height: 1.4),
+                                    ),
+                                    const SizedBox(height: AppTheme.spacing24),
+                                    HopalButton(
+                                      label: 'רענן אפליקציה מחדש',
+                                      icon: LucideIcons.refreshCw,
+                                      onPressed: () {
+                                        Navigator.pop(context);
+                                        HopalFeedback.showInfo(context, 'לרענון נקי של המטמון ועדכון מיידי: לחץ Ctrl + F5 במקלדת');
+                                      },
+                                    ),
+                                  ],
+                                ),
+                              );
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    const SizedBox(height: AppTheme.spacing48),
+
+                    if (isCompanyMedic) ...[
+                      HopalButton(
+                        label: 'סיום תעסוקה מבצעית',
+                        icon: LucideIcons.flag,
+                        variant: HopalButtonVariant.secondary,
+                        isExpanded: true,
+                        onPressed: () {
                           Navigator.of(context).push(
                             MaterialPageRoute(builder: (context) => const DeploymentSummaryScreen()),
                           );
                         },
                       ),
-                      HopalListTile(
-                        title: const Text('ניהול חיילים בפלוגה'),
-                        subtitle: const Text('עריכה ומחיקת חיילים מהמאגר'),
-                        leadingIcon: LucideIcons.users,
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => const SoldiersManagementScreen(),
-                            ),
-                          );
-                        },
-                      ),
-                      HopalListTile(
-                        title: const Text('החלפת פלוגה'),
-                        subtitle: const Text('הקמת פלוגה חדשה או הצטרפות באמצעות קוד'),
-                        leadingIcon: LucideIcons.arrowLeftRight,
-                        onTap: () => _confirmSwitchUnit(context),
-                      ),
+                      const SizedBox(height: AppTheme.spacing16),
                     ],
-                  ),
+
+                    HopalButton(
+                      label: 'התנתקות מהמערכת',
+                      icon: LucideIcons.logOut,
+                      variant: HopalButtonVariant.destructive,
+                      isExpanded: true,
+                      onPressed: () {
+                        AuthService().logout();
+                        Navigator.pushAndRemoveUntil(
+                          context,
+                          MaterialPageRoute(builder: (_) => const LoginScreen()),
+                          (route) => false,
+                        );
+                      },
+                    ),
+
+                    const SizedBox(height: 120), // Bottom nav padding
+                  ]),
                 ),
-
-                const SizedBox(height: AppTheme.spacing32),
-
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: AppTheme.spacing16),
-                  child: Text('מערכת וסנכרון', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppTheme.textPrimary)),
-                ),
-                const SizedBox(height: AppTheme.spacing12),
-                HopalCard(
-                  padding: EdgeInsets.zero,
-                  child: Column(
-                    children: [
-                      HopalListTile(
-                        title: const Text('רופא הגדוד (התייעצות WhatsApp)'),
-                        subtitle: Text(
-                          _doctorPhone.isNotEmpty
-                              ? '${_doctorName.isNotEmpty ? '$_doctorName • ' : ''}$_doctorPhone'
-                              : 'טרם הוגדר מספר (לחץ להגדרה מהירה)',
-                          style: TextStyle(
-                            color: _doctorPhone.isNotEmpty ? AppTheme.primaryGreen : AppTheme.warningAmber,
-                            fontSize: 13,
-                          ),
-                        ),
-                        leadingIcon: LucideIcons.stethoscope,
-                        onTap: () => _showDoctorSettingsDialog(context),
-                      ),
-                      HopalListTile(
-                        title: const Text('מצב סנכרון'),
-                        subtitle: Text(_syncTime == 'כעת' ? 'סונכרן כעת' : 'מחובר לרשת (מקוון)'),
-                        leadingIcon: LucideIcons.wifi,
-                        onTap: () => _showSyncStatus(context),
-                      ),
-                      HopalListTile(
-                        title: const Text('סנכרון טיוטות מקומיות (אופליין)'),
-                        subtitle: const Text('שלח תיקים שנשמרו כשלא הייתה קליטה'),
-                        leadingIcon: LucideIcons.cloudLightning,
-                        onTap: () async {
-                          final hasDrafts = await DraftService.hasDrafts();
-                          if (!hasDrafts) {
-                            if (context.mounted) HopalFeedback.showSuccess(context, 'אין טיוטות שממתינות לסנכרון');
-                            return;
-                          }
-                          if (context.mounted) HopalFeedback.showSuccess(context, 'מסנכרן טיוטות מול השרת...');
-                          final count = await DraftService.syncDrafts();
-                          if (context.mounted) {
-                            if (count > 0) {
-                              HopalFeedback.showSuccess(context, '$count טיוטות סונכרנו בהצלחה!');
-                              ref.read(medicalCasesProvider.notifier).refresh();
-                            } else {
-                              HopalFeedback.showError(context, 'שגיאה בסנכרון. אנא ודא שיש חיבור אינטרנט תקין.');
-                            }
-                          }
-                        },
-                      ),
-                      HopalListTile(
-                        title: const Text('הגדרות תצוגה'),
-                        subtitle: Text('ערכת נושא $currentThemeStr'),
-                        leadingIcon: LucideIcons.monitor,
-                        onTap: () => _showThemeSettings(context),
-                      ),
-                      HopalListTile(
-                        title: const Text('ניהול התראות'),
-                        subtitle: Text(_notificationsEnabled ? 'התראות דחיפה מופעלות' : 'התראות דחיפה כבויות'),
-                        leadingIcon: _notificationsEnabled ? LucideIcons.bellRing : LucideIcons.bellOff,
-                        onTap: () {
-                          setState(() => _notificationsEnabled = !_notificationsEnabled);
-                          HopalFeedback.showSuccess(context, 'הגדרות התראות נשמרו');
-                        },
-                      ),
-                      HopalListTile(
-                        title: const Text('אבטחה ביומטרית'),
-                        subtitle: Text(
-                          _canCheckBiometrics
-                              ? (_biometricsEnabled ? 'זיהוי פנים / טביעת אצבע מופעל' : 'לחץ להפעלת טביעת אצבע / זיהוי פנים')
-                              : 'לא זוהה חיישן ביומטרי פעיל במכשיר זה',
-                          style: TextStyle(
-                            color: _biometricsEnabled ? AppTheme.primaryGreen : AppTheme.textSecondary,
-                            fontSize: 13,
-                          ),
-                        ),
-                        leadingIcon: LucideIcons.fingerprint,
-                        trailing: Switch(
-                          value: _biometricsEnabled && _canCheckBiometrics,
-                          onChanged: _canCheckBiometrics ? (_) => _toggleBiometrics() : null,
-                          activeTrackColor: AppTheme.primaryGreen,
-                        ),
-                        onTap: _toggleBiometrics,
-                      ),
-                      HopalListTile(
-                        title: const Text('שינוי סיסמה'),
-                        subtitle: const Text('בחירת סיסמה חדשה לחשבון שלך'),
-                        leadingIcon: LucideIcons.keyRound,
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => const UpdatePasswordScreen(),
-                            ),
-                          );
-                        },
-                      ),
-                    ],
-                  ),
-                ),
-
-                const SizedBox(height: AppTheme.spacing32),
-
-                Padding(
-                  padding: EdgeInsets.symmetric(horizontal: AppTheme.spacing16),
-                  child: Text('תמיכה ואודות', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppTheme.textPrimary)),
-                ),
-                const SizedBox(height: AppTheme.spacing12),
-                HopalCard(
-                  padding: EdgeInsets.zero,
-                  child: Column(
-                    children: [
-                      HopalListTile(
-                        title: const Text('מדריך למשתמש'),
-                        leadingIcon: LucideIcons.helpCircle,
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => const UserManualScreen(),
-                            ),
-                          );
-                        },
-                      ),
-                      HopalListTile(
-                        title: const Text('דיווח על תקלה / פידבק'),
-                        subtitle: const Text('Gmail • WhatsApp • העתקת מייל'),
-                        leadingIcon: LucideIcons.messageSquare,
-                        trailing: Icon(LucideIcons.chevronLeft, color: AppTheme.textSecondary, size: 18),
-                        onTap: () => _showFeedbackSheet(context),
-                      ),
-                      HopalListTile(
-                        title: const Text('אודות המערכת וגרסה'),
-                        subtitle: const Text('גרסה ${AppConstants.version} • לחץ לבדיקת עדכונים'),
-                        leadingIcon: LucideIcons.info,
-                        onTap: () {
-                          HopalBottomSheet.show(
-                            context: context,
-                            title: 'אודות HOPAL',
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: [
-                                Text('גרסת אפליקציה: ${AppConstants.fullVersionLabel}', style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.bold)),
-                                const SizedBox(height: 8),
-                                Text(
-                                  'האפליקציה מתעדכנת ברציף. במידה ואתה עובד מהדפדפן (Web/PWA) ולא רואה את השינויים האחרונים, מומלץ לבצע רענון מאולץ (Ctrl + F5 או Shift + טען מחדש) כדי לפנות את זיכרון המטמון.',
-                                  style: TextStyle(color: AppTheme.textSecondary, fontSize: 13, height: 1.4),
-                                ),
-                                const SizedBox(height: AppTheme.spacing24),
-                                HopalButton(
-                                  label: 'רענן אפליקציה מחדש',
-                                  icon: LucideIcons.refreshCw,
-                                  onPressed: () {
-                                    Navigator.pop(context);
-                                    HopalFeedback.showInfo(context, 'לרענון נקי של המטמון ועדכון מיידי: לחץ Ctrl + F5 במקלדת');
-                                  },
-                                ),
-                              ],
-                            ),
-                          );
-                        },
-                      ),
-                    ],
-                  ),
-                ),
-
-                const SizedBox(height: AppTheme.spacing48),
-
-                HopalButton(
-                  label: 'סיום תעסוקה מבצעית',
-                  icon: LucideIcons.flag,
-                  variant: HopalButtonVariant.secondary,
-                  isExpanded: true,
-                  onPressed: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(builder: (context) => const DeploymentSummaryScreen()),
-                    );
-                  },
-                ),
-
-                const SizedBox(height: AppTheme.spacing16),
-
-                HopalButton(
-                  label: 'התנתקות מהמערכת',
-                  icon: LucideIcons.logOut,
-                  variant: HopalButtonVariant.destructive,
-                  isExpanded: true,
-                  onPressed: () {
-                    AuthService().logout();
-                    Navigator.pushAndRemoveUntil(
-                      context,
-                      MaterialPageRoute(builder: (_) => const LoginScreen()),
-                      (route) => false,
-                    );
-                  },
-                ),
-
-                const SizedBox(height: 120), // Bottom nav padding
-              ]),
-            ),
+              ),
+            ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 }

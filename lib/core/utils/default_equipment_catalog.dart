@@ -82,3 +82,4 @@ class DefaultEquipmentCatalog {
     }).toList();
   }
 }
+

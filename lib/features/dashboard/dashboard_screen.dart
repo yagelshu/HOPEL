@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' hide User;
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -74,7 +75,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
     } else {
       _entranceController.value = 1.0;
     }
-    
+
     _checkFirstTimeSetup();
     _autoSyncDrafts();
   }
@@ -181,63 +182,75 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
   }
 
   Widget _buildHeader(String name, [User? user]) {
-    final unitName = user?.unitName ?? 'פלוגה ג\'';
+    final unitName = user?.unitName ?? 'פלוגה';
     final deploymentName = user?.activeDeploymentName ?? '';
-    final subtitle = deploymentName.isNotEmpty ? 'חופ"ל $unitName - $deploymentName' : 'חופ"ל $unitName';
+    final roleLabel = AuthService().isCompanyMedic ? 'חופ"ל' : 'חובש קרבי';
+    final subtitle = deploymentName.isNotEmpty
+        ? '$roleLabel • $unitName ($deploymentName)'
+        : '$roleLabel • $unitName';
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(AppTheme.spacing16, AppTheme.spacing32, AppTheme.spacing16, AppTheme.spacing24),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Row(
-            children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(12),
-                child: Transform.scale(
-                  scale: 1.05,
-                  child: Image.asset(
-                    'assets/icon/app_icon.png',
-                    width: 48,
-                    height: 48,
-                    fit: BoxFit.cover,
-                    errorBuilder: (context, error, stackTrace) => Icon(LucideIcons.shieldAlert, size: 48, color: AppTheme.primaryGreen),
+          Expanded(
+            child: Row(
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: Transform.scale(
+                    scale: 1.05,
+                    child: Image.asset(
+                      'assets/icon/app_icon.png',
+                      width: 48,
+                      height: 48,
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, error, stackTrace) => Icon(LucideIcons.shieldAlert, size: 48, color: AppTheme.primaryGreen),
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(width: AppTheme.spacing16),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('שלום $name', style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.bold, letterSpacing: -0.5)),
-                  const SizedBox(height: AppTheme.spacing4),
-                  Text(subtitle, style: TextStyle(color: AppTheme.textSecondary, fontSize: 14, fontWeight: FontWeight.w500)),
-                ],
-              ),
-            ],
+                const SizedBox(width: AppTheme.spacing16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'שלום $name',
+                        style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.bold, letterSpacing: -0.5),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: AppTheme.spacing4),
+                      Text(
+                        subtitle,
+                        style: TextStyle(color: AppTheme.textSecondary, fontSize: 14, fontWeight: FontWeight.w500),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
-          Row(
-            children: [
-              GestureDetector(
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (context) => const ProfileScreen()),
-                  );
-                },
-                child: Container(
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    border: Border.all(color: AppTheme.borderSubtle, width: 2),
-                  ),
-                  child: CircleAvatar(
-                    radius: 22,
-                    backgroundColor: AppTheme.backgroundSecondary,
-                    child: Icon(LucideIcons.user, size: 20, color: AppTheme.textPrimary),
-                  ),
-                ),
+          const SizedBox(width: AppTheme.spacing8),
+          GestureDetector(
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const ProfileScreen()),
+              );
+            },
+            child: Container(
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(color: AppTheme.borderSubtle, width: 2),
               ),
-            ],
+              child: CircleAvatar(
+                radius: 22,
+                backgroundColor: AppTheme.backgroundSecondary,
+                child: Icon(LucideIcons.user, size: 20, color: AppTheme.textPrimary),
+              ),
+            ),
           ),
         ],
       ),
@@ -247,7 +260,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
   Widget _buildHero(DashboardMetrics metrics) {
     final int criticalAlerts = metrics.requiresAttentionCases + metrics.missingEquipment;
     final bool isReady = criticalAlerts == 0;
-    
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: AppTheme.spacing16),
       child: HopalCard(
@@ -267,7 +280,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
                       const SizedBox(width: AppTheme.spacing8),
                       Text('כשירות מבצעית', style: TextStyle(color: isReady ? AppTheme.successGreen : AppTheme.warningAmber, fontSize: 14, fontWeight: FontWeight.w700, letterSpacing: 0.5)),
                       const Spacer(),
-                      const Spacer(),
                       if (!isReady)
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -283,8 +295,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
                   Text(isReady ? 'הכל תקין' : 'נדרש טיפול', style: TextStyle(fontSize: 32, fontWeight: FontWeight.w900, color: AppTheme.textPrimary, height: 1.0, letterSpacing: -0.5)),
                   const SizedBox(height: AppTheme.spacing8),
                   Text(
-                    isReady ? 'הפלוגה ערוכה לפעילות. הציוד תקין ואין חריגים.' : 'ישנם $criticalAlerts נושאים פתוחים הדורשים את תשומת לבך במיידי.', 
-                    style: TextStyle(color: AppTheme.textSecondary, fontSize: 15, height: 1.4)
+                    isReady ? 'הפלוגה ערוכה לפעילות. הציוד תקין ואין חריגים.' : 'ישנם $criticalAlerts נושאים פתוחים הדורשים את תשומת לבך במיידי.',
+                    style: TextStyle(color: AppTheme.textSecondary, fontSize: 15, height: 1.4),
                   ),
                 ],
               ),
@@ -358,7 +370,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
       orElse: () => null,
     );
     final activeCasesCount = activeCasesList?.length ?? metrics.requiresAttentionCases;
-    
+
     final int criticalAlerts = activeCasesCount + metrics.missingEquipment;
     if (criticalAlerts == 0) return const SizedBox.shrink();
 
@@ -383,7 +395,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
             ],
           ),
           const SizedBox(height: AppTheme.spacing16),
-          
           if (metrics.missingEquipment > 0) ...[
             HopalCard(
               padding: EdgeInsets.zero,
@@ -397,19 +408,17 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
             ),
             const SizedBox(height: AppTheme.spacing16),
           ],
-          
-          // Display actual active medical cases inbox
           ref.watch(medicalCasesProvider).when(
             data: (cases) {
               final activeCases = cases.where((c) => c.status != 'COMPLETED' && c.status != 'CLOSED').toList();
               if (activeCases.isEmpty) return const SizedBox.shrink();
-              
+
               return ref.watch(soldiersProvider).when(
                 data: (soldiers) {
                   return Column(
                     children: activeCases.map((medCase) {
                       final soldier = soldiers.firstWhere((s) => s.id == medCase.soldierId, orElse: () => Soldier(id: medCase.soldierId, name: 'חייל לא ידוע'));
-                      
+
                       return Container(
                         margin: const EdgeInsets.only(bottom: AppTheme.spacing12),
                         child: Dismissible(
@@ -417,7 +426,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
                           direction: DismissDirection.endToStart,
                           confirmDismiss: (direction) async {
                             final String? notes = await _showSummaryBottomSheet(context);
-                            if (notes == null) return false; // user cancelled
+                            if (notes == null) return false;
 
                             final updatedCase = {
                               'id': medCase.id,
@@ -428,7 +437,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
                               'updated_date': DateTime.now().toIso8601String(),
                               'closed_date': DateTime.now().toIso8601String(),
                             };
-                            
+
                             if (notes.trim().isNotEmpty) {
                               updatedCase['description'] = '${updatedCase['description'] ?? ''}\n\n[סיכום טיפול]: $notes'.trim();
                             }
@@ -481,9 +490,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
                                   Row(
                                     children: [
                                       HopalStatusBadge(
-                                        label: '', 
-                                        icon: LucideIcons.user, 
-                                        variant: medCase.status == 'REQUIRES_ATTENTION' ? HopalStatusBadgeVariant.critical : HopalStatusBadgeVariant.info
+                                        label: '',
+                                        icon: LucideIcons.user,
+                                        variant: medCase.status == 'REQUIRES_ATTENTION' ? HopalStatusBadgeVariant.critical : HopalStatusBadgeVariant.info,
                                       ),
                                       const SizedBox(width: AppTheme.spacing12),
                                       Expanded(
@@ -593,6 +602,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
   }
 
   Widget _buildQuickActions() {
+    final isCompanyMedic = AuthService().isCompanyMedic;
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(AppTheme.spacing16, AppTheme.spacing32, AppTheme.spacing16, 0),
       child: Column(
@@ -615,24 +626,26 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
                   },
                 ),
               ),
-              const SizedBox(width: AppTheme.spacing12),
-              Expanded(
-                flex: 2,
-                child: HopalButton(
-                  label: 'מצבת פלוגה',
-                  icon: LucideIcons.users,
-                  isExpanded: true,
-                  variant: HopalButtonVariant.secondary,
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const SoldiersManagementScreen(),
-                      ),
-                    );
-                  },
+              if (isCompanyMedic) ...[
+                const SizedBox(width: AppTheme.spacing12),
+                Expanded(
+                  flex: 2,
+                  child: HopalButton(
+                    label: 'מאגר חיילים',
+                    icon: LucideIcons.users,
+                    isExpanded: true,
+                    variant: HopalButtonVariant.secondary,
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const SoldiersManagementScreen(),
+                        ),
+                      );
+                    },
+                  ),
                 ),
-              ),
+              ],
             ],
           ),
           const SizedBox(height: AppTheme.spacing12),
@@ -671,7 +684,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
   }
 
   Widget _buildOperationalStatus(DashboardMetrics metrics) {
-    final soldiersCount = ref.watch(soldiersProvider).maybeWhen(data: (s) => s.length, orElse: () => 0);
+    final standbyCount = metrics.activeMedics.where((m) => m['standby'] == true).length;
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(AppTheme.spacing16, AppTheme.spacing32, AppTheme.spacing16, 0),
@@ -682,12 +695,14 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
           const SizedBox(height: AppTheme.spacing16),
           Row(
             children: [
-              Expanded(child: _buildStatusCard('פניות פתוחות', '${metrics.activeMedicalCases}', LucideIcons.activity)),
+              Expanded(
+                child: _buildStatusCard('פניות פתוחות', '${metrics.activeMedicalCases}', LucideIcons.activity),
+              ),
               const SizedBox(width: AppTheme.spacing8),
               Expanded(
                 child: _buildStatusCard(
-                  'בכוננות', 
-                  '${metrics.activeMedics.where((m) => m['standby']).length}/${metrics.activeMedics.length}', 
+                  'חובשים במוצב',
+                  '$standbyCount/${metrics.activeMedics.length}',
                   LucideIcons.shieldCheck,
                   onTap: () => _showMedicsBottomSheet(context, metrics.activeMedics),
                 ),
@@ -695,13 +710,13 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
               const SizedBox(width: AppTheme.spacing8),
               Expanded(
                 child: _buildStatusCard(
-                  'מצבת פלוגה', 
-                  '$soldiersCount', 
-                  LucideIcons.users,
+                  'כשירות ציוד',
+                  '${metrics.equipmentReadinessPercent}%',
+                  LucideIcons.briefcase,
                   onTap: () {
                     Navigator.push(
                       context,
-                      MaterialPageRoute(builder: (context) => const SoldiersManagementScreen()),
+                      MaterialPageRoute(builder: (context) => const EquipmentListScreen()),
                     );
                   },
                 ),
@@ -716,7 +731,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
   Widget _buildStatusCard(String title, String value, IconData icon, {VoidCallback? onTap}) {
     return HopalCard(
       onTap: onTap,
-      padding: const EdgeInsets.all(AppTheme.spacing24),
+      padding: const EdgeInsets.all(AppTheme.spacing16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -729,16 +744,47 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
             child: Icon(icon, color: AppTheme.militaryOlive, size: 20),
           ),
           const SizedBox(height: AppTheme.spacing24),
-          Text(value, style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: AppTheme.textPrimary, letterSpacing: -0.5)),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(value, style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: AppTheme.textPrimary, letterSpacing: -0.5)),
+          ),
           const SizedBox(height: AppTheme.spacing4),
-          Text(title, style: TextStyle(fontSize: 14, color: AppTheme.textSecondary, fontWeight: FontWeight.w500)),
+          Text(title, style: TextStyle(fontSize: 13, color: AppTheme.textSecondary, fontWeight: FontWeight.w500)),
         ],
       ),
     );
   }
 
+  Future<void> _shareMedicsReportWithBattalionMedic(List<Map<String, dynamic>> medics) async {
+    final onStandby = medics.where((m) => m['standby'] == true).toList();
+    final user = AuthService().currentUser;
+    final unitLabel = user?.unitName ?? 'הפלוגה';
+    final depLabel = user?.activeDeploymentName;
+    final header = (depLabel != null && depLabel.isNotEmpty)
+        ? 'מצבת חובשים במוצב – $unitLabel ($depLabel):'
+        : 'מצבת חובשים במוצב – $unitLabel:';
+
+    final listText = onStandby.isEmpty
+        ? '• אין חובשים מסומנים במוצב כרגע'
+        : onStandby.map((m) {
+            final platoon = m['platoon'] as String?;
+            return (platoon != null && platoon.isNotEmpty)
+                ? '• ${m['name']} ($platoon)'
+                : '• ${m['name']}';
+          }).join('\n');
+
+    final report = '$header\nסה"כ במוצב: ${onStandby.length} מתוך ${medics.length}\n\nפירוט:\n$listText';
+    final waUri = Uri.parse('https://wa.me/?text=${Uri.encodeComponent(report)}');
+    if (await canLaunchUrl(waUri)) {
+      await launchUrl(waUri, mode: LaunchMode.externalApplication);
+    } else {
+      await Share.share(report);
+    }
+  }
+
   void _showMedicsBottomSheet(BuildContext context, List<Map<String, dynamic>> initialMedics) async {
     final unitId = AuthService().currentUser?.unitId;
+    final isCompanyMedic = AuthService().isCompanyMedic;
     final manualMedics = await StandbyMedicsService.getManualMedics(unitId);
     if (!context.mounted) return;
 
@@ -757,7 +803,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
       final nameController = TextEditingController();
       final phoneController = TextEditingController();
       final platoonController = TextEditingController();
-      
+
       final soldiers = ref.read(soldiersProvider).asData?.value ?? [];
 
       final result = await showDialog<Map<String, String>?>(
@@ -770,7 +816,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
                 children: [
                   Icon(LucideIcons.userPlus, color: AppTheme.primaryGreen, size: 22),
                   const SizedBox(width: 8),
-                  Text('הוספת חובש לכוננות', style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.bold, fontSize: 18)),
+                  Text('הוספת חובש לרשימה', style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.bold, fontSize: 18)),
                 ],
               ),
               content: SingleChildScrollView(
@@ -779,7 +825,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     Text(
-                      'באפשרותך לצרף חובש לרשימת הכוננות באופן ידני, גם אם עדיין לא הצטרף לאפליקציה במכשיר שלו.',
+                      'באפשרותך לצרף חובש למצבת החובשים ידנית, גם אם עדיין לא נכנס לאפליקציה במכשיר שלו.',
                       style: TextStyle(color: AppTheme.textSecondary, fontSize: 13, height: 1.4),
                     ),
                     const SizedBox(height: AppTheme.spacing16),
@@ -788,7 +834,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
                         dropdownColor: AppTheme.backgroundSecondary,
                         style: TextStyle(color: AppTheme.textPrimary),
                         decoration: InputDecoration(
-                          labelText: 'או בחר חייל ממצבת הפלוגה',
+                          labelText: 'או בחר חייל ממאגר הפלוגה',
                           prefixIcon: const Icon(LucideIcons.users),
                           border: OutlineInputBorder(borderRadius: AppTheme.radiusMd),
                         ),
@@ -849,7 +895,11 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
                   onPressed: () => Navigator.pop(ctx, null),
                   child: Text('ביטול', style: TextStyle(color: AppTheme.textSecondary)),
                 ),
-                TextButton(
+                FilledButton(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: AppTheme.primaryGreen,
+                    foregroundColor: Colors.white,
+                  ),
                   onPressed: () {
                     final n = nameController.text.trim();
                     if (n.isEmpty) {
@@ -862,7 +912,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
                       'platoon': platoonController.text.trim(),
                     });
                   },
-                  child: Text('הוסף לרשימה', style: TextStyle(color: AppTheme.primaryGreen, fontWeight: FontWeight.bold)),
+                  child: const Text('הוסף לרשימה', style: TextStyle(fontWeight: FontWeight.bold)),
                 ),
               ],
             );
@@ -888,10 +938,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
         'standby': true,
       };
 
-      // 1. Persist locally and to Supabase
       await StandbyMedicsService.saveManualMedic(unitId, medicData);
 
-      // 2. Add to active modal state
       setModalState(() {
         final existingIdx = medics.indexWhere((m) => m['id'] == newId);
         if (existingIdx != -1) {
@@ -901,11 +949,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
         }
       });
 
-      // 3. Invalidate dashboard metrics provider so home screen cards update immediately
       ref.invalidate(dashboardMetricsProvider);
 
       if (context.mounted) {
-        HopalFeedback.showSuccess(context, 'החובש $name נוסף בהצלחה לכוננות');
+        HopalFeedback.showSuccess(context, 'החובש $name נוסף בהצלחה');
       }
     }
 
@@ -946,21 +993,37 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
 
     HopalBottomSheet.show(
       context: context,
-      title: 'חובשים בכוננות',
+      title: 'חובשים במוצב / בכוננות',
       child: StatefulBuilder(
         builder: (context, setModalState) {
           return Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: <Widget>[
-              // Prominent add button
-              HopalButton(
-                key: const Key('add_medic_tile'),
-                label: 'הוסף חובש לכוננות (הזנה ידנית / ממצבת)',
-                icon: LucideIcons.userPlus,
-                onPressed: () => addMedic(setModalState),
-              ),
-              const SizedBox(height: AppTheme.spacing16),
+              if (isCompanyMedic) ...[
+                HopalButton(
+                  label: 'דיווח מצבת חובשים לחוג"ד (WhatsApp)',
+                  icon: LucideIcons.messageCircle,
+                  onPressed: () => _shareMedicsReportWithBattalionMedic(medics),
+                ),
+                const SizedBox(height: AppTheme.spacing8),
+                HopalButton(
+                  key: const Key('add_medic_tile'),
+                  label: 'הוסף חובש לרשימה (ידני / ממאגר)',
+                  icon: LucideIcons.userPlus,
+                  variant: HopalButtonVariant.secondary,
+                  onPressed: () => addMedic(setModalState),
+                ),
+                const SizedBox(height: AppTheme.spacing16),
+              ] else ...[
+                Padding(
+                  padding: const EdgeInsets.only(bottom: AppTheme.spacing12),
+                  child: Text(
+                    'סמן את עצמך כזמין כשאתה נמצא במוצב / בגזרה. ניתן לחייג או לשלוח הודעה לחובשים בפלוגה.',
+                    style: TextStyle(color: AppTheme.textSecondary, fontSize: 13),
+                  ),
+                ),
+              ],
               if (medics.isEmpty)
                 Container(
                   padding: const EdgeInsets.all(AppTheme.spacing24),
@@ -974,9 +1037,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
                     children: [
                       Icon(LucideIcons.users, size: 36, color: AppTheme.textMuted),
                       const SizedBox(height: AppTheme.spacing8),
-                      Text('אין עדיין חובשים ברשימת הכוננות', style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.bold)),
-                      const SizedBox(height: 4),
-                      Text('לחץ על הכפתור למעלה כדי להוסיף חובשים מהפלוגה', style: TextStyle(color: AppTheme.textSecondary, fontSize: 12)),
+                      Text('אין עדיין חובשים ברשימה', style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.bold)),
                     ],
                   ),
                 ),
@@ -985,6 +1046,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
                 final isManual = medic['is_manual'] == true;
                 final phone = medic['phone_number'] as String?;
                 final platoon = medic['platoon'] as String?;
+                final canToggleThisMedic = isCompanyMedic || isMe;
 
                 return Container(
                   margin: const EdgeInsets.only(bottom: AppTheme.spacing8),
@@ -992,7 +1054,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
                     color: AppTheme.backgroundSecondary,
                     borderRadius: AppTheme.radiusMd,
                     border: Border.all(
-                      color: medic['standby'] == true 
+                      color: medic['standby'] == true
                           ? AppTheme.primaryGreen.withValues(alpha: 0.3)
                           : AppTheme.borderSubtle,
                     ),
@@ -1000,7 +1062,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
                   child: ListTile(
                     contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                     leading: CircleAvatar(
-                      backgroundColor: medic['standby'] == true 
+                      backgroundColor: medic['standby'] == true
                           ? AppTheme.primaryGreen.withValues(alpha: 0.2)
                           : AppTheme.backgroundTertiary,
                       child: Icon(
@@ -1018,7 +1080,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
-                        if (isManual) ...[
+                        if (isManual && isCompanyMedic) ...[
                           const SizedBox(width: 6),
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
@@ -1027,7 +1089,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
                               borderRadius: BorderRadius.circular(4),
                               border: Border.all(color: AppTheme.borderSubtle),
                             ),
-                            child: Text('הזנה ידנית', style: TextStyle(color: AppTheme.textMuted, fontSize: 10)),
+                            child: Text('ידני', style: TextStyle(color: AppTheme.textMuted, fontSize: 10)),
                           ),
                         ],
                       ],
@@ -1061,27 +1123,29 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
                           value: medic['standby'] == true,
                           activeTrackColor: AppTheme.successGreen,
                           inactiveTrackColor: AppTheme.backgroundTertiary,
-                          onChanged: (bool value) async {
-                            setModalState(() => medic['standby'] = value);
-                            final unitId = AuthService().currentUser?.unitId;
-                            if (medic['is_manual'] == true) {
-                              await StandbyMedicsService.updateStandby(unitId, medic['id'], value);
-                            } else {
-                              try {
-                                await Supabase.instance.client
-                                    .from('users')
-                                    .update({'is_on_standby': value})
-                                    .eq('id', medic['id']);
-                              } catch (e) {
-                                setModalState(() => medic['standby'] = !value);
-                                if (context.mounted) HopalFeedback.showError(context, AppErrorHelper.toHebrew(e, fallback: 'שגיאה בעדכון כוננות החובש.'));
-                                return;
-                              }
-                            }
-                            ref.invalidate(dashboardMetricsProvider);
-                          },
+                          onChanged: canToggleThisMedic
+                              ? (bool value) async {
+                                  setModalState(() => medic['standby'] = value);
+                                  final unitId = AuthService().currentUser?.unitId;
+                                  if (medic['is_manual'] == true) {
+                                    await StandbyMedicsService.updateStandby(unitId, medic['id'], value);
+                                  } else {
+                                    try {
+                                      await Supabase.instance.client
+                                          .from('users')
+                                          .update({'is_on_standby': value})
+                                          .eq('id', medic['id']);
+                                    } catch (e) {
+                                      setModalState(() => medic['standby'] = !value);
+                                      if (context.mounted) HopalFeedback.showError(context, AppErrorHelper.toHebrew(e, fallback: 'שגיאה בעדכון כוננות החובש.'));
+                                      return;
+                                    }
+                                  }
+                                  ref.invalidate(dashboardMetricsProvider);
+                                }
+                              : null,
                         ),
-                        if (!isMe)
+                        if (isCompanyMedic && !isMe)
                           IconButton(
                             tooltip: 'הסר חובש',
                             icon: Icon(LucideIcons.trash2, color: AppTheme.criticalRed, size: 18),
@@ -1092,24 +1156,26 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
                   ),
                 );
               }),
-              const SizedBox(height: AppTheme.spacing16),
-              Container(
-                decoration: BoxDecoration(
-                  color: AppTheme.backgroundTertiary.withValues(alpha: 0.5),
-                  borderRadius: AppTheme.radiusMd,
+              if (isCompanyMedic) ...[
+                const SizedBox(height: AppTheme.spacing16),
+                Container(
+                  decoration: BoxDecoration(
+                    color: AppTheme.backgroundTertiary.withValues(alpha: 0.5),
+                    borderRadius: AppTheme.radiusMd,
+                  ),
+                  child: ListTile(
+                    leading: Icon(LucideIcons.share2, color: AppTheme.textSecondary, size: 20),
+                    title: Text('שלח קוד פלוגה לחובשים להצטרפות באפליקציה', style: TextStyle(color: AppTheme.textSecondary, fontSize: 13)),
+                    subtitle: Text('חובשים שיפתחו את האפליקציה יוכלו להזין את הקוד ולהתחבר ישירות', style: TextStyle(fontSize: 11, color: AppTheme.textMuted)),
+                    onTap: () {
+                      final code = AuthService().currentUser?.unitJoinCode ?? '';
+                      if (code.isNotEmpty) {
+                        Share.share('היי, קוד הפלוגה שלנו באפליקציית חופ"ל הוא:\n$code\nהצטרף לפלוגה כדי לסנכרן ציוד וכוננות בזמן אמת!');
+                      }
+                    },
+                  ),
                 ),
-                child: ListTile(
-                  leading: Icon(LucideIcons.share2, color: AppTheme.textSecondary, size: 20),
-                  title: Text('שלח קוד פלוגה לחובשים להצטרפות באפליקציה', style: TextStyle(color: AppTheme.textSecondary, fontSize: 13)),
-                  subtitle: Text('חובשים שיורידו את האפליקציה יוכלו להזין את הקוד ולהתחבר ישירות', style: TextStyle(fontSize: 11, color: AppTheme.textMuted)),
-                  onTap: () {
-                    final code = AuthService().currentUser?.unitJoinCode ?? '';
-                    if (code.isNotEmpty) {
-                      Share.share('היי, קוד הפלוגה שלנו באפליקציית חופ"ל הוא:\n$code\nהצטרף לפלוגה כדי לסנכרן ציוד וכוננות בזמן אמת!');
-                    }
-                  },
-                ),
-              ),
+              ],
             ],
           );
         },
@@ -1184,7 +1250,78 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
     );
   }
 
+  Future<void> _toggleScheduleEventDirectly(Map<String, dynamic> event) async {
+    if (event['id'] == null) return;
+    HapticFeedback.selectionClick();
+    final nextDone = !(event['is_done'] == true);
+    final baseIcon = (event['icon'] ?? 'clock').toString();
+    try {
+      await Supabase.instance.client
+          .from('daily_schedule')
+          .update({
+            'is_done': nextDone,
+            'icon': encodeScheduleIconForToday(baseIcon, isDone: nextDone),
+          })
+          .eq('id', event['id']);
+      ref.invalidate(dashboardMetricsProvider);
+    } catch (e) {
+      if (mounted) {
+        HopalFeedback.showError(
+          context,
+          AppErrorHelper.toHebrew(e, fallback: 'שגיאה בעדכון המשימה בלו"ז.'),
+        );
+      }
+    }
+  }
+
+  Future<void> _seedRecommendedSchedule() async {
+    final user = AuthService().currentUser;
+    if (user?.unitId == null) return;
+
+    try {
+      await Supabase.instance.client.from('daily_schedule').insert([
+        {
+          'unit_id': user!.unitId,
+          'time': '08:00',
+          'title': 'מסדר חולים בוקר',
+          'icon': 'stethoscope',
+          'is_done': false,
+          'actor': 'חופ"ל / חובש תורן',
+        },
+        {
+          'unit_id': user.unitId,
+          'time': '12:30',
+          'title': 'בדיקת כוננות וחוסרים בארגז חופ"ל',
+          'icon': 'package',
+          'is_done': false,
+          'actor': 'חופ"ל',
+        },
+        {
+          'unit_id': user.unitId,
+          'time': '20:00',
+          'title': 'מעקב פניות פתוחות ותדריך כוננות לילה',
+          'icon': 'clock',
+          'is_done': false,
+          'actor': 'חופ"ל',
+        },
+      ]);
+      ref.invalidate(dashboardMetricsProvider);
+      if (mounted) {
+        HopalFeedback.showSuccess(context, 'לו"ז השגרה היומי נטען בהצלחה');
+      }
+    } catch (e) {
+      if (mounted) {
+        HopalFeedback.showError(
+          context,
+          AppErrorHelper.toHebrew(e, fallback: 'שגיאה בטעינת לו"ז השגרה.'),
+        );
+      }
+    }
+  }
+
   Widget _buildDailyTimeline(DashboardMetrics metrics) {
+    final isCompanyMedic = AuthService().isCompanyMedic;
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(AppTheme.spacing16, AppTheme.spacing32, AppTheme.spacing16, 0),
       child: Column(
@@ -1193,48 +1330,81 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text('לו"ז יומי', style: Theme.of(context).textTheme.titleLarge?.copyWith(color: AppTheme.textPrimary, fontSize: 18)),
-              if (AuthService().currentUser != null)
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('לו"ז יומי', style: Theme.of(context).textTheme.titleLarge?.copyWith(color: AppTheme.textPrimary, fontSize: 18)),
+                    const SizedBox(height: 2),
+                    Text(
+                      'מתאפס אוטומטית בכל בוקר • לחץ על משימה לסימון V',
+                      style: TextStyle(color: AppTheme.textMuted, fontSize: 12),
+                    ),
+                  ],
+                ),
+              ),
+              if (isCompanyMedic)
                 ElevatedButton.icon(
                   onPressed: () => _showEditTimelineBottomSheet(context, metrics),
-                  icon: Icon(LucideIcons.pencil, size: 18, color: Colors.white),
-                  label: Text('עריכת לו"ז', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 16, letterSpacing: 0.5)),
+                  icon: const Icon(LucideIcons.pencil, size: 16, color: Colors.white),
+                  label: const Text('עריכת לו"ז', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppTheme.primaryGreen,
                     foregroundColor: Colors.white,
-                    elevation: 6,
-                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-                    shadowColor: AppTheme.primaryGreen.withValues(alpha: 0.5),
+                    elevation: 2,
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
                   ),
                 ),
             ],
           ),
-          const SizedBox(height: AppTheme.spacing8),
+          const SizedBox(height: AppTheme.spacing12),
           HopalCard(
             padding: const EdgeInsets.all(AppTheme.spacing24),
-            child: HopalTimeline(
-              events: metrics.timelineEvents.asMap().entries.map((entry) {
-                final index = entry.key;
-                final event = entry.value;
-                final isWarning = event['iconColor'] == 'warning';
-                
-                IconData iconData = LucideIcons.circle;
-                if (event['icon'] == 'clock') iconData = LucideIcons.clock;
-                if (event['icon'] == 'stethoscope') iconData = LucideIcons.stethoscope;
-                if (event['icon'] == 'package') iconData = LucideIcons.packageSearch;
-                
-                return HopalTimelineEvent(
-                  icon: iconData,
-                  iconColor: isWarning ? AppTheme.warningAmber : AppTheme.militaryOlive,
-                  time: event['time'] ?? '',
-                  title: event['title'] ?? '',
-                  actor: event['actor'] ?? '',
-                  isLast: index == metrics.timelineEvents.length - 1,
-                  isDone: event['is_done'] == true,
-                );
-              }).toList(),
-            ),
+            child: metrics.timelineEvents.isEmpty
+                ? Column(
+                    children: [
+                      Icon(LucideIcons.calendarCheck, size: 32, color: AppTheme.textMuted),
+                      const SizedBox(height: AppTheme.spacing8),
+                      Text(
+                        'טרם הוגדרו משימות קבועות בלו"ז היומי',
+                        style: TextStyle(color: AppTheme.textSecondary, fontSize: 14),
+                        textAlign: TextAlign.center,
+                      ),
+                      if (isCompanyMedic) ...[
+                        const SizedBox(height: AppTheme.spacing16),
+                        HopalButton(
+                          label: 'טען משימות שגרה יומיות',
+                          icon: LucideIcons.sparkles,
+                          variant: HopalButtonVariant.secondary,
+                          onPressed: _seedRecommendedSchedule,
+                        ),
+                      ],
+                    ],
+                  )
+                : HopalTimeline(
+                    events: metrics.timelineEvents.asMap().entries.map((entry) {
+                      final index = entry.key;
+                      final event = entry.value;
+                      final isWarning = event['iconColor'] == 'warning';
+
+                      IconData iconData = LucideIcons.circle;
+                      if (event['icon'] == 'clock') iconData = LucideIcons.clock;
+                      if (event['icon'] == 'stethoscope') iconData = LucideIcons.stethoscope;
+                      if (event['icon'] == 'package') iconData = LucideIcons.packageSearch;
+
+                      return HopalTimelineEvent(
+                        icon: iconData,
+                        iconColor: isWarning ? AppTheme.warningAmber : AppTheme.militaryOlive,
+                        time: event['time'] ?? '',
+                        title: event['title'] ?? '',
+                        actor: event['actor'] ?? '',
+                        isLast: index == metrics.timelineEvents.length - 1,
+                        isDone: event['is_done'] == true,
+                        onTap: () => _toggleScheduleEventDirectly(event),
+                      );
+                    }).toList(),
+                  ),
           ),
         ],
       ),
@@ -1242,7 +1412,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
   }
 
   void _showEditTimelineBottomSheet(BuildContext context, DashboardMetrics metrics) {
-    // Kept outside the builder so edits survive rebuilds.
     final events = metrics.timelineEvents.map((e) => Map<String, dynamic>.from(e)).toList();
     final schedule = Supabase.instance.client.from('daily_schedule');
 
@@ -1250,17 +1419,22 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
 
     HopalBottomSheet.show(
       context: context,
-      title: 'עריכת לו"ז יומי',
+      title: 'עריכת לו"ז יומי קבוע',
       child: StatefulBuilder(
         builder: (context, setModalState) {
           return Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              Text(
+                'המשימות ברשימה נשמרות באופן קבוע ומתאפסות אוטומטית בתחילת כל יום חדש.',
+                style: TextStyle(color: AppTheme.textSecondary, fontSize: 13),
+              ),
+              const SizedBox(height: AppTheme.spacing12),
               if (events.isEmpty)
                 Padding(
                   padding: const EdgeInsets.all(AppTheme.spacing16),
-                  child: Text('הלו"ז ריק. השתמש בכפתור למטה כדי להוסיף משימות.', style: TextStyle(color: AppTheme.textSecondary)),
+                  child: Text('הלו"ז ריק. השתמש בכפתור למטה כדי להוסיף משימות קבועות.', style: TextStyle(color: AppTheme.textSecondary)),
                 ),
               ...events.map((event) {
                 return CheckboxListTile(
@@ -1269,12 +1443,19 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
                   value: event['is_done'] == true,
                   activeColor: AppTheme.primaryGreen,
                   onChanged: (val) async {
-                    setModalState(() => event['is_done'] = val == true);
+                    final nextDone = val == true;
+                    final baseIcon = (event['icon'] ?? 'clock').toString();
+                    setModalState(() => event['is_done'] = nextDone);
                     try {
-                      await schedule.update({'is_done': val == true}).eq('id', event['id']);
+                      await schedule
+                          .update({
+                            'is_done': nextDone,
+                            'icon': encodeScheduleIconForToday(baseIcon, isDone: nextDone),
+                          })
+                          .eq('id', event['id']);
                       ref.invalidate(dashboardMetricsProvider);
                     } catch (e) {
-                      setModalState(() => event['is_done'] = val != true);
+                      setModalState(() => event['is_done'] = !nextDone);
                       if (context.mounted) HopalFeedback.showError(context, AppErrorHelper.toHebrew(e, fallback: 'שגיאה בעדכון המשימה בלו"ז.'));
                     }
                   },
@@ -1295,7 +1476,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
               const SizedBox(height: AppTheme.spacing16),
               HopalButton(
                 key: const Key('schedule_add_task'),
-                label: 'הוסף משימה',
+                label: 'הוסף משימה קבועה',
                 icon: LucideIcons.plus,
                 variant: HopalButtonVariant.secondary,
                 onPressed: () async {
@@ -1308,7 +1489,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
                     context: context,
                     builder: (ctx) => AlertDialog(
                       backgroundColor: AppTheme.backgroundSecondary,
-                      title: Text('הוספת משימה', style: TextStyle(color: AppTheme.textPrimary)),
+                      title: Text('הוספת משימה ללו"ז', style: TextStyle(color: AppTheme.textPrimary)),
                       content: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
@@ -1327,9 +1508,13 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
                       ),
                       actions: [
                         TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text('ביטול', style: TextStyle(color: AppTheme.textSecondary))),
-                        TextButton(
+                        FilledButton(
+                          style: FilledButton.styleFrom(
+                            backgroundColor: AppTheme.primaryGreen,
+                            foregroundColor: Colors.white,
+                          ),
                           onPressed: () => Navigator.pop(ctx, true),
-                          child: Text('הוסף', style: TextStyle(color: AppTheme.primaryGreen)),
+                          child: const Text('הוסף', style: TextStyle(fontWeight: FontWeight.bold)),
                         ),
                       ],
                     ),
@@ -1351,7 +1536,12 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
                         .select()
                         .single();
                     setModalState(() {
-                      events.add({...saved, 'is_done': saved['is_done'] == true, 'time': (saved['time'] ?? '').toString()});
+                      events.add({
+                        ...saved,
+                        'icon': (saved['icon'] ?? 'clock').toString().split('@').first,
+                        'is_done': saved['is_done'] == true,
+                        'time': (saved['time'] ?? '').toString(),
+                      });
                       sortEvents();
                     });
                     ref.invalidate(dashboardMetricsProvider);

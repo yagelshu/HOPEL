@@ -75,7 +75,7 @@ class _NotesScreenState extends State<NotesScreen> with SingleTickerProviderStat
   void _showNoteEditorSheet({Note? existingNote}) {
     final isEditing = existingNote != null;
     final textController = TextEditingController(text: existingNote?.content ?? '');
-    final isCompanyMedic = AuthService().currentUser?.role == 'COMPANY_MEDIC';
+    final isCompanyMedic = AuthService().isCompanyMedic;
     bool isPrivate = existingNote?.isPrivate ?? (isCompanyMedic ? _tabController.index == 0 : true);
     bool isSaving = false;
 
@@ -277,7 +277,7 @@ class _NotesScreenState extends State<NotesScreen> with SingleTickerProviderStat
   Widget build(BuildContext context) {
     final privateNotes = _notes.where((n) => n.isPrivate).toList();
     final sharedNotes = _notes.where((n) => !n.isPrivate).toList();
-    final isCompanyMedic = AuthService().currentUser?.role == 'COMPANY_MEDIC';
+    final isCompanyMedic = AuthService().isCompanyMedic;
     final isSharedTab = _tabController.index == 1;
     final showFab = !isSharedTab || isCompanyMedic;
 
@@ -286,7 +286,7 @@ class _NotesScreenState extends State<NotesScreen> with SingleTickerProviderStat
       appBar: AppBar(
         backgroundColor: AppTheme.backgroundPrimary,
         elevation: 0,
-        title: const Text('יומן חופ"ל', style: TextStyle(fontWeight: FontWeight.bold)),
+        title: Text(isCompanyMedic ? 'יומן חופ"ל' : 'יומן ופנקס חובש', style: const TextStyle(fontWeight: FontWeight.bold)),
         centerTitle: true,
         bottom: TabBar(
           controller: _tabController,
@@ -400,7 +400,7 @@ class _NotesScreenState extends State<NotesScreen> with SingleTickerProviderStat
                 final note = notes[index];
                 final currentUser = AuthService().currentUser;
                 final isOwner = note.userId == currentUser?.id;
-                final canDelete = isOwner || currentUser?.role == 'COMPANY_MEDIC';
+                final canDelete = isOwner || AuthService().isCompanyMedic;
                 final isEdited = note.updatedAt.difference(note.createdAt).inSeconds > 5;
 
                 return HopalCard(

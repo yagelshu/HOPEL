@@ -1,6 +1,7 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:chopel_app/core/auth/auth_service.dart';
 import 'package:chopel_app/theme/app_theme.dart';
 import 'package:chopel_app/features/dashboard/dashboard_screen.dart';
 import 'package:chopel_app/features/medical_cases/medical_cases_list_screen.dart';
@@ -20,61 +21,121 @@ class MainLayoutScreen extends StatefulWidget {
 class _MainLayoutScreenState extends State<MainLayoutScreen> {
   int _currentIndex = 0;
 
-  late final List<Widget> _screens;
-
-  @override
-  void initState() {
-    super.initState();
-    _screens = [
-      DashboardScreen(animateEntrance: widget.animateEntrance),
-      const MedicalCasesListScreen(),
-      const EquipmentListScreen(),
-      const LearningCenterScreen(),
-      const NotesScreen(),
-    ];
+  Widget _buildActiveScreen() {
+    switch (_currentIndex) {
+      case 0:
+        return DashboardScreen(animateEntrance: widget.animateEntrance);
+      case 1:
+        return const MedicalCasesListScreen();
+      case 2:
+        return const EquipmentListScreen();
+      case 3:
+        return const LearningCenterScreen();
+      case 4:
+        return const NotesScreen();
+      default:
+        return DashboardScreen(animateEntrance: widget.animateEntrance);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      extendBody: true, // Allows body to scroll behind the floating nav bar
-      body: _screens[_currentIndex],
-      bottomNavigationBar: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(AppTheme.spacing16),
-          child: ClipRRect(
-            borderRadius: AppTheme.radiusPill,
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-              child: Container(
-                height: 64,
-                decoration: BoxDecoration(
-                  color: AppTheme.backgroundSecondary.withValues(alpha: 0.85),
-                  borderRadius: AppTheme.radiusPill,
-                  border: Border.all(color: AppTheme.borderSubtle),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.4),
-                      blurRadius: 20,
-                      offset: const Offset(0, 8),
+    return ValueListenableBuilder<bool>(
+      valueListenable: AuthService().previewAsCombatMedicNotifier,
+      builder: (context, isPreviewing, _) {
+        final showPreviewBanner = AuthService().isPreviewingAsCombatMedic;
+
+        return Scaffold(
+          extendBody: true, // Allows body to scroll behind the floating nav bar
+          body: Column(
+            children: [
+              if (showPreviewBanner)
+                Container(
+                  width: double.infinity,
+                  color: AppTheme.warningAmber.withValues(alpha: 0.18),
+                  child: SafeArea(
+                    bottom: false,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: AppTheme.spacing16, vertical: 8),
+                      child: Row(
+                        children: [
+                          Icon(LucideIcons.eye, size: 18, color: AppTheme.warningAmber),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'תצוגת חובש פעילה (בדיקת הרשאות)',
+                              style: TextStyle(
+                                color: AppTheme.textPrimary,
+                                fontSize: 13,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                          TextButton(
+                            style: TextButton.styleFrom(
+                              backgroundColor: AppTheme.warningAmber,
+                              foregroundColor: Colors.black,
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                              minimumSize: Size.zero,
+                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            ),
+                            onPressed: () => AuthService().setCombatMedicPreview(false),
+                            child: const Text(
+                              'חזרה לחופ"ל',
+                              style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                  ],
+                  ),
                 ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: [
-                    _buildNavItem(0, LucideIcons.layoutDashboard, 'בית'),
-                    _buildNavItem(1, LucideIcons.activity, 'פניות'),
-                    _buildNavItem(2, LucideIcons.briefcase, 'ציוד'),
-                    _buildNavItem(3, LucideIcons.bookOpen, 'למידה'),
-                    _buildNavItem(4, LucideIcons.notebook, 'יומן'),
-                  ],
+              Expanded(
+                child: KeyedSubtree(
+                  key: ValueKey('tab_${_currentIndex}_$showPreviewBanner'),
+                  child: _buildActiveScreen(),
+                ),
+              ),
+            ],
+          ),
+          bottomNavigationBar: SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.all(AppTheme.spacing16),
+              child: ClipRRect(
+                borderRadius: AppTheme.radiusPill,
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+                  child: Container(
+                    height: 64,
+                    decoration: BoxDecoration(
+                      color: AppTheme.backgroundSecondary.withValues(alpha: 0.85),
+                      borderRadius: AppTheme.radiusPill,
+                      border: Border.all(color: AppTheme.borderSubtle),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.4),
+                          blurRadius: 20,
+                          offset: const Offset(0, 8),
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: [
+                        _buildNavItem(0, LucideIcons.layoutDashboard, 'בית'),
+                        _buildNavItem(1, LucideIcons.activity, 'פניות'),
+                        _buildNavItem(2, LucideIcons.briefcase, 'ציוד'),
+                        _buildNavItem(3, LucideIcons.bookOpen, 'למידה'),
+                        _buildNavItem(4, LucideIcons.notebook, 'יומן'),
+                      ],
+                    ),
+                  ),
                 ),
               ),
             ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 

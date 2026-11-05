@@ -18,10 +18,10 @@ class User {
   final int competencePoints;
 
   User({
-    required this.id, 
-    required this.name, 
-    required this.role, 
-    this.unitId, 
+    required this.id,
+    required this.name,
+    required this.role,
+    this.unitId,
     this.unitName,
     this.unitJoinCode,
     this.activeDeploymentId,
@@ -68,6 +68,19 @@ class AuthService {
 
   User? _currentUser;
   User? get currentUser => _currentUser;
+
+  /// Allows a COMPANY_MEDIC (חופ"ל) to preview the exact UI and permissions of a COMBAT_MEDIC.
+  final ValueNotifier<bool> previewAsCombatMedicNotifier = ValueNotifier<bool>(false);
+
+  bool get isActualCompanyMedic => _currentUser?.role == 'COMPANY_MEDIC';
+  bool get isPreviewingAsCombatMedic => isActualCompanyMedic && previewAsCombatMedicNotifier.value;
+  String get effectiveRole =>
+      isPreviewingAsCombatMedic ? 'COMBAT_MEDIC' : (_currentUser?.role ?? 'COMBAT_MEDIC');
+  bool get isCompanyMedic => effectiveRole == 'COMPANY_MEDIC';
+
+  void setCombatMedicPreview(bool enabled) {
+    previewAsCombatMedicNotifier.value = enabled && isActualCompanyMedic;
+  }
 
   /// True when the app was opened from a password recovery link
   bool isPasswordRecovery = false;
@@ -125,7 +138,7 @@ class AuthService {
       await prefs.setString('handled_recovery_amr_ts', ts);
     }
   }
-  
+
   void updateCurrentUserDeployment(String? deploymentId, String? deploymentName) {
     if (_currentUser != null) {
       _currentUser = User(
@@ -187,6 +200,7 @@ class AuthService {
     final supaUser = _supabase.auth.currentUser;
     if (supaUser == null) {
       _currentUser = null;
+      previewAsCombatMedicNotifier.value = false;
       return;
     }
 
@@ -196,7 +210,7 @@ class AuthService {
           .select('id, name, role, unit_id, active_deployment_id, competence_points, units(name, join_code), deployments(name)')
           .eq('id', supaUser.id)
           .maybeSingle();
-          
+
       if (data == null) {
         final fallback = await _loadLocalProfile(supaUser.id) ??
             User(
@@ -216,7 +230,7 @@ class AuthService {
         } catch (_) {}
         return;
       }
-          
+
       final map = Map<String, dynamic>.from(data);
       if (map['units'] != null) {
         map['unit_name'] = map['units']['name'];
@@ -226,9 +240,12 @@ class AuthService {
         map['active_deployment_name'] = map['deployments']['name'];
       }
       _currentUser = User.fromMap(map);
+      if (!isActualCompanyMedic) {
+        previewAsCombatMedicNotifier.value = false;
+      }
       await _saveLocalProfile(map);
     } catch (e) {
-      print('AuthService.loadProfile error: $e');
+      debugPrint('AuthService.loadProfile error: $e');
       _currentUser = await _loadLocalProfile(supaUser.id) ?? User(id: supaUser.id, name: 'משתמש חדש', role: 'COMBAT_MEDIC');
     }
   }
@@ -265,7 +282,6 @@ class AuthService {
       message = error.toString().toLowerCase();
     }
 
-    // 1. Existing user / email already registered
     if (code == 'user_already_exists' ||
         code == 'email_exists' ||
         message.contains('user already registered') ||
@@ -275,34 +291,29 @@ class AuthService {
       return 'משתמש עם כתובת אימייל זו כבר קיים במערכת. עבור להתחברות או אפס סיסמה.';
     }
 
-    // 2. Wrong email or password
     if (code == 'invalid_credentials' ||
         message.contains('invalid login credentials') ||
         message.contains('invalid_credentials')) {
       return 'האימייל או הסיסמה שגויים. בדוק את הפרטים ונסה שוב.';
     }
 
-    // 3. Unconfirmed email
     if (code == 'email_not_confirmed' ||
         message.contains('email not confirmed')) {
       return 'כתובת האימייל טרם אומתה. בדוק את תיבת הדואר שלך (כולל ספאם).';
     }
 
-    // 4. Weak password
     if (code == 'weak_password' ||
         message.contains('password should be at least') ||
         message.contains('weak_password')) {
       return 'הסיסמה קצרה או חלשה מדי – יש לבחור סיסמה בת 6 תווים לפחות.';
     }
 
-    // 5. Same password during reset
     if (code == 'same_password' ||
         message.contains('different from the old password') ||
         message.contains('same_password')) {
       return 'הסיסמה החדשה חייבת להיות שונה מהסיסמה הנוכחית.';
     }
 
-    // 6. Invalid email format
     if (code == 'validation_failed' ||
         code == 'invalid_email' ||
         message.contains('unable to validate email') ||
@@ -311,7 +322,6 @@ class AuthService {
       return 'כתובת האימייל שהוזנה אינה תקינה.';
     }
 
-    // 7. Rate limit / too many attempts
     if (statusCode == '429' ||
         code.contains('rate_limit') ||
         message.contains('rate limit') ||
@@ -320,7 +330,6 @@ class AuthService {
       return 'נשלחו יותר מדי בקשות בזמן קצר. אנא המתן כדקה ונסה שוב.';
     }
 
-    // 8. Expired / invalid recovery link
     if (code == 'otp_expired' ||
         code == 'flow_state_expired' ||
         message.contains('invalid or has expired') ||
@@ -328,12 +337,10 @@ class AuthService {
       return 'פג תוקף הקישור לאיפוס הסיסמה. בקש קישור חדש במסך ההתחברות.';
     }
 
-    // 9. User not found
     if (code == 'user_not_found' || message.contains('user not found')) {
       return 'לא נמצא משתמש עם כתובת אימייל זו.';
     }
 
-    // 10. Network / Offline connectivity
     if (message.contains('socketexception') ||
         message.contains('failed host lookup') ||
         message.contains('failed to fetch') ||
@@ -378,35 +385,31 @@ class AuthService {
         password: password,
       );
 
-      // When "Confirm email" is enabled in Supabase, signing up with an already-registered
-      // email returns a user object with an empty `identities` list instead of throwing.
       if (response.user != null &&
           response.user!.identities != null &&
           response.user!.identities!.isEmpty) {
         return 'משתמש עם כתובת אימייל זו כבר קיים במערכת. עבור להתחברות או אפס סיסמה.';
       }
-      
+
       if (response.user != null) {
         try {
           await _supabase.from('users').insert({
             'id': response.user!.id,
             'name': name,
             'role': 'COMBAT_MEDIC',
-            'unit_id': null, // User must select or create a unit after login
+            'unit_id': null,
           });
         } catch (dbError) {
           debugPrint('DB Insert error (probably RLS or Email Confirmation): $dbError');
-          // Fallback user state
           _currentUser = User(id: response.user!.id, name: name, role: 'COMBAT_MEDIC');
         }
         await loadProfile();
-        
-        // If loadProfile fails to find the record (because insert failed), use the fallback
+
         if (_currentUser?.name == 'משתמש חדש' && name.isNotEmpty) {
           _currentUser = User(id: response.user!.id, name: name, role: 'COMBAT_MEDIC');
           await _saveLocalProfile(_currentUser!.toMap());
         }
-        
+
         return null;
       }
       return 'לא ניתן היה להשלים את ההרשמה כרגע. נסה שוב.';
@@ -417,13 +420,13 @@ class AuthService {
 
   Future<void> logout() async {
     isPasswordRecovery = false;
+    previewAsCombatMedicNotifier.value = false;
     await _supabase.auth.signOut();
     _currentUser = null;
 
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('saved_password');
-    
-    // Clear local database to prevent data leak between users
+
     final db = await DatabaseService().database;
     await db.clear();
   }
@@ -461,6 +464,8 @@ class AuthService {
     final user = _currentUser;
     if (user == null) return;
 
+    previewAsCombatMedicNotifier.value = false;
+
     await _supabase.from('users').update({
       'unit_id': null,
       'active_deployment_id': null,
@@ -497,25 +502,35 @@ class AuthService {
     }
   }
 
-  Future<bool> enableBiometrics() async {
+  /// Enables biometric lock. Returns `null` on success, or a clear Hebrew error string.
+  Future<String?> enableBiometrics() async {
     final prefs = await SharedPreferences.getInstance();
     if (kIsWeb) {
-      final credId = await WebBiometrics.register(
+      final result = await WebBiometrics.register(
         userId: _currentUser?.id ?? 'hopal-user',
         userName: _currentUser?.name ?? 'חופ"ל',
       );
-      if (credId == null || credId.isEmpty) {
-        return false;
+      if (result.startsWith('OK:')) {
+        final credId = result.substring(3);
+        await prefs.setString('webauthn_credential_id', credId);
+        await prefs.setBool('use_biometrics', true);
+        return null;
       }
-      await prefs.setString('webauthn_credential_id', credId);
-      await prefs.setBool('use_biometrics', true);
-      return true;
+      if (result.contains('NotAllowedError')) {
+        return 'הסריקה הביומטרית בוטלה או שלא מוגדרת נעילת מסך/טביעת אצבע במכשיר.';
+      }
+      if (result.contains('SecurityError') || result.contains('UNSUPPORTED')) {
+        return 'דפדפן פנימי זה חוסם גישה לחיישן הביומטרי – פתח את הקישור ישירות בדפדפן Chrome / Safari.';
+      }
+      return 'לא ניתן היה להפעיל זיהוי ביומטרי בדפדפן זה. ודא שהאתר פתוח ב-Chrome או Safari.';
     }
 
     final verified = await authenticateWithBiometrics();
-    if (!verified) return false;
+    if (!verified) {
+      return 'האימות הביומטרי לא הושלם. ודא שמוגדרת טביעת אצבע או זיהוי פנים במכשיר.';
+    }
     await prefs.setBool('use_biometrics', true);
-    return true;
+    return null;
   }
 
   Future<void> disableBiometrics() async {
@@ -534,11 +549,11 @@ class AuthService {
     try {
       final bool canAuthenticateWithBiometrics = await auth.canCheckBiometrics;
       final bool canAuthenticate = canAuthenticateWithBiometrics || await auth.isDeviceSupported();
-      
+
       if (!canAuthenticate) {
         return false;
       }
-      
+
       return await auth.authenticate(
         localizedReason: 'הזדהה על מנת להתחבר למערכת חופ"ל',
       );
