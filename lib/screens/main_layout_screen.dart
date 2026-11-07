@@ -1,24 +1,27 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:chopel_app/core/auth/auth_service.dart';
 import 'package:chopel_app/theme/app_theme.dart';
 import 'package:chopel_app/features/dashboard/dashboard_screen.dart';
+import 'package:chopel_app/features/dashboard/providers.dart';
 import 'package:chopel_app/features/medical_cases/medical_cases_list_screen.dart';
 import 'package:chopel_app/features/profile/soldiers_management_screen.dart';
 import 'package:chopel_app/features/equipment/equipment_list_screen.dart';
 import 'package:chopel_app/features/learning/learning_center_screen.dart';
+import 'package:chopel_app/screens/profile_screen.dart';
 
-class MainLayoutScreen extends StatefulWidget {
+class MainLayoutScreen extends ConsumerStatefulWidget {
   final bool animateEntrance;
 
   const MainLayoutScreen({super.key, this.animateEntrance = false});
 
   @override
-  State<MainLayoutScreen> createState() => _MainLayoutScreenState();
+  ConsumerState<MainLayoutScreen> createState() => _MainLayoutScreenState();
 }
 
-class _MainLayoutScreenState extends State<MainLayoutScreen> {
+class _MainLayoutScreenState extends ConsumerState<MainLayoutScreen> {
   int _currentIndex = 0;
 
   Widget _buildActiveScreen() {
@@ -40,10 +43,11 @@ class _MainLayoutScreenState extends State<MainLayoutScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return ValueListenableBuilder<bool>(
-      valueListenable: AuthService().previewAsCombatMedicNotifier,
-      builder: (context, isPreviewing, _) {
+    return ValueListenableBuilder<int>(
+      valueListenable: AuthService().previewRevisionNotifier,
+      builder: (context, revision, _) {
         final showPreviewBanner = AuthService().isPreviewingAsCombatMedic;
+        final previewName = AuthService().effectiveUserName;
 
         return Scaffold(
           extendBody: true, // Allows body to scroll behind the floating nav bar
@@ -62,15 +66,25 @@ class _MainLayoutScreenState extends State<MainLayoutScreen> {
                           Icon(LucideIcons.eye, size: 18, color: AppTheme.warningAmber),
                           const SizedBox(width: 8),
                           Expanded(
-                            child: Text(
-                              'תצוגת חובש פעילה (בדיקת הרשאות)',
-                              style: TextStyle(
-                                color: AppTheme.textPrimary,
-                                fontSize: 13,
-                                fontWeight: FontWeight.bold,
+                            child: GestureDetector(
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(builder: (_) => const ProfileScreen()),
+                                );
+                              },
+                              child: Text(
+                                'תצוגת חובש: $previewName',
+                                style: TextStyle(
+                                  color: AppTheme.textPrimary,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                                overflow: TextOverflow.ellipsis,
                               ),
                             ),
                           ),
+                          const SizedBox(width: 8),
                           TextButton(
                             style: TextButton.styleFrom(
                               backgroundColor: AppTheme.warningAmber,
@@ -79,7 +93,10 @@ class _MainLayoutScreenState extends State<MainLayoutScreen> {
                               minimumSize: Size.zero,
                               tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                             ),
-                            onPressed: () => AuthService().setCombatMedicPreview(false),
+                            onPressed: () {
+                              AuthService().setCombatMedicPreview(false);
+                              ref.invalidate(dashboardMetricsProvider);
+                            },
                             child: const Text(
                               'חזרה לחופ"ל',
                               style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
@@ -92,7 +109,7 @@ class _MainLayoutScreenState extends State<MainLayoutScreen> {
                 ),
               Expanded(
                 child: KeyedSubtree(
-                  key: ValueKey('tab_${_currentIndex}_$showPreviewBanner'),
+                  key: ValueKey('tab_${_currentIndex}_${showPreviewBanner}_$revision'),
                   child: _buildActiveScreen(),
                 ),
               ),

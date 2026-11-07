@@ -14,9 +14,38 @@ import 'package:chopel_app/models/equipment.dart';
 final equipmentDatabaseProvider = Provider<DatabaseService>((ref) => DatabaseService());
 
 class EquipmentNotifier extends AsyncNotifier<List<Equipment>> {
+  final Set<String> _seedingMedicIds = {};
+
   @override
   FutureOr<List<Equipment>> build() async {
     return _loadEquipment();
+  }
+
+  Future<void> _persistLocalCache(String unitId, List<Equipment> items) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final jsonList = items.map((e) => e.toMap()).toList();
+      await prefs.setString('cached_equipment_$unitId', jsonEncode(jsonList));
+    } catch (_) {}
+  }
+
+  Map<String, String> _readCachedImages(SharedPreferences prefs, String cacheKey) {
+    final result = <String, String>{};
+    final cachedStr = prefs.getString(cacheKey);
+    if (cachedStr == null || cachedStr.isEmpty) return result;
+    try {
+      final decoded = jsonDecode(cachedStr) as List;
+      for (final raw in decoded) {
+        if (raw is Map) {
+          final id = raw['id']?.toString();
+          final img = raw['image_path']?.toString();
+          if (id != null && img != null && img.isNotEmpty) {
+            result[id] = img;
+          }
+        }
+      }
+    } catch (_) {}
+    return result;
   }
 
   Future<List<Equipment>> _loadEquipment() async {
@@ -27,6 +56,7 @@ class EquipmentNotifier extends AsyncNotifier<List<Equipment>> {
     final cacheKey = 'cached_equipment_$unitId';
     final seededKey = 'equipment_seeded_$unitId';
     final prefs = await SharedPreferences.getInstance();
+    final cachedImages = _readCachedImages(prefs, cacheKey);
 
     try {
       final response = await Supabase.instance.client
@@ -35,9 +65,13 @@ class EquipmentNotifier extends AsyncNotifier<List<Equipment>> {
           .eq('unit_id', unitId)
           .order('name');
 
-      var items = (response as List)
-          .map((map) => Equipment.fromMap(Map<String, dynamic>.from(map)))
-          .toList();
+      var items = (response as List).map((map) {
+        final eq = Equipment.fromMap(Map<String, dynamic>.from(map));
+        if (eq.imagePath == null && cachedImages.containsKey(eq.id)) {
+          return eq.copyWith(imagePath: cachedImages[eq.id]);
+        }
+        return eq;
+      }).toList();
 
       // Auto-seed standard IDF equipment once for units that have 0 items yet
       if (items.isEmpty && !(prefs.getBool(seededKey) ?? false)) {
@@ -57,12 +91,7 @@ class EquipmentNotifier extends AsyncNotifier<List<Equipment>> {
         await prefs.setBool(seededKey, true);
       }
 
-      // Cache locally for offline resilience
-      try {
-        final jsonList = items.map((e) => e.toMap()).toList();
-        await prefs.setString(cacheKey, jsonEncode(jsonList));
-      } catch (_) {}
-
+      await _persistLocalCache(unitId, items);
       return items;
     } catch (e) {
       // Offline fallback: load from cached json
@@ -81,12 +110,7 @@ class EquipmentNotifier extends AsyncNotifier<List<Equipment>> {
       final fallbackRows = DefaultEquipmentCatalog.buildRowsForUnit(unitId);
       final fallbackItems = fallbackRows.map((m) => Equipment.fromMap(m)).toList()
         ..sort((a, b) => a.name.compareTo(b.name));
-      try {
-        await prefs.setString(
-          cacheKey,
-          jsonEncode(fallbackItems.map((e) => e.toMap()).toList()),
-        );
-      } catch (_) {}
+      await _persistLocalCache(unitId, fallbackItems);
       return fallbackItems;
     }
   }
@@ -96,7 +120,7 @@ class EquipmentNotifier extends AsyncNotifier<List<Equipment>> {
     state = await AsyncValue.guard(() => _loadEquipment());
   }
 
-  /// Explicitly loads the 50-item standard IDF equipment kit into the unit.
+  /// Explicitly loads the standard IDF equipment kit into the unit.
   Future<void> seedStandardCatalog() async {
     final user = AuthService().currentUser;
     if (user?.unitId == null) return;
@@ -118,16 +142,112 @@ class EquipmentNotifier extends AsyncNotifier<List<Equipment>> {
 
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool('equipment_seeded_$unitId', true);
-      await prefs.setString(
-        'cached_equipment_$unitId',
-        jsonEncode(items.map((e) => e.toMap()).toList()),
-      );
+      await _persistLocalCache(unitId, items);
 
       state = AsyncValue.data(items);
       ref.invalidate(dashboardMetricsProvider);
     } catch (e, st) {
       state = AsyncValue.error(e, st);
     }
+  }
+
+  /// Ensures that [medicId] has a personal standard IDF `וסט חובש` initialized.
+  Future<void> ensureMedicVestSeeded(
+    String medicId, {
+    required bool includeLegacyUnassigned,
+  }) async {
+    if (medicId.isEmpty || _seedingMedicIds.contains(medicId)) return;
+    final user = AuthService().currentUser;
+    final unitId = user?.unitId;
+    if (unitId == null) return;
+
+    final currentList = state.value;
+    if (currentList == null) return;
+
+    final alreadyExists = currentList.any(
+      (e) => e.belongsToMedicVest(medicId, includeLegacyUnassigned: includeLegacyUnassigned),
+    );
+    if (alreadyExists) return;
+
+    _seedingMedicIds.add(medicId);
+    try {
+      final rows = DefaultEquipmentCatalog.buildMedicVestRows(unitId, medicId);
+      final seededVestItems = rows.map((m) => Equipment.fromMap(m)).toList();
+      final updatedList = <Equipment>[...currentList, ...seededVestItems]
+        ..sort((a, b) => a.name.compareTo(b.name));
+
+      // Instant 0ms optimistic state update
+      state = AsyncValue.data(updatedList);
+      await _persistLocalCache(unitId, updatedList);
+      ref.invalidate(dashboardMetricsProvider);
+
+      // Persist to Supabase in background (skip cloud insert for synthetic demo preview IDs if needed,
+      // though `category` is plain text and unit_id is valid so cloud insert works for real & manual medics too!)
+      if (!medicId.startsWith('demo_medic_')) {
+        try {
+          await Supabase.instance.client.from('equipment').insert(rows);
+        } catch (e) {
+          debugPrint('ensureMedicVestSeeded cloud insert warning: $e');
+        }
+      }
+    } finally {
+      _seedingMedicIds.remove(medicId);
+    }
+  }
+
+  /// Optimistically inserts or updates an equipment item (including its base64 photo) in 0ms.
+  Future<void> upsertItem(Equipment item) async {
+    final currentList = List<Equipment>.from(state.value ?? []);
+    final existingIdx = currentList.indexWhere((e) => e.id == item.id);
+    if (existingIdx != -1) {
+      currentList[existingIdx] = item;
+    } else {
+      currentList.add(item);
+      currentList.sort((a, b) => a.name.compareTo(b.name));
+    }
+
+    // 0ms optimistic update so UI & photo update immediately
+    state = AsyncValue.data(currentList);
+
+    final unitId = item.unitId ?? AuthService().currentUser?.unitId;
+    if (unitId != null) {
+      await _persistLocalCache(unitId, currentList);
+    }
+    ref.invalidate(dashboardMetricsProvider);
+
+    if (unitId != null) {
+      await Supabase.instance.client.from('equipment').upsert(item.toSupabaseMap());
+    }
+
+    try {
+      final db = await DatabaseService().database;
+      final localMap = item.toMap();
+      if (existingIdx != -1) {
+        await db.update('equipment', localMap, where: 'id = ?', whereArgs: [item.id]);
+      } else {
+        await db.insert('equipment', localMap);
+      }
+    } catch (_) {}
+  }
+
+  /// Optimistically removes an equipment item in 0ms.
+  Future<void> deleteItem(String id) async {
+    final currentList = List<Equipment>.from(state.value ?? []);
+    currentList.removeWhere((e) => e.id == id);
+    state = AsyncValue.data(currentList);
+
+    final unitId = AuthService().currentUser?.unitId;
+    if (unitId != null) {
+      await _persistLocalCache(unitId, currentList);
+    }
+    ref.invalidate(dashboardMetricsProvider);
+
+    await Supabase.instance.client.from('equipment').delete().eq('id', id);
+
+    try {
+      final db = await DatabaseService().database;
+      await db.delete('equipment', where: 'id = ?', whereArgs: [id]);
+    } catch (_) {}
   }
 
   /// Optimistically adjust quantity directly from the list (+1 / -1)
@@ -148,30 +268,23 @@ class EquipmentNotifier extends AsyncNotifier<List<Equipment>> {
     final updatedList = List<Equipment>.from(currentList);
     updatedList[index] = updatedItem;
 
-    // Optimistic UI update
+    // 0ms optimistic UI update
     state = AsyncValue.data(updatedList);
 
-    // Update local cache immediately
     final user = AuthService().currentUser;
     if (user?.unitId != null) {
-      try {
-        final prefs = await SharedPreferences.getInstance();
-        final jsonList = updatedList.map((e) => e.toMap()).toList();
-        await prefs.setString('cached_equipment_${user!.unitId}', jsonEncode(jsonList));
-      } catch (_) {}
+      await _persistLocalCache(user!.unitId!, updatedList);
     }
 
-    // Refresh dashboard metrics
     ref.invalidate(dashboardMetricsProvider);
 
-    // Sync to Supabase in background (upsert handles locally-seeded items too)
+    // Sync to Supabase in background (preserves IMG: photo in expiration_date!)
     try {
       await Supabase.instance.client
           .from('equipment')
           .upsert(updatedItem.toSupabaseMap());
     } catch (_) {}
 
-    // Sync to local SQLite if present
     try {
       final db = await DatabaseService().database;
       await db.update('equipment', {'quantity': newQty, 'status': newStatus}, where: 'id = ?', whereArgs: [id]);

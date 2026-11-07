@@ -1,9 +1,9 @@
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:chopel_app/core/auth/auth_service.dart';
 import 'package:chopel_app/core/services/soldier_import_service.dart';
+import 'package:chopel_app/core/services/spreadsheet_picker.dart';
 import 'package:chopel_app/features/medical_cases/providers.dart';
 import 'package:chopel_app/theme/app_theme.dart';
 import 'package:chopel_app/theme/components/hopal_button.dart';
@@ -32,16 +32,12 @@ class _SoldiersImportScreenState extends ConsumerState<SoldiersImportScreen> {
       _mapping.contains(SoldierField.firstName) ||
       _mapping.contains(SoldierField.lastName);
 
-  Future<void> _pickFile() async {
-    final files = await FilePicker.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: ['xlsx', 'csv'],
-    );
-    final file = files.firstOrNull;
-    if (file == null) return;
+  Future<void> _pickFile({bool allowAnyFile = false}) async {
     try {
-      final bytes = await file.readAsBytes();
-      final table = SoldierImportService.parse(bytes, file.name);
+      final file = await SpreadsheetPicker.pick(allowAnyFile: allowAnyFile);
+      if (file == null) return;
+      final table = SoldierImportService.parse(file.bytes, file.name);
+      if (!mounted) return;
       setState(() {
         _table = table;
         _fileName = file.name;
@@ -50,7 +46,15 @@ class _SoldiersImportScreenState extends ConsumerState<SoldiersImportScreen> {
     } on FormatException catch (e) {
       if (mounted) HopalFeedback.showError(context, e.message);
     } catch (e) {
-      if (mounted) HopalFeedback.showError(context, AppErrorHelper.toHebrew(e, fallback: 'לא ניתן לקרוא את הקובץ שנבחר. ודא שמדובר בקובץ Excel או CSV תקין.'));
+      if (mounted) {
+        HopalFeedback.showError(
+          context,
+          AppErrorHelper.toHebrew(
+            e,
+            fallback: 'לא ניתן לקרוא את הקובץ שנבחר. ודא שמדובר בקובץ Excel (.xlsx) או CSV תקין.',
+          ),
+        );
+      }
     }
   }
 
@@ -70,7 +74,12 @@ class _SoldiersImportScreenState extends ConsumerState<SoldiersImportScreen> {
       HopalFeedback.showSuccess(context, '${soldiers.length} חיילים נשמרו בהצלחה');
       Navigator.pop(context);
     } catch (e) {
-      if (mounted) HopalFeedback.showError(context, AppErrorHelper.toHebrew(e, fallback: 'שגיאה בשמירת רשימת החיילים בשרת.'));
+      if (mounted) {
+        HopalFeedback.showError(
+          context,
+          AppErrorHelper.toHebrew(e, fallback: 'שגיאה בשמירת רשימת החיילים בשרת.'),
+        );
+      }
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -81,8 +90,10 @@ class _SoldiersImportScreenState extends ConsumerState<SoldiersImportScreen> {
     return Scaffold(
       backgroundColor: AppTheme.backgroundPrimary,
       appBar: AppBar(
-        title: Text('ייבוא רשימת פלוגה',
-            style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.bold, fontSize: 18)),
+        title: Text(
+          'ייבוא רשימת פלוגה',
+          style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.bold, fontSize: 18),
+        ),
         backgroundColor: AppTheme.backgroundPrimary,
         elevation: 0,
         centerTitle: true,
@@ -104,21 +115,32 @@ class _SoldiersImportScreenState extends ConsumerState<SoldiersImportScreen> {
           children: [
             Icon(LucideIcons.fileSpreadsheet, size: 72, color: AppTheme.primaryGreen),
             const SizedBox(height: AppTheme.spacing16),
-            Text('העלה קובץ אקסל של הפלוגה',
-                style: TextStyle(color: AppTheme.textPrimary, fontSize: 18, fontWeight: FontWeight.bold)),
+            Text(
+              'העלה קובץ אקסל של הפלוגה',
+              style: TextStyle(color: AppTheme.textPrimary, fontSize: 18, fontWeight: FontWeight.bold),
+            ),
             const SizedBox(height: AppTheme.spacing8),
             Text(
-              'קובץ ‎.xlsx או ‎.csv. השורה הראשונה צריכה להיות כותרות.\nבשלב הבא תבחר איזו עמודה היא מה.\nחייל שכבר קיים (לפי מספר אישי) יתעדכן ולא ישוכפל.',
+              'נתמכים קובצי Excel (‎.xlsx, ‎.xls) וקובצי ‎.csv.\nהשורה הראשונה היא כותרות העמודות, ובשלב הבא תוכל להתאים כל עמודה לשדה הרצוי.',
               textAlign: TextAlign.center,
               style: TextStyle(color: AppTheme.textSecondary, height: 1.5),
             ),
             const SizedBox(height: AppTheme.spacing24),
             HopalButton(
               key: const Key('import_pick_file'),
-              label: 'בחר קובץ',
+              label: 'בחר קובץ אקסל / CSV',
               icon: LucideIcons.upload,
-              onPressed: _pickFile,
+              onPressed: () => _pickFile(allowAnyFile: false),
               isExpanded: true,
+            ),
+            const SizedBox(height: AppTheme.spacing12),
+            TextButton.icon(
+              onPressed: () => _pickFile(allowAnyFile: true),
+              icon: Icon(LucideIcons.folderOpen, size: 16, color: AppTheme.textSecondary),
+              label: Text(
+                'הקובץ מופיע באפור בנייד? לחץ לבחירה חופשית מכל הקבצים',
+                style: TextStyle(color: AppTheme.textSecondary, fontSize: 12),
+              ),
             ),
           ],
         ),
@@ -140,38 +162,49 @@ class _SoldiersImportScreenState extends ConsumerState<SoldiersImportScreen> {
                   Icon(LucideIcons.fileCheck, color: AppTheme.primaryGreen, size: 18),
                   const SizedBox(width: 8),
                   Expanded(
-                    child: Text('$_fileName • ${table.rows.length} שורות',
-                        style: TextStyle(color: AppTheme.textSecondary)),
+                    child: Text(
+                      '$_fileName • ${table.rows.length} שורות',
+                      style: TextStyle(color: AppTheme.textSecondary),
+                    ),
                   ),
-                  TextButton(onPressed: _pickFile, child: const Text('קובץ אחר')),
+                  TextButton(onPressed: () => _pickFile(), child: const Text('קובץ אחר')),
                 ],
               ),
               const SizedBox(height: AppTheme.spacing8),
-              Text('התאמת עמודות',
-                  style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.bold, fontSize: 16)),
+              Text(
+                'התאמת עמודות',
+                style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.bold, fontSize: 16),
+              ),
               const SizedBox(height: AppTheme.spacing8),
               for (var i = 0; i < table.headers.length; i++) _buildMappingRow(i),
               const SizedBox(height: AppTheme.spacing24),
-              Text('תצוגה מקדימה (${preview.length} חיילים)',
-                  style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.bold, fontSize: 16)),
+              Text(
+                'תצוגה מקדימה (${preview.length} חיילים)',
+                style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.bold, fontSize: 16),
+              ),
               const SizedBox(height: AppTheme.spacing8),
               if (!_hasName)
-                Text('יש לסמן לפחות עמודת שם אחת',
-                    style: TextStyle(color: AppTheme.criticalRed)),
-              ...preview.take(8).map((s) => ListTile(
-                    dense: true,
-                    contentPadding: EdgeInsets.zero,
-                    leading: Icon(LucideIcons.user, color: AppTheme.primaryGreen, size: 18),
-                    title: Text(s.name, style: TextStyle(color: AppTheme.textPrimary)),
-                    subtitle: Text(
-                      [
-                        if (s.personalNumber != null) 'מ.א ${s.personalNumber}',
-                        if (s.phone != null) s.phone!,
-                        if (s.platoon != null) 'מחלקה ${s.platoon}',
-                      ].join(' • '),
-                      style: TextStyle(color: AppTheme.textSecondary, fontSize: 12),
+                Text(
+                  'יש לסמן לפחות עמודת שם אחת',
+                  style: TextStyle(color: AppTheme.criticalRed),
+                ),
+              ...preview.take(8).map(
+                    (s) => ListTile(
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(LucideIcons.user, color: AppTheme.primaryGreen, size: 18),
+                      title: Text(s.name, style: TextStyle(color: AppTheme.textPrimary)),
+                      subtitle: Text(
+                        [
+                          if (s.personalNumber != null) 'מ.א ${s.personalNumber}',
+                          if (s.phone != null) s.phone!,
+                          if (s.platoon != null) 'מחלקה ${s.platoon}',
+                          if (s.allergies != null) 'רגישות: ${s.allergies}',
+                        ].join(' • '),
+                        style: TextStyle(color: AppTheme.textSecondary, fontSize: 12),
+                      ),
                     ),
-                  )),
+                  ),
               if (preview.length > 8)
                 Text('ועוד ${preview.length - 8}...', style: TextStyle(color: AppTheme.textSecondary)),
             ],
@@ -214,13 +247,17 @@ class _SoldiersImportScreenState extends ConsumerState<SoldiersImportScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(table.headers[i].isEmpty ? 'עמודה ${i + 1}' : table.headers[i],
-                      style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.bold)),
+                  Text(
+                    table.headers[i].isEmpty ? 'עמודה ${i + 1}' : table.headers[i],
+                    style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.bold),
+                  ),
                   if (sample.isNotEmpty)
-                    Text('לדוגמה: $sample',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(color: AppTheme.textSecondary, fontSize: 12)),
+                    Text(
+                      'לדוגמה: $sample',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(color: AppTheme.textSecondary, fontSize: 12),
+                    ),
                 ],
               ),
             ),
@@ -229,15 +266,16 @@ class _SoldiersImportScreenState extends ConsumerState<SoldiersImportScreen> {
               underline: const SizedBox.shrink(),
               dropdownColor: AppTheme.backgroundSecondary,
               items: SoldierField.values
-                  .map((f) => DropdownMenuItem(
-                        value: f,
-                        child: Text(f.label, style: TextStyle(color: AppTheme.textPrimary)),
-                      ))
+                  .map(
+                    (f) => DropdownMenuItem(
+                      value: f,
+                      child: Text(f.label, style: TextStyle(color: AppTheme.textPrimary)),
+                    ),
+                  )
                   .toList(),
               onChanged: (f) {
                 if (f == null) return;
                 setState(() {
-                  // Each field may be used by one column only.
                   if (f != SoldierField.ignore) {
                     for (var j = 0; j < _mapping.length; j++) {
                       if (_mapping[j] == f) _mapping[j] = SoldierField.ignore;

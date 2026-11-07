@@ -5,7 +5,7 @@ import 'package:chopel_app/core/services/xlsx_reader.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// Fields a spreadsheet column can be mapped to.
-enum SoldierField { ignore, fullName, firstName, lastName, personalNumber, phone, platoon }
+enum SoldierField { ignore, fullName, firstName, lastName, personalNumber, phone, platoon, allergies }
 
 extension SoldierFieldLabel on SoldierField {
   String get label => switch (this) {
@@ -16,6 +16,7 @@ extension SoldierFieldLabel on SoldierField {
         SoldierField.personalNumber => 'מספר אישי',
         SoldierField.phone => 'טלפון',
         SoldierField.platoon => 'מחלקה',
+        SoldierField.allergies => 'אלרגיות / רגישויות',
       };
 }
 
@@ -32,13 +33,22 @@ class ImportedSoldier {
   final String? personalNumber;
   final String? phone;
   final String? platoon;
-  ImportedSoldier({required this.name, this.personalNumber, this.phone, this.platoon});
+  final String? allergies;
+
+  ImportedSoldier({
+    required this.name,
+    this.personalNumber,
+    this.phone,
+    this.platoon,
+    this.allergies,
+  });
 
   Map<String, dynamic> toRow(String unitId) => {
         'name': name,
         'personal_number': personalNumber,
         'phone_number': phone,
         'platoon': platoon,
+        if (allergies != null) 'allergies': allergies,
         'unit_id': unitId,
       };
 }
@@ -51,16 +61,55 @@ class ImportResult {
 
 /// Pure business logic for importing a company roster. No UI here.
 class SoldierImportService {
-  /// Reads .xlsx / .csv bytes into a table. Throws [FormatException] on bad input.
+  /// Reads .xlsx / .xls (HTML/TSV) / .csv bytes into a table. Throws [FormatException] on bad input.
   static ImportTable parse(Uint8List bytes, String fileName) {
+    if (bytes.isEmpty) {
+      throw const FormatException('הקובץ שנבחר ריק');
+    }
+
     final lower = fileName.toLowerCase();
+
+    // 1. Detect .xlsx by ZIP magic header (PK\x03\x04) even if Android stripped the file extension!
+    final isZipXlsx = bytes.length >= 4 &&
+        bytes[0] == 0x50 &&
+        bytes[1] == 0x4B &&
+        bytes[2] == 0x03 &&
+        bytes[3] == 0x04;
+
+    // 2. Detect legacy binary BIFF8 .xls (OLE2 compound file: D0 CF 11 E0)
+    final isBinaryOleXls = bytes.length >= 4 &&
+        bytes[0] == 0xD0 &&
+        bytes[1] == 0xCF &&
+        bytes[2] == 0x11 &&
+        bytes[3] == 0xE0;
+
     final List<List<String>> all;
-    if (lower.endsWith('.csv') || lower.endsWith('.txt')) {
-      all = _parseCsv(utf8.decode(bytes, allowMalformed: true));
-    } else if (lower.endsWith('.xlsx')) {
+    if (isZipXlsx || lower.endsWith('.xlsx')) {
       all = XlsxReader.readFirstSheet(bytes);
+    } else if (isBinaryOleXls) {
+      throw const FormatException(
+        'זהו קובץ אקסל ישן בפורמט בינארי (Excel 97-2003). פתח אותו באקסל/שיטס ושמור כקובץ ‎.xlsx או ‎.csv.',
+      );
     } else {
-      throw const FormatException('יש לבחור קובץ ‎.xlsx או ‎.csv (קבצי ‎.xls ישנים - שמור מחדש כ-xlsx)');
+      // Decode text (UTF-8 or UTF-16LE/BE exported by military/HR systems as .xls / .csv / .tsv)
+      final text = _decodeTextBytes(bytes);
+      final trimmed = text.trimLeft().toLowerCase();
+      if (trimmed.startsWith('<html') ||
+          trimmed.startsWith('<!doctype') ||
+          trimmed.startsWith('<table') ||
+          trimmed.contains('<tr')) {
+        all = _parseHtmlTable(text);
+      } else if (lower.endsWith('.csv') ||
+          lower.endsWith('.tsv') ||
+          lower.endsWith('.txt') ||
+          lower.endsWith('.xls') ||
+          text.contains(',') ||
+          text.contains('\t') ||
+          text.contains(';')) {
+        all = _parseCsv(text);
+      } else {
+        throw const FormatException('יש לבחור קובץ אקסל (‎.xlsx) או ‎.csv תקין');
+      }
     }
 
     final nonEmpty = all.where((r) => r.any((c) => c.trim().isNotEmpty)).toList();
@@ -72,6 +121,42 @@ class SoldierImportService {
     final headers = pad(nonEmpty.first).map((h) => h.trim()).toList();
     final rows = nonEmpty.skip(1).map(pad).toList();
     return ImportTable(headers, rows);
+  }
+
+  static String _decodeTextBytes(Uint8List bytes) {
+    if (bytes.length >= 2 && bytes[0] == 0xFF && bytes[1] == 0xFE) {
+      // UTF-16LE BOM
+      final units = <int>[];
+      for (var i = 2; i + 1 < bytes.length; i += 2) {
+        units.add(bytes[i] | (bytes[i + 1] << 8));
+      }
+      return String.fromCharCodes(units);
+    }
+    return utf8.decode(bytes, allowMalformed: true);
+  }
+
+  static List<List<String>> _parseHtmlTable(String html) {
+    final rows = <List<String>>[];
+    final trMatches = RegExp(r'<tr[^>]*>(.*?)</tr>', caseSensitive: false, dotAll: true).allMatches(html);
+    for (final tr in trMatches) {
+      final rowHtml = tr.group(1) ?? '';
+      final cellMatches =
+          RegExp(r'<t[dh][^>]*>(.*?)</t[dh]>', caseSensitive: false, dotAll: true).allMatches(rowHtml);
+      final cells = cellMatches.map((m) {
+        final raw = m.group(1) ?? '';
+        return raw
+            .replaceAll(RegExp(r'<[^>]+>'), ' ')
+            .replaceAll('&nbsp;', ' ')
+            .replaceAll('&quot;', '"')
+            .replaceAll('&amp;', '&')
+            .replaceAll(RegExp(r'\s+'), ' ')
+            .trim();
+      }).toList();
+      if (cells.any((c) => c.isNotEmpty)) {
+        rows.add(cells);
+      }
+    }
+    return rows;
   }
 
   /// Guesses a mapping from header names (Hebrew + English).
@@ -86,6 +171,8 @@ class SoldierImportService {
         f = SoldierField.phone;
       } else if (s.contains('מחלקה') || s.contains('צוות') || s.contains('platoon')) {
         f = SoldierField.platoon;
+      } else if (s.contains('אלרגי') || s.contains('רגישו') || s.contains('allerg') || s.contains('g6pd')) {
+        f = SoldierField.allergies;
       } else if (s.contains('פרטי') || s.contains('first')) {
         f = SoldierField.firstName;
       } else if (s.contains('משפחה') || s.contains('last')) {
@@ -126,6 +213,7 @@ class SoldierImportService {
         personalNumber: orNull(pn),
         phone: orNull(get(SoldierField.phone)),
         platoon: orNull(get(SoldierField.platoon)),
+        allergies: orNull(get(SoldierField.allergies)),
       ));
     }
     return result;
@@ -149,8 +237,10 @@ class SoldierImportService {
         await client.from('soldiers').insert(part);
       }
     } on PostgrestException catch (pe) {
-      if (pe.code == 'PGRST204' || pe.message.contains('personal_number')) {
-        // Fallback for legacy schema where personal_number column is absent
+      if (pe.code == 'PGRST204' ||
+          pe.code == '42703' ||
+          pe.message.contains('personal_number') ||
+          pe.message.contains('allergies')) {
         final fallbackRows = soldiers.map((s) {
           final pn = s.personalNumber;
           final displayName = (pn != null && pn.isNotEmpty) ? '${s.name} ($pn)' : s.name;
@@ -176,7 +266,12 @@ class SoldierImportService {
   static List<List<String>> _parseCsv(String text) {
     if (text.startsWith('\uFEFF')) text = text.substring(1);
     final firstLine = text.split('\n').first;
-    final sep = firstLine.split(';').length > firstLine.split(',').length ? ';' : ',';
+    final tabCount = firstLine.split('\t').length;
+    final semiCount = firstLine.split(';').length;
+    final commaCount = firstLine.split(',').length;
+    final sep = (tabCount >= semiCount && tabCount > commaCount)
+        ? '\t'
+        : (semiCount > commaCount ? ';' : ',');
     final rows = <List<String>>[];
     var row = <String>[];
     final cell = StringBuffer();

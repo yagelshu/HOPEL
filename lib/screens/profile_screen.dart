@@ -29,6 +29,8 @@ import 'package:chopel_app/features/equipment/providers.dart';
 import 'package:chopel_app/theme/components/hopal_text_field.dart';
 import 'package:chopel_app/core/utils/app_constants.dart';
 import 'package:chopel_app/core/utils/app_error_helper.dart';
+import 'package:chopel_app/core/utils/battalion_medic_helper.dart';
+import 'package:chopel_app/core/services/standby_medics_service.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
@@ -43,6 +45,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   bool _canCheckBiometrics = false;
   String _doctorName = '';
   String _doctorPhone = '';
+  String _hogadName = '';
+  String _hogadPhone = '';
 
   @override
   void initState() {
@@ -53,10 +57,13 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
   Future<void> _loadDoctorSettings() async {
     final prefs = await SharedPreferences.getInstance();
+    final (hogadName, hogadPhone) = await BattalionMedicHelper.loadSaved();
     if (mounted) {
       setState(() {
         _doctorName = prefs.getString('doctor_name') ?? '';
         _doctorPhone = prefs.getString('doctor_phone_number') ?? '';
+        _hogadName = hogadName;
+        _hogadPhone = hogadPhone;
       });
     }
   }
@@ -590,18 +597,298 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     );
   }
 
+  void _showEditPersonalDetailsSheet(BuildContext context) {
+    final auth = AuthService();
+    final isPreview = auth.isPreviewingAsCombatMedic;
+    final nameController = TextEditingController(text: auth.effectiveUserName);
+    final platoonController = TextEditingController(text: auth.effectiveUserPlatoon ?? '');
+    final phoneController = TextEditingController(text: auth.effectiveUserPhone ?? '');
+    bool isSaving = false;
+
+    HopalBottomSheet.show(
+      context: context,
+      title: isPreview ? 'פרטי החובש בתצוגה' : 'עריכת הפרטים האישיים שלי',
+      child: StatefulBuilder(
+        builder: (sheetCtx, setSheetState) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                isPreview
+                    ? 'עדכן את שם החובש, המחלקה ומספר הטלפון כפי שיוצגו במסך הבית, בכוננות ובווסט האישי שלו.'
+                    : 'הפרטים שלך יוצגו בברכת הפתיחה במסך הבית, ברשימת החובשים במוצב ובווסט הציוד האישי שלך.',
+                style: TextStyle(color: AppTheme.textSecondary, fontSize: 13, height: 1.4),
+              ),
+              const SizedBox(height: AppTheme.spacing16),
+              HopalTextField(
+                controller: nameController,
+                hint: 'שם מלא *',
+                icon: LucideIcons.user,
+              ),
+              const SizedBox(height: AppTheme.spacing12),
+              HopalTextField(
+                controller: platoonController,
+                hint: 'מחלקה / צוות (לדוגמה: מחלקה 1 / חפ"ק)',
+                icon: LucideIcons.shield,
+              ),
+              const SizedBox(height: AppTheme.spacing12),
+              HopalTextField(
+                controller: phoneController,
+                hint: 'מספר טלפון (לחיוג ו-WhatsApp)',
+                icon: LucideIcons.phone,
+                keyboardType: TextInputType.phone,
+              ),
+              const SizedBox(height: AppTheme.spacing24),
+              HopalButton(
+                label: 'שמור פרטים אישיים',
+                icon: LucideIcons.check,
+                isLoading: isSaving,
+                onPressed: () async {
+                  final newName = nameController.text.trim();
+                  final newPlatoon = platoonController.text.trim();
+                  final newPhone = phoneController.text.trim();
+
+                  if (newName.isEmpty) {
+                    HopalFeedback.showError(context, 'נא להזין שם מלא');
+                    return;
+                  }
+
+                  setSheetState(() => isSaving = true);
+                  try {
+                    if (isPreview) {
+                      final previewProfile = auth.previewMedicProfile;
+                      final previewId = previewProfile?['id'] ?? '';
+                      final isManual = previewProfile?['is_manual'] == 'true';
+
+                      auth.updatePreviewMedicDetails(
+                        name: newName,
+                        platoon: newPlatoon,
+                        phoneNumber: newPhone,
+                      );
+
+                      if (previewId.isNotEmpty && !previewId.startsWith('demo_medic_')) {
+                        if (isManual) {
+                          final existingManual = await StandbyMedicsService.getManualMedics(auth.currentUser?.unitId);
+                          final prev = existingManual.where((m) => m['id'] == previewId).firstOrNull;
+                          await StandbyMedicsService.saveManualMedic(
+                            auth.currentUser?.unitId,
+                            {
+                              'id': previewId,
+                              'name': newName,
+                              'role': 'COMBAT_MEDIC',
+                              'phone_number': newPhone.isEmpty ? null : newPhone,
+                              'platoon': newPlatoon.isEmpty ? null : newPlatoon,
+                              'is_manual': true,
+                              'standby': prev?['standby'] ?? true,
+                            },
+                          );
+                        } else {
+                          try {
+                            await Supabase.instance.client.from('users').update({
+                              'name': newName,
+                              'phone_number': newPhone.isEmpty ? null : newPhone,
+                              'platoon': newPlatoon.isEmpty ? null : newPlatoon,
+                            }).eq('id', previewId);
+                          } on PostgrestException catch (_) {
+                            await Supabase.instance.client.from('users').update({
+                              'name': newName,
+                            }).eq('id', previewId);
+                          }
+                        }
+                      }
+                      ref.invalidate(dashboardMetricsProvider);
+                    } else {
+                      await auth.updatePersonalDetails(
+                        name: newName,
+                        phoneNumber: newPhone,
+                        platoon: newPlatoon,
+                      );
+                      ref.invalidate(dashboardMetricsProvider);
+                    }
+
+                    if (mounted) setState(() {});
+                    if (sheetCtx.mounted) Navigator.pop(sheetCtx);
+                    if (context.mounted) {
+                      HopalFeedback.showSuccess(context, 'הפרטים האישיים נשמרו בהצלחה');
+                    }
+                  } catch (e) {
+                    if (sheetCtx.mounted) setSheetState(() => isSaving = false);
+                    if (context.mounted) {
+                      HopalFeedback.showError(
+                        context,
+                        AppErrorHelper.toHebrew(e, fallback: 'שגיאה בשמירת הפרטים האישיים.'),
+                      );
+                    }
+                  }
+                },
+              ),
+              const SizedBox(height: AppTheme.spacing16),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  void _showCombatMedicPreviewSelector(BuildContext context) {
+    final auth = AuthService();
+    final selfId = auth.currentUser?.id;
+    final allMedics = ref.read(dashboardMetricsProvider).asData?.value.activeMedics ?? const [];
+    final platoonMedics = allMedics
+        .where((m) => m['id'] != selfId && m['id']?.toString().startsWith('demo_medic_') != true)
+        .toList();
+
+    final customNameController = TextEditingController(
+      text: auth.isPreviewingAsCombatMedic ? auth.effectiveUserName : '',
+    );
+    final customPlatoonController = TextEditingController(
+      text: auth.isPreviewingAsCombatMedic ? (auth.effectiveUserPlatoon ?? '') : '',
+    );
+
+    HopalBottomSheet.show(
+      context: context,
+      title: 'תצוגת חובש – בחירת חובש',
+      child: SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'בחר חובש מהפלוגה (או הקלד שם חובש) כדי לראות את האפליקציה, מסך הבית ווסט הציוד האישי בדיוק מהעיניים שלו:',
+              style: TextStyle(color: AppTheme.textSecondary, fontSize: 13, height: 1.4),
+            ),
+            const SizedBox(height: AppTheme.spacing16),
+            if (platoonMedics.isNotEmpty) ...[
+              Text(
+                'חובשים בפלוגה',
+                style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.bold, fontSize: 14),
+              ),
+              const SizedBox(height: 8),
+              ...platoonMedics.map((m) {
+                final mId = m['id'].toString();
+                final mName = (m['name'] ?? 'חובש').toString();
+                final mPlatoon = m['platoon']?.toString();
+                final mPhone = m['phone_number']?.toString();
+                final isSelected = auth.isPreviewingAsCombatMedic && auth.effectiveUserId == mId;
+
+                return Container(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  decoration: BoxDecoration(
+                    color: AppTheme.backgroundSecondary,
+                    borderRadius: AppTheme.radiusMd,
+                    border: Border.all(
+                      color: isSelected ? AppTheme.warningAmber : AppTheme.borderSubtle,
+                    ),
+                  ),
+                  child: ListTile(
+                    leading: CircleAvatar(
+                      backgroundColor: AppTheme.primaryGreen.withValues(alpha: 0.15),
+                      child: Icon(LucideIcons.stethoscope, color: AppTheme.primaryGreen, size: 18),
+                    ),
+                    title: Text(
+                      mName,
+                      style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.bold),
+                    ),
+                    subtitle: mPlatoon != null && mPlatoon.isNotEmpty
+                        ? Text(mPlatoon, style: TextStyle(color: AppTheme.textSecondary, fontSize: 12))
+                        : const Text('צפה במסך הבית ובווסט האישי שלו', style: TextStyle(fontSize: 12)),
+                    trailing: Icon(LucideIcons.chevronLeft, color: AppTheme.textMuted, size: 18),
+                    onTap: () {
+                      auth.startCombatMedicPreview(
+                        id: mId,
+                        name: mName,
+                        platoon: mPlatoon,
+                        phone: mPhone,
+                        isManual: m['is_manual'] == true,
+                      );
+                      ref.invalidate(dashboardMetricsProvider);
+                      Navigator.pop(context); // close sheet
+                      if (Navigator.canPop(this.context)) {
+                        Navigator.pop(this.context); // return to main tabs as that medic
+                      }
+                    },
+                  ),
+                );
+              }),
+              const SizedBox(height: AppTheme.spacing12),
+            ],
+            Text(
+              platoonMedics.isEmpty ? 'הזן שם חובש לתצוגה' : 'או תצוגה בשם מותאם אישית',
+              style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.bold, fontSize: 14),
+            ),
+            const SizedBox(height: 8),
+            HopalTextField(
+              controller: customNameController,
+              hint: 'שם החובש (לדוגמה: עמית לוי)',
+              icon: LucideIcons.user,
+            ),
+            const SizedBox(height: 8),
+            HopalTextField(
+              controller: customPlatoonController,
+              hint: 'מחלקה (אופציונלי, לדוגמה: מחלקה 2)',
+              icon: LucideIcons.shield,
+            ),
+            const SizedBox(height: AppTheme.spacing16),
+            HopalButton(
+              label: 'הפעל תצוגת חובש בשם זה',
+              icon: LucideIcons.eye,
+              onPressed: () {
+                final customName = customNameController.text.trim().isEmpty
+                    ? 'חובש לדוגמה'
+                    : customNameController.text.trim();
+                final customPlatoon = customPlatoonController.text.trim();
+                final syntheticId = 'demo_medic_${customName.hashCode.abs()}';
+
+                auth.startCombatMedicPreview(
+                  id: syntheticId,
+                  name: customName,
+                  platoon: customPlatoon,
+                  isManual: true,
+                );
+                ref.invalidate(dashboardMetricsProvider);
+                Navigator.pop(context);
+                if (Navigator.canPop(this.context)) {
+                  Navigator.pop(this.context);
+                }
+              },
+            ),
+            if (auth.isPreviewingAsCombatMedic) ...[
+              const SizedBox(height: AppTheme.spacing12),
+              HopalButton(
+                label: 'סיום תצוגת חובש וחזרה לחופ"ל',
+                icon: LucideIcons.undo2,
+                variant: HopalButtonVariant.secondary,
+                onPressed: () {
+                  auth.setCombatMedicPreview(false);
+                  ref.invalidate(dashboardMetricsProvider);
+                  Navigator.pop(context);
+                },
+              ),
+            ],
+            const SizedBox(height: AppTheme.spacing16),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final user = AuthService().currentUser;
     final isDarkMode = ref.watch(themeProvider) == ThemeMode.dark;
     final currentThemeStr = isDarkMode ? 'מבצעית' : 'בהירה';
 
-    return ValueListenableBuilder<bool>(
-      valueListenable: AuthService().previewAsCombatMedicNotifier,
+    return ValueListenableBuilder<int>(
+      valueListenable: AuthService().previewRevisionNotifier,
       builder: (context, _, __) {
-        final isCompanyMedic = AuthService().isCompanyMedic;
-        final isActualCompanyMedic = AuthService().isActualCompanyMedic;
-        final isPreviewingAsMedic = AuthService().isPreviewingAsCombatMedic;
+        final auth = AuthService();
+        final isCompanyMedic = auth.isCompanyMedic;
+        final isActualCompanyMedic = auth.isActualCompanyMedic;
+        final isPreviewingAsMedic = auth.isPreviewingAsCombatMedic;
+        final displayName = auth.effectiveUserName;
+        final displayPlatoon = auth.effectiveUserPlatoon;
+        final displayPhone = auth.effectiveUserPhone;
 
         return Scaffold(
           backgroundColor: AppTheme.backgroundPrimary,
@@ -630,14 +917,27 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                             const SizedBox(width: 8),
                             Expanded(
                               child: Text(
-                                'תצוגת חובש פעילה – כך החובשים שלך רואים את המסכים',
+                                'תצוגת חובש: $displayName',
                                 style: TextStyle(
                                   color: AppTheme.textPrimary,
                                   fontSize: 13,
                                   fontWeight: FontWeight.bold,
                                 ),
+                                overflow: TextOverflow.ellipsis,
                               ),
                             ),
+                            TextButton(
+                              onPressed: () => _showCombatMedicPreviewSelector(context),
+                              child: Text(
+                                'החלף חובש',
+                                style: TextStyle(
+                                  color: AppTheme.warningAmber,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 4),
                             TextButton(
                               style: TextButton.styleFrom(
                                 backgroundColor: AppTheme.warningAmber,
@@ -646,7 +946,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                                 minimumSize: Size.zero,
                                 tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                               ),
-                              onPressed: () => AuthService().setCombatMedicPreview(false),
+                              onPressed: () {
+                                AuthService().setCombatMedicPreview(false);
+                                ref.invalidate(dashboardMetricsProvider);
+                              },
                               child: const Text('חזרה לחופ"ל', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
                             ),
                           ],
@@ -656,6 +959,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     ],
                     HopalCard(
                       padding: const EdgeInsets.all(AppTheme.spacing24),
+                      onTap: () => _showEditPersonalDetailsSheet(context),
                       child: Row(
                         children: [
                           Container(
@@ -673,9 +977,30 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text(user?.name ?? 'משתמש', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: AppTheme.textPrimary)),
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        displayName,
+                                        style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: AppTheme.textPrimary),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                    Icon(LucideIcons.pencil, size: 16, color: AppTheme.primaryGreen),
+                                  ],
+                                ),
                                 const SizedBox(height: AppTheme.spacing4),
-                                Text(isCompanyMedic ? 'חופ"ל' : 'חובש קרבי', style: TextStyle(fontSize: 16, color: AppTheme.militaryOlive)),
+                                Text(
+                                  [
+                                    isCompanyMedic ? 'חופ"ל' : 'חובש קרבי',
+                                    if (displayPlatoon != null && displayPlatoon.isNotEmpty) displayPlatoon,
+                                  ].join(' • '),
+                                  style: TextStyle(fontSize: 15, color: AppTheme.militaryOlive),
+                                ),
+                                if (displayPhone != null && displayPhone.isNotEmpty) ...[
+                                  const SizedBox(height: 2),
+                                  Text(displayPhone, style: TextStyle(fontSize: 13, color: AppTheme.textSecondary)),
+                                ],
                                 const SizedBox(height: AppTheme.spacing4),
                                 Row(
                                   children: [
@@ -742,13 +1067,26 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: AppTheme.spacing16),
-                      child: Text('פלוגה ותעסוקה', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppTheme.textPrimary)),
+                      child: Text('פרטים אישיים ופלוגה', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppTheme.textPrimary)),
                     ),
                     const SizedBox(height: AppTheme.spacing12),
                     HopalCard(
                       padding: EdgeInsets.zero,
                       child: Column(
                         children: [
+                          HopalListTile(
+                            title: const Text('עריכת הפרטים האישיים שלי'),
+                            subtitle: Text(
+                              [
+                                displayName,
+                                if (displayPlatoon != null && displayPlatoon.isNotEmpty) displayPlatoon,
+                                if (displayPhone != null && displayPhone.isNotEmpty) displayPhone,
+                              ].join(' • '),
+                              style: TextStyle(color: AppTheme.textSecondary, fontSize: 13),
+                            ),
+                            leadingIcon: LucideIcons.userPen,
+                            onTap: () => _showEditPersonalDetailsSheet(context),
+                          ),
                           if (isCompanyMedic) ...[
                             HopalListTile(
                               title: const Text('עריכת פרטי פלוגה ותעסוקה'),
@@ -781,11 +1119,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                           ),
                           if (isActualCompanyMedic)
                             HopalListTile(
-                              title: const Text('תצוגת חובש (בדיקת הרשאות)'),
+                              title: const Text('תצוגת חובש (בחירת חובש ובדיקת הרשאות)'),
                               subtitle: Text(
                                 isPreviewingAsMedic
-                                    ? 'מופעל – מוצגים מסכי חובש ללא כפתורי ניהול'
-                                    : 'צפה באפליקציה בדיוק כפי שהחובשים שלך רואים אותה',
+                                    ? 'פעיל עבור: $displayName • לחץ להחלפת חובש או לסיום'
+                                    : 'בחר חובש מהפלוגה או הזן שם כדי לראות את המסכים והווסט שלו',
                                 style: TextStyle(
                                   color: isPreviewingAsMedic ? AppTheme.warningAmber : AppTheme.textSecondary,
                                   fontSize: 13,
@@ -795,26 +1133,16 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                               trailing: Switch(
                                 value: isPreviewingAsMedic,
                                 onChanged: (val) {
-                                  AuthService().setCombatMedicPreview(val);
                                   if (val) {
-                                    HopalFeedback.showInfo(
-                                      context,
-                                      'תצוגת חובש הופעלה – חזור למסך הבית כדי לראות את האפליקציה מעיני חובש',
-                                    );
+                                    _showCombatMedicPreviewSelector(context);
+                                  } else {
+                                    AuthService().setCombatMedicPreview(false);
+                                    ref.invalidate(dashboardMetricsProvider);
                                   }
                                 },
                                 activeTrackColor: AppTheme.warningAmber,
                               ),
-                              onTap: () {
-                                final next = !isPreviewingAsMedic;
-                                AuthService().setCombatMedicPreview(next);
-                                if (next) {
-                                  HopalFeedback.showInfo(
-                                    context,
-                                    'תצוגת חובש הופעלה – חזור למסך הבית כדי לראות את האפליקציה מעיני חובש',
-                                  );
-                                }
-                              },
+                              onTap: () => _showCombatMedicPreviewSelector(context),
                             ),
                         ],
                       ),
@@ -831,7 +1159,24 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                       padding: EdgeInsets.zero,
                       child: Column(
                         children: [
-                          if (isCompanyMedic)
+                          if (isCompanyMedic) ...[
+                            HopalListTile(
+                              title: const Text('חוג"ד הגדוד (דיווחי WhatsApp)'),
+                              subtitle: Text(
+                                _hogadPhone.isNotEmpty
+                                    ? '${_hogadName.isNotEmpty ? '$_hogadName • ' : ''}$_hogadPhone'
+                                    : 'טרם הוגדר מספר (לחץ להגדרה מהירה)',
+                                style: TextStyle(
+                                  color: _hogadPhone.isNotEmpty ? AppTheme.primaryGreen : AppTheme.warningAmber,
+                                  fontSize: 13,
+                                ),
+                              ),
+                              leadingIcon: LucideIcons.messageCircle,
+                              onTap: () => BattalionMedicHelper.showSettingsSheet(
+                                context,
+                                onSaved: _loadDoctorSettings,
+                              ),
+                            ),
                             HopalListTile(
                               title: const Text('רופא הגדוד (התייעצות WhatsApp)'),
                               subtitle: Text(
@@ -846,6 +1191,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                               leadingIcon: LucideIcons.stethoscope,
                               onTap: () => _showDoctorSettingsDialog(context),
                             ),
+                          ],
                           HopalListTile(
                             title: const Text('מצב סנכרון'),
                             subtitle: Text(_syncTime == 'כעת' ? 'סונכרן כעת' : 'מחובר לרשת (מקוון)'),

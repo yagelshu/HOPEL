@@ -81,5 +81,24 @@ class DefaultEquipmentCatalog {
       };
     }).toList();
   }
+
+  /// Builds the standard IDF `וסט חובש` rows assigned personally to [medicId].
+  static List<Map<String, dynamic>> buildMedicVestRows(String unitId, String medicId) {
+    const uuid = Uuid();
+    final vestTemplate = items.where((item) => item['category'] == 'וסט חובש');
+    return vestTemplate.map((item) {
+      final minReq = (item['minimum_required'] as num?)?.toInt() ?? 1;
+      return <String, dynamic>{
+        'id': uuid.v4(),
+        'name': item['name'],
+        'quantity': minReq,
+        'minimum_required': minReq,
+        'status': 'IN_STOCK',
+        'category': 'וסט חובש::$medicId',
+        'item_type': item['item_type'] ?? 'מתכלה',
+        'unit_id': unitId,
+      };
+    }).toList();
+  }
 }
 

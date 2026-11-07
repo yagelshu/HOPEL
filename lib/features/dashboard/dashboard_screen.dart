@@ -29,6 +29,7 @@ import 'package:chopel_app/features/onboarding/walkthrough_dialog.dart';
 import 'package:chopel_app/core/database/draft_service.dart';
 import 'package:chopel_app/core/services/standby_medics_service.dart';
 import 'package:chopel_app/core/utils/app_error_helper.dart';
+import 'package:chopel_app/core/utils/battalion_medic_helper.dart';
 import 'package:uuid/uuid.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -141,7 +142,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
               child: CustomScrollView(
                 slivers: [
                   SliverToBoxAdapter(
-                    child: _animateWidget(_buildHeader(user?.name ?? 'חופ"ל', user), _headerFade),
+                    child: _animateWidget(
+                      _buildHeader(AuthService().effectiveUserName, user),
+                      _headerFade,
+                    ),
                   ),
                   SliverToBoxAdapter(
                     child: ValueListenableBuilder<int>(
@@ -186,10 +190,12 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
   Widget _buildHeader(String name, [User? user]) {
     final unitName = user?.unitName ?? 'פלוגה';
     final deploymentName = user?.activeDeploymentName ?? '';
+    final platoon = AuthService().effectiveUserPlatoon;
     final roleLabel = AuthService().isCompanyMedic ? 'חופ"ל' : 'חובש קרבי';
-    final subtitle = deploymentName.isNotEmpty
-        ? '$roleLabel • $unitName ($deploymentName)'
-        : '$roleLabel • $unitName';
+    final unitWithDep = deploymentName.isNotEmpty ? '$unitName ($deploymentName)' : unitName;
+    final subtitle = (platoon != null && platoon.trim().isNotEmpty)
+        ? '$roleLabel • ${platoon.trim()} • $unitWithDep'
+        : '$roleLabel • $unitWithDep';
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(AppTheme.spacing16, AppTheme.spacing32, AppTheme.spacing16, AppTheme.spacing24),
@@ -240,7 +246,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
               Navigator.push(
                 context,
                 MaterialPageRoute(builder: (context) => const ProfileScreen()),
-              );
+              ).then((_) {
+                if (mounted) setState(() {});
+              });
             },
             child: Container(
               decoration: BoxDecoration(
@@ -720,7 +728,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
   }
 
   Future<void> _shareMedicsReportWithBattalionMedic(List<Map<String, dynamic>> medics) async {
-    final onStandby = medics.where((m) => m['standby'] == true).toList();
+    final realMedics = medics
+        .where((m) => m['id']?.toString().startsWith('demo_medic_') != true)
+        .toList();
+    final onStandby = realMedics.where((m) => m['standby'] == true).toList();
     final user = AuthService().currentUser;
     final unitLabel = user?.unitName ?? 'הפלוגה';
     final depLabel = user?.activeDeploymentName;
@@ -737,13 +748,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
                 : '• ${m['name']}';
           }).join('\n');
 
-    final report = '$header\nסה"כ במוצב: ${onStandby.length} מתוך ${medics.length}\n\nפירוט:\n$listText';
-    final waUri = Uri.parse('https://wa.me/?text=${Uri.encodeComponent(report)}');
-    if (await canLaunchUrl(waUri)) {
-      await launchUrl(waUri, mode: LaunchMode.externalApplication);
-    } else {
-      await Share.share(report);
-    }
+    final report = '$header\nסה"כ במוצב: ${onStandby.length} מתוך ${realMedics.length}\n\nפירוט:\n$listText';
+    await BattalionMedicHelper.sendReportToHogad(context, report);
   }
 
   void _showMedicsBottomSheet(BuildContext context, List<Map<String, dynamic>> initialMedics) async {
@@ -761,7 +767,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
         medics.add(m);
       }
     }
-    final currentUserId = AuthService().currentUser?.id;
+    final currentUserId = AuthService().effectiveUserId;
 
     Future<void> addMedic(StateSetter setModalState) async {
       final nameController = TextEditingController();
@@ -913,7 +919,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
         }
       });
 
-      ref.invalidate(dashboardMetricsProvider);
+      ref.read(dashboardMetricsProvider.notifier).upsertMedicLocally(medicData);
 
       if (context.mounted) {
         HopalFeedback.showSuccess(context, 'החובש $name נוסף בהצלחה');
@@ -949,7 +955,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
         } catch (_) {}
       }
       setModalState(() => medics.removeWhere((m) => m['id'] == medic['id']));
-      ref.invalidate(dashboardMetricsProvider);
+      ref.read(dashboardMetricsProvider.notifier).removeMedicLocally(medic['id'].toString());
       if (context.mounted) {
         HopalFeedback.showSuccess(context, 'החובש ${medic['name']} הוסר בהצלחה');
       }
@@ -965,10 +971,29 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: <Widget>[
               if (isCompanyMedic) ...[
-                HopalButton(
-                  label: 'דיווח מצבת חובשים לחוג"ד (WhatsApp)',
-                  icon: LucideIcons.messageCircle,
-                  onPressed: () => _shareMedicsReportWithBattalionMedic(medics),
+                Row(
+                  children: [
+                    Expanded(
+                      child: HopalButton(
+                        label: 'דיווח מצבת חובשים לחוג"ד',
+                        icon: LucideIcons.messageCircle,
+                        onPressed: () => _shareMedicsReportWithBattalionMedic(medics),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Tooltip(
+                      message: 'הגדר / ערוך מספר טלפון של החוג"ד',
+                      child: OutlinedButton(
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                          side: BorderSide(color: AppTheme.borderSubtle),
+                          shape: RoundedRectangleBorder(borderRadius: AppTheme.radiusMd),
+                        ),
+                        onPressed: () => BattalionMedicHelper.showSettingsSheet(context),
+                        child: Icon(LucideIcons.userCog, color: AppTheme.primaryGreen, size: 20),
+                      ),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: AppTheme.spacing8),
                 HopalButton(
@@ -1089,23 +1114,21 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
                           inactiveTrackColor: AppTheme.backgroundTertiary,
                           onChanged: canToggleThisMedic
                               ? (bool value) async {
+                                  HapticFeedback.selectionClick();
                                   setModalState(() => medic['standby'] = value);
-                                  final unitId = AuthService().currentUser?.unitId;
-                                  if (medic['is_manual'] == true) {
-                                    await StandbyMedicsService.updateStandby(unitId, medic['id'], value);
-                                  } else {
-                                    try {
-                                      await Supabase.instance.client
-                                          .from('users')
-                                          .update({'is_on_standby': value})
-                                          .eq('id', medic['id']);
-                                    } catch (e) {
-                                      setModalState(() => medic['standby'] = !value);
-                                      if (context.mounted) HopalFeedback.showError(context, AppErrorHelper.toHebrew(e, fallback: 'שגיאה בעדכון כוננות החובש.'));
-                                      return;
+                                  try {
+                                    await ref
+                                        .read(dashboardMetricsProvider.notifier)
+                                        .toggleMedicStandby(medic, value);
+                                  } catch (e) {
+                                    setModalState(() => medic['standby'] = !value);
+                                    if (context.mounted) {
+                                      HopalFeedback.showError(
+                                        context,
+                                        AppErrorHelper.toHebrew(e, fallback: 'שגיאה בעדכון כוננות החובש.'),
+                                      );
                                     }
                                   }
-                                  ref.invalidate(dashboardMetricsProvider);
                                 }
                               : null,
                         ),
@@ -1217,67 +1240,13 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
   Future<void> _toggleScheduleEventDirectly(Map<String, dynamic> event) async {
     if (event['id'] == null) return;
     HapticFeedback.selectionClick();
-    final nextDone = !(event['is_done'] == true);
-    final baseIcon = (event['icon'] ?? 'clock').toString();
     try {
-      await Supabase.instance.client
-          .from('daily_schedule')
-          .update({
-            'is_done': nextDone,
-            'icon': encodeScheduleIconForToday(baseIcon, isDone: nextDone),
-          })
-          .eq('id', event['id']);
-      ref.invalidate(dashboardMetricsProvider);
+      await ref.read(dashboardMetricsProvider.notifier).toggleScheduleTask(event['id']);
     } catch (e) {
       if (mounted) {
         HopalFeedback.showError(
           context,
           AppErrorHelper.toHebrew(e, fallback: 'שגיאה בעדכון המשימה בלו"ז.'),
-        );
-      }
-    }
-  }
-
-  Future<void> _seedRecommendedSchedule() async {
-    final user = AuthService().currentUser;
-    if (user?.unitId == null) return;
-
-    try {
-      await Supabase.instance.client.from('daily_schedule').insert([
-        {
-          'unit_id': user!.unitId,
-          'time': '08:00',
-          'title': 'מסדר חולים בוקר',
-          'icon': 'stethoscope',
-          'is_done': false,
-          'actor': 'חופ"ל / חובש תורן',
-        },
-        {
-          'unit_id': user.unitId,
-          'time': '12:30',
-          'title': 'בדיקת כוננות וחוסרים בארגז חופ"ל',
-          'icon': 'package',
-          'is_done': false,
-          'actor': 'חופ"ל',
-        },
-        {
-          'unit_id': user.unitId,
-          'time': '20:00',
-          'title': 'מעקב פניות פתוחות ותדריך כוננות לילה',
-          'icon': 'clock',
-          'is_done': false,
-          'actor': 'חופ"ל',
-        },
-      ]);
-      ref.invalidate(dashboardMetricsProvider);
-      if (mounted) {
-        HopalFeedback.showSuccess(context, 'לו"ז השגרה היומי נטען בהצלחה');
-      }
-    } catch (e) {
-      if (mounted) {
-        HopalFeedback.showError(
-          context,
-          AppErrorHelper.toHebrew(e, fallback: 'שגיאה בטעינת לו"ז השגרה.'),
         );
       }
     }
@@ -1293,25 +1262,23 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
         children: [
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('לו"ז יומי', style: Theme.of(context).textTheme.titleLarge?.copyWith(color: AppTheme.textPrimary, fontSize: 18)),
-                    const SizedBox(height: 2),
-                    Text(
-                      'מתאפס אוטומטית בכל בוקר • לחץ על משימה לסימון V',
-                      style: TextStyle(color: AppTheme.textMuted, fontSize: 12),
+              Text(
+                'לו"ז יומי',
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      color: AppTheme.textPrimary,
+                      fontSize: 18,
                     ),
-                  ],
-                ),
               ),
               if (isCompanyMedic)
                 ElevatedButton.icon(
                   onPressed: () => _showEditTimelineBottomSheet(context, metrics),
                   icon: const Icon(LucideIcons.pencil, size: 16, color: Colors.white),
-                  label: const Text('עריכת לו"ז', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
+                  label: const Text(
+                    'עריכת לו"ז',
+                    style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+                  ),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppTheme.primaryGreen,
                     foregroundColor: Colors.white,
@@ -1331,17 +1298,17 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
                       Icon(LucideIcons.calendarCheck, size: 32, color: AppTheme.textMuted),
                       const SizedBox(height: AppTheme.spacing8),
                       Text(
-                        'טרם הוגדרו משימות קבועות בלו"ז היומי',
+                        'הלו"ז היומי ריק כרגע',
                         style: TextStyle(color: AppTheme.textSecondary, fontSize: 14),
                         textAlign: TextAlign.center,
                       ),
                       if (isCompanyMedic) ...[
                         const SizedBox(height: AppTheme.spacing16),
                         HopalButton(
-                          label: 'טען משימות שגרה יומיות',
-                          icon: LucideIcons.sparkles,
+                          label: 'הוסף משימה ללו"ז',
+                          icon: LucideIcons.plus,
                           variant: HopalButtonVariant.secondary,
-                          onPressed: _seedRecommendedSchedule,
+                          onPressed: () => _showEditTimelineBottomSheet(context, metrics),
                         ),
                       ],
                     ],
@@ -1491,6 +1458,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
             existingEvent['actor'] = cleanActor;
             sortEvents();
           });
+          ref.read(dashboardMetricsProvider.notifier).upsertScheduleTaskLocally(existingEvent);
         } else {
           final saved = await schedule
               .insert({
@@ -1503,17 +1471,18 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
               })
               .select()
               .single();
+          final normalized = <String, dynamic>{
+            ...saved,
+            'icon': (saved['icon'] ?? 'clock').toString().split('@').first,
+            'is_done': saved['is_done'] == true,
+            'time': (saved['time'] ?? '').toString(),
+          };
           setModalState(() {
-            events.add({
-              ...saved,
-              'icon': (saved['icon'] ?? 'clock').toString().split('@').first,
-              'is_done': saved['is_done'] == true,
-              'time': (saved['time'] ?? '').toString(),
-            });
+            events.add(normalized);
             sortEvents();
           });
+          ref.read(dashboardMetricsProvider.notifier).upsertScheduleTaskLocally(normalized);
         }
-        ref.invalidate(dashboardMetricsProvider);
       } catch (e) {
         if (context.mounted) {
           HopalFeedback.showError(
@@ -1563,16 +1532,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
                       activeColor: AppTheme.primaryGreen,
                       onChanged: (val) async {
                         final nextDone = val == true;
-                        final baseIcon = (event['icon'] ?? 'clock').toString();
                         setModalState(() => event['is_done'] = nextDone);
                         try {
-                          await schedule
-                              .update({
-                                'is_done': nextDone,
-                                'icon': encodeScheduleIconForToday(baseIcon, isDone: nextDone),
-                              })
-                              .eq('id', event['id']);
-                          ref.invalidate(dashboardMetricsProvider);
+                          await ref.read(dashboardMetricsProvider.notifier).toggleScheduleTask(event['id']);
                         } catch (e) {
                           setModalState(() => event['is_done'] = !nextDone);
                           if (context.mounted) {
@@ -1606,7 +1568,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
                             try {
                               await schedule.delete().eq('id', event['id']);
                               setModalState(() => events.remove(event));
-                              ref.invalidate(dashboardMetricsProvider);
+                              ref.read(dashboardMetricsProvider.notifier).removeScheduleTaskLocally(event['id']);
                             } catch (e) {
                               if (context.mounted) {
                                 HopalFeedback.showError(
@@ -1634,10 +1596,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
               HopalButton(
                 label: 'סיום עריכה',
                 icon: LucideIcons.check,
-                onPressed: () {
-                  Navigator.pop(context);
-                  ref.invalidate(dashboardMetricsProvider);
-                },
+                onPressed: () => Navigator.pop(context),
               ),
             ],
           );

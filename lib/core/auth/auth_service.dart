@@ -10,6 +10,8 @@ class User {
   final String id;
   final String name;
   final String role;
+  final String? phoneNumber;
+  final String? platoon;
   final String? unitId;
   final String? unitName;
   final String? unitJoinCode;
@@ -21,6 +23,8 @@ class User {
     required this.id,
     required this.name,
     required this.role,
+    this.phoneNumber,
+    this.platoon,
     this.unitId,
     this.unitName,
     this.unitJoinCode,
@@ -30,10 +34,14 @@ class User {
   });
 
   factory User.fromMap(Map<String, dynamic> map) {
+    final rawPhone = map['phone_number']?.toString().trim();
+    final rawPlatoon = map['platoon']?.toString().trim();
     return User(
       id: map['id'],
       name: map['name'] ?? 'משתמש',
       role: map['role'] ?? 'COMBAT_MEDIC',
+      phoneNumber: (rawPhone != null && rawPhone.isNotEmpty) ? rawPhone : null,
+      platoon: (rawPlatoon != null && rawPlatoon.isNotEmpty) ? rawPlatoon : null,
       unitId: map['unit_id'],
       unitName: map['unit_name'],
       unitJoinCode: map['unit_join_code'],
@@ -48,6 +56,8 @@ class User {
       'id': id,
       'name': name,
       'role': role,
+      'phone_number': phoneNumber,
+      'platoon': platoon,
       'unit_id': unitId,
       'unit_name': unitName,
       'unit_join_code': unitJoinCode,
@@ -69,8 +79,10 @@ class AuthService {
   User? _currentUser;
   User? get currentUser => _currentUser;
 
-  /// Allows a COMPANY_MEDIC (חופ"ל) to preview the exact UI and permissions of a COMBAT_MEDIC.
+  /// Allows a COMPANY_MEDIC (חופ"ל) to preview the exact UI and permissions of a specific COMBAT_MEDIC.
   final ValueNotifier<bool> previewAsCombatMedicNotifier = ValueNotifier<bool>(false);
+  final ValueNotifier<int> previewRevisionNotifier = ValueNotifier<int>(0);
+  Map<String, String>? _previewMedicProfile;
 
   bool get isActualCompanyMedic => _currentUser?.role == 'COMPANY_MEDIC';
   bool get isPreviewingAsCombatMedic => isActualCompanyMedic && previewAsCombatMedicNotifier.value;
@@ -78,8 +90,79 @@ class AuthService {
       isPreviewingAsCombatMedic ? 'COMBAT_MEDIC' : (_currentUser?.role ?? 'COMBAT_MEDIC');
   bool get isCompanyMedic => effectiveRole == 'COMPANY_MEDIC';
 
+  Map<String, String>? get previewMedicProfile =>
+      isPreviewingAsCombatMedic ? _previewMedicProfile : null;
+
+  String? get effectiveUserId =>
+      isPreviewingAsCombatMedic ? (_previewMedicProfile?['id'] ?? _currentUser?.id) : _currentUser?.id;
+
+  String get effectiveUserName =>
+      isPreviewingAsCombatMedic
+          ? (_previewMedicProfile?['name'] ?? 'חובש בפלוגה')
+          : (_currentUser?.name ?? 'חופ"ל');
+
+  String? get effectiveUserPlatoon {
+    if (isPreviewingAsCombatMedic) {
+      return _previewMedicProfile?['platoon'];
+    }
+    return _currentUser?.platoon;
+  }
+
+  String? get effectiveUserPhone {
+    if (isPreviewingAsCombatMedic) {
+      return _previewMedicProfile?['phone'];
+    }
+    return _currentUser?.phoneNumber;
+  }
+
+  void startCombatMedicPreview({
+    required String id,
+    required String name,
+    String? platoon,
+    String? phone,
+    bool isManual = false,
+  }) {
+    if (!isActualCompanyMedic) return;
+    _previewMedicProfile = {
+      'id': id,
+      'name': name.trim().isEmpty ? 'חובש בפלוגה' : name.trim(),
+      if (platoon != null && platoon.trim().isNotEmpty) 'platoon': platoon.trim(),
+      if (phone != null && phone.trim().isNotEmpty) 'phone': phone.trim(),
+      'is_manual': isManual ? 'true' : 'false',
+    };
+    previewAsCombatMedicNotifier.value = true;
+    previewRevisionNotifier.value++;
+  }
+
+  void updatePreviewMedicDetails({
+    required String name,
+    String? phoneNumber,
+    String? platoon,
+  }) {
+    if (!isPreviewingAsCombatMedic) return;
+    final currentId = _previewMedicProfile?['id'] ?? 'demo_medic_${_currentUser?.unitId ?? 'unit'}';
+    final isManual = _previewMedicProfile?['is_manual'] == 'true';
+    startCombatMedicPreview(
+      id: currentId,
+      name: name,
+      platoon: platoon,
+      phone: phoneNumber,
+      isManual: isManual,
+    );
+  }
+
   void setCombatMedicPreview(bool enabled) {
-    previewAsCombatMedicNotifier.value = enabled && isActualCompanyMedic;
+    final active = enabled && isActualCompanyMedic;
+    if (!active) {
+      _previewMedicProfile = null;
+    } else {
+      _previewMedicProfile ??= {
+        'id': 'demo_medic_${_currentUser?.unitId ?? 'unit'}',
+        'name': 'חובש לדוגמה',
+      };
+    }
+    previewAsCombatMedicNotifier.value = active;
+    previewRevisionNotifier.value++;
   }
 
   /// True when the app was opened from a password recovery link
@@ -145,6 +228,8 @@ class AuthService {
         id: _currentUser!.id,
         name: _currentUser!.name,
         role: _currentUser!.role,
+        phoneNumber: _currentUser!.phoneNumber,
+        platoon: _currentUser!.platoon,
         unitId: _currentUser!.unitId,
         unitName: _currentUser!.unitName,
         unitJoinCode: _currentUser!.unitJoinCode,
@@ -162,6 +247,8 @@ class AuthService {
         id: _currentUser!.id,
         name: _currentUser!.name,
         role: role ?? _currentUser!.role,
+        phoneNumber: _currentUser!.phoneNumber,
+        platoon: _currentUser!.platoon,
         unitId: unitId,
         unitName: unitName,
         unitJoinCode: joinCode,
@@ -180,6 +267,8 @@ class AuthService {
         id: _currentUser!.id,
         name: _currentUser!.name,
         role: _currentUser!.role,
+        phoneNumber: _currentUser!.phoneNumber,
+        platoon: _currentUser!.platoon,
         unitId: _currentUser!.unitId,
         unitName: _currentUser!.unitName,
         unitJoinCode: _currentUser!.unitJoinCode,
@@ -191,6 +280,46 @@ class AuthService {
     }
   }
 
+  Future<void> updatePersonalDetails({
+    required String name,
+    String? phoneNumber,
+    String? platoon,
+  }) async {
+    final user = _currentUser;
+    if (user == null) return;
+
+    final cleanName = name.trim();
+    final cleanPhone = (phoneNumber != null && phoneNumber.trim().isNotEmpty) ? phoneNumber.trim() : null;
+    final cleanPlatoon = (platoon != null && platoon.trim().isNotEmpty) ? platoon.trim() : null;
+
+    try {
+      await _supabase.from('users').update({
+        'name': cleanName,
+        'phone_number': cleanPhone,
+        'platoon': cleanPlatoon,
+      }).eq('id', user.id);
+    } on supa.PostgrestException catch (_) {
+      await _supabase.from('users').update({
+        'name': cleanName,
+      }).eq('id', user.id);
+    }
+
+    _currentUser = User(
+      id: user.id,
+      name: cleanName,
+      role: user.role,
+      phoneNumber: cleanPhone,
+      platoon: cleanPlatoon,
+      unitId: user.unitId,
+      unitName: user.unitName,
+      unitJoinCode: user.unitJoinCode,
+      activeDeploymentId: user.activeDeploymentId,
+      activeDeploymentName: user.activeDeploymentName,
+      competencePoints: user.competencePoints,
+    );
+    await _saveLocalProfile(_currentUser!.toMap());
+  }
+
   supa.SupabaseClient get _supabase => supa.Supabase.instance.client;
 
   bool get isAuthenticated => _supabase.auth.currentUser != null;
@@ -200,16 +329,27 @@ class AuthService {
     final supaUser = _supabase.auth.currentUser;
     if (supaUser == null) {
       _currentUser = null;
+      _previewMedicProfile = null;
       previewAsCombatMedicNotifier.value = false;
+      previewRevisionNotifier.value++;
       return;
     }
 
     try {
-      final data = await _supabase
-          .from('users')
-          .select('id, name, role, unit_id, active_deployment_id, competence_points, units(name, join_code), deployments(name)')
-          .eq('id', supaUser.id)
-          .maybeSingle();
+      Map<String, dynamic>? data;
+      try {
+        data = await _supabase
+            .from('users')
+            .select('id, name, role, phone_number, platoon, unit_id, active_deployment_id, competence_points, units(name, join_code), deployments(name)')
+            .eq('id', supaUser.id)
+            .maybeSingle();
+      } on supa.PostgrestException catch (_) {
+        data = await _supabase
+            .from('users')
+            .select('id, name, role, unit_id, active_deployment_id, competence_points, units(name, join_code), deployments(name)')
+            .eq('id', supaUser.id)
+            .maybeSingle();
+      }
 
       if (data == null) {
         final fallback = await _loadLocalProfile(supaUser.id) ??
@@ -231,7 +371,10 @@ class AuthService {
         return;
       }
 
+      final localCached = await _loadLocalProfile(supaUser.id);
       final map = Map<String, dynamic>.from(data);
+      map['phone_number'] ??= localCached?.phoneNumber;
+      map['platoon'] ??= localCached?.platoon;
       if (map['units'] != null) {
         map['unit_name'] = map['units']['name'];
         map['unit_join_code'] = map['units']['join_code'];
@@ -265,6 +408,7 @@ class AuthService {
       }
 
       if (!isActualCompanyMedic) {
+        _previewMedicProfile = null;
         previewAsCombatMedicNotifier.value = false;
       }
       await _saveLocalProfile(map);
@@ -444,7 +588,9 @@ class AuthService {
 
   Future<void> logout() async {
     isPasswordRecovery = false;
+    _previewMedicProfile = null;
     previewAsCombatMedicNotifier.value = false;
+    previewRevisionNotifier.value++;
     await _supabase.auth.signOut();
     _currentUser = null;
 
@@ -473,6 +619,8 @@ class AuthService {
         id: _currentUser!.id,
         name: _currentUser!.name,
         role: _currentUser!.role,
+        phoneNumber: _currentUser!.phoneNumber,
+        platoon: _currentUser!.platoon,
         unitId: _currentUser!.unitId,
         unitName: unitName ?? _currentUser!.unitName,
         unitJoinCode: _currentUser!.unitJoinCode,
@@ -488,7 +636,9 @@ class AuthService {
     final user = _currentUser;
     if (user == null) return;
 
+    _previewMedicProfile = null;
     previewAsCombatMedicNotifier.value = false;
+    previewRevisionNotifier.value++;
 
     await _supabase.from('users').update({
       'unit_id': null,
@@ -499,6 +649,8 @@ class AuthService {
       id: user.id,
       name: user.name,
       role: user.role,
+      phoneNumber: user.phoneNumber,
+      platoon: user.platoon,
       unitId: null,
       unitName: null,
       unitJoinCode: null,
