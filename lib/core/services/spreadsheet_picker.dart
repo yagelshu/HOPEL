@@ -10,3 +10,4 @@ class SpreadsheetPicker {
   static Future<PickedSpreadsheetFile?> pick({bool allowAnyFile = false}) =>
       pickSpreadsheetImpl(allowAnyFile: allowAnyFile);
 }
+

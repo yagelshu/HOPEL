@@ -5,6 +5,7 @@ import 'package:chopel_app/core/database/database_service.dart';
 import 'package:chopel_app/core/auth/auth_service.dart';
 import 'package:chopel_app/core/services/standby_medics_service.dart';
 import 'package:chopel_app/models/equipment.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 final dashboardDatabaseProvider = Provider<DatabaseService>((ref) => DatabaseService());
@@ -203,11 +204,39 @@ class DashboardMetricsNotifier extends AsyncNotifier<DashboardMetrics> {
     final uniquePendingMedics = assignmentsRes.map((r) => r['medic_id']).toSet();
     final unverified = uniquePendingMedics.length;
 
+    // Auto-clean previously seeded fabricated template tasks once per unit
+    const fabricatedTitles = {
+      'מסדר חולים בוקר',
+      'בדיקת כוננות וחוסרים בארגז חופ"ל',
+      'מעקב פניות פתוחות ותדריך כוננות לילה',
+    };
+    var filteredScheduleRes = scheduleRes;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final cleanFlagKey = 'cleaned_fabricated_schedule_v58_$unitId';
+      if (!(prefs.getBool(cleanFlagKey) ?? false)) {
+        final fabricatedIds = scheduleRes
+            .where((s) => fabricatedTitles.contains((s['title'] ?? '').toString().trim()))
+            .map((s) => s['id'])
+            .where((id) => id != null)
+            .toList();
+        if (fabricatedIds.isNotEmpty) {
+          filteredScheduleRes = scheduleRes
+              .where((s) => !fabricatedTitles.contains((s['title'] ?? '').toString().trim()))
+              .toList();
+          for (final id in fabricatedIds) {
+            sb.from('daily_schedule').delete().eq('id', id).then((_) {}, onError: (_) {});
+          }
+        }
+        await prefs.setBool(cleanFlagKey, true);
+      }
+    } catch (_) {}
+
     // Daily schedule (with automatic 00:00 daily reset)
     final todayKey = todayScheduleDateKey();
     final List<Map<String, String>> staleTasksToReset = [];
 
-    final timeline = scheduleRes.map((s) {
+    final timeline = filteredScheduleRes.map((s) {
       final rawIconStr = (s['icon'] ?? 'clock').toString();
       final cleanIcon = rawIconStr.split('@').first;
       final stampedDate = rawIconStr.contains('@') ? rawIconStr.split('@').last : null;
@@ -368,6 +397,12 @@ class DashboardMetricsNotifier extends AsyncNotifier<DashboardMetrics> {
     if (current == null) return;
     final updated = current.timelineEvents.where((e) => e['id'] != taskId).toList();
     state = AsyncValue.data(current.copyWith(timelineEvents: updated));
+  }
+
+  void clearAllScheduleTasksLocally() {
+    final current = state.value;
+    if (current == null) return;
+    state = AsyncValue.data(current.copyWith(timelineEvents: const []));
   }
 
   /// 0ms synchronous optimistic toggle for a medic's standby status (`0 -> 1` in `חובשים במוצב`).

@@ -30,6 +30,7 @@ import 'package:chopel_app/theme/components/hopal_text_field.dart';
 import 'package:chopel_app/core/utils/app_constants.dart';
 import 'package:chopel_app/core/utils/app_error_helper.dart';
 import 'package:chopel_app/core/utils/battalion_medic_helper.dart';
+import 'package:chopel_app/core/utils/web_reload.dart';
 import 'package:chopel_app/core/services/standby_medics_service.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {
@@ -1296,7 +1297,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                           ),
                           HopalListTile(
                             title: const Text('אודות המערכת וגרסה'),
-                            subtitle: const Text('גרסה ${AppConstants.version} • לחץ לבדיקת עדכונים'),
+                            subtitle: const Text('גרסה ${AppConstants.fullVersionLabel} • לחץ לעדכון גרסה'),
                             leadingIcon: LucideIcons.info,
                             onTap: () {
                               HopalBottomSheet.show(
@@ -1309,16 +1310,19 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                                     Text('גרסת אפליקציה: ${AppConstants.fullVersionLabel}', style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.bold)),
                                     const SizedBox(height: 8),
                                     Text(
-                                      'האפליקציה מתעדכנת ברציף. במידה ואתה עובד מהדפדפן (Web/PWA) ולא רואה את השינויים האחרונים, מומלץ לבצע רענון מאולץ (Ctrl + F5 או Shift + טען מחדש) כדי לפנות את זיכרון המטמון.',
+                                      'האפליקציה מתעדכנת אוטומטית מהענן. לחיצה על הכפתור למטה תנקה את המטמון המקומי ותטען מיד את הגרסה החדשה ביותר מהשרת (גם בנייד וגם במחשב).',
                                       style: TextStyle(color: AppTheme.textSecondary, fontSize: 13, height: 1.4),
                                     ),
                                     const SizedBox(height: AppTheme.spacing24),
                                     HopalButton(
-                                      label: 'רענן אפליקציה מחדש',
+                                      label: 'עדכן ורענן אפליקציה כעת',
                                       icon: LucideIcons.refreshCw,
-                                      onPressed: () {
-                                        Navigator.pop(context);
-                                        HopalFeedback.showInfo(context, 'לרענון נקי של המטמון ועדכון מיידי: לחץ Ctrl + F5 במקלדת');
+                                      onPressed: () async {
+                                        final reloaded = await WebReload.forceUpdateAndReload();
+                                        if (!reloaded && context.mounted) {
+                                          Navigator.pop(context);
+                                          HopalFeedback.showSuccess(context, 'האפליקציה מעודכנת לגרסה האחרונה');
+                                        }
                                       },
                                     ),
                                   ],

@@ -213,7 +213,44 @@
     For more details:
     * https://docs.flutter.dev/platform-integration/web/initialization
   -->
-  <script src="flutter_bootstrap.js" async=""></script>
-
+  <script>
+    (function () {
+      try {
+        fetch('version.json?t=' + Date.now(), { cache: 'no-store' })
+          .then(function (r) { return r.ok ? r.json() : null; })
+          .then(async function (v) {
+            if (!v || !v.build_number) return;
+            var remoteBuild = String(v.build_number);
+            var localBuild = localStorage.getItem('hopal_active_build');
+            var reloadedFor = sessionStorage.getItem('hopal_reloaded_build');
+            if (localBuild !== remoteBuild && reloadedFor !== remoteBuild) {
+              localStorage.setItem('hopal_active_build', remoteBuild);
+              sessionStorage.setItem('hopal_reloaded_build', remoteBuild);
+              var hadSw = false;
+              try {
+                if ('serviceWorker' in navigator) {
+                  var regs = await navigator.serviceWorker.getRegistrations();
+                  if (regs.length > 0) hadSw = true;
+                  for (var i = 0; i < regs.length; i++) { await regs[i].unregister(); }
+                }
+                if ('caches' in window) {
+                  var keys = await caches.keys();
+                  for (var j = 0; j < keys.length; j++) { await caches.delete(keys[j]); }
+                }
+              } catch (_) {}
+              if (localBuild !== null || hadSw) {
+                var u = new URL(window.location.href);
+                u.searchParams.set('v', remoteBuild);
+                window.location.replace(u.toString());
+              }
+            } else {
+              localStorage.setItem('hopal_active_build', remoteBuild);
+            }
+          })
+          .catch(function () {});
+      } catch (_) {}
+    })();
+  </script>
+  <script src="flutter_bootstrap.js?v=58" async=""></script>
 
 </body></html>

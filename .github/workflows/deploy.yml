@@ -30,7 +30,7 @@ jobs:
         run: flutter pub get
         
       - name: Build Web
-        run: flutter build web --base-href "/HOPEL/"
+        run: flutter build web --base-href "/HOPEL/" --pwa-strategy=none
         
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3

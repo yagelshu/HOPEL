@@ -1592,7 +1592,30 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
                 variant: HopalButtonVariant.secondary,
                 onPressed: () => openTaskDialog(setModalState),
               ),
-              const SizedBox(height: AppTheme.spacing16),
+              if (events.isNotEmpty) ...[
+                const SizedBox(height: AppTheme.spacing8),
+                TextButton.icon(
+                  onPressed: () async {
+                    final unitId = AuthService().currentUser?.unitId;
+                    if (unitId == null) return;
+                    try {
+                      await schedule.delete().eq('unit_id', unitId);
+                      setModalState(() => events.clear());
+                      ref.read(dashboardMetricsProvider.notifier).clearAllScheduleTasksLocally();
+                    } catch (e) {
+                      if (context.mounted) {
+                        HopalFeedback.showError(
+                          context,
+                          AppErrorHelper.toHebrew(e, fallback: 'שגיאה בניקוי הלו"ז.'),
+                        );
+                      }
+                    }
+                  },
+                  icon: Icon(LucideIcons.trash2, size: 16, color: AppTheme.criticalRed),
+                  label: Text('נקה את כל הלו"ז', style: TextStyle(color: AppTheme.criticalRed)),
+                ),
+              ],
+              const SizedBox(height: AppTheme.spacing12),
               HopalButton(
                 label: 'סיום עריכה',
                 icon: LucideIcons.check,

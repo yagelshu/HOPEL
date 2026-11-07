@@ -9,3 +9,4 @@ class PickedSpreadsheetFile {
     required this.bytes,
   });
 }
+
