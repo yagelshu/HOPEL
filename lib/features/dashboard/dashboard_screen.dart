@@ -578,7 +578,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
                                           icon: const Icon(LucideIcons.stethoscope, size: 16),
                                           label: const Text('רופא', overflow: TextOverflow.ellipsis),
                                           style: TextButton.styleFrom(
-                                            foregroundColor: AppTheme.primaryGreen,
+                                            foregroundColor: AppTheme.infoBlue,
                                             visualDensity: VisualDensity.compact,
                                           ),
                                         ),
@@ -831,6 +831,23 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
     await BattalionMedicHelper.sendReportToHogad(context, report);
   }
 
+  static String _medicInitials(String name) {
+    final parts = name.trim().split(RegExp(r'\s+')).where((p) => p.isNotEmpty).toList();
+    if (parts.isEmpty) return 'ח';
+    if (parts.length == 1) {
+      return parts[0].characters.take(2).toString();
+    }
+    return '${parts[0].characters.first}${parts[1].characters.first}';
+  }
+
+  static String _formatPhoneDisplay(String raw) {
+    final clean = raw.replaceAll(RegExp(r'\D'), '');
+    if (clean.length == 10 && clean.startsWith('05')) {
+      return '${clean.substring(0, 3)}-${clean.substring(3, 6)}-${clean.substring(6)}';
+    }
+    return raw;
+  }
+
   void _showMedicsBottomSheet(BuildContext context, List<Map<String, dynamic>> initialMedics) async {
     final unitId = AuthService().currentUser?.unitId;
     final isCompanyMedic = AuthService().isCompanyMedic;
@@ -848,10 +865,11 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
     }
     final currentUserId = AuthService().effectiveUserId;
 
-    Future<void> addMedic(StateSetter setModalState) async {
-      final nameController = TextEditingController();
-      final phoneController = TextEditingController();
-      final platoonController = TextEditingController();
+    Future<void> addOrEditMedic(StateSetter setModalState, {Map<String, dynamic>? existingMedic}) async {
+      final isEdit = existingMedic != null;
+      final nameController = TextEditingController(text: (existingMedic?['name'] ?? '').toString());
+      final phoneController = TextEditingController(text: (existingMedic?['phone_number'] ?? '').toString());
+      final platoonController = TextEditingController(text: (existingMedic?['platoon'] ?? '').toString());
 
       final soldiers = ref.read(soldiersProvider).asData?.value ?? [];
 
@@ -863,9 +881,14 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
               backgroundColor: AppTheme.backgroundSecondary,
               title: Row(
                 children: [
-                  Icon(LucideIcons.userPlus, color: AppTheme.primaryGreen, size: 22),
+                  Icon(isEdit ? LucideIcons.pencil : LucideIcons.userPlus, color: AppTheme.successGreen, size: 22),
                   const SizedBox(width: 8),
-                  Text('הוספת חובש לרשימה', style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.bold, fontSize: 18)),
+                  Expanded(
+                    child: Text(
+                      isEdit ? 'עריכת פרטי חובש' : 'הוספת חובש לרשימה',
+                      style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.bold, fontSize: 18),
+                    ),
+                  ),
                 ],
               ),
               content: SingleChildScrollView(
@@ -874,14 +897,17 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     Text(
-                      'באפשרותך לצרף חובש למצבת החובשים ידנית, גם אם עדיין לא נכנס לאפליקציה במכשיר שלו.',
+                      isEdit
+                          ? 'עדכן את שם החובש, המחלקה או מספר הטלפון שלו.'
+                          : 'באפשרותך לצרף חובש למצבת החובשים ידנית, גם אם עדיין לא נכנס לאפליקציה במכשיר שלו.',
                       style: TextStyle(color: AppTheme.textSecondary, fontSize: 13, height: 1.4),
                     ),
                     const SizedBox(height: AppTheme.spacing16),
-                    if (soldiers.isNotEmpty) ...[
+                    if (!isEdit && soldiers.isNotEmpty) ...[
                       DropdownButtonFormField<Soldier>(
                         dropdownColor: AppTheme.backgroundSecondary,
                         style: TextStyle(color: AppTheme.textPrimary),
+                        isExpanded: true,
                         decoration: InputDecoration(
                           labelText: 'או בחר חייל ממאגר הפלוגה',
                           prefixIcon: const Icon(LucideIcons.users),
@@ -891,7 +917,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
                           final sub = [s.personalNumber, s.platoon].whereType<String>().where((x) => x.isNotEmpty).join(' • ');
                           return DropdownMenuItem<Soldier>(
                             value: s,
-                            child: Text(sub.isEmpty ? s.name : '${s.name} ($sub)'),
+                            child: Text(
+                              sub.isEmpty ? s.name : '${s.name} ($sub)',
+                              overflow: TextOverflow.ellipsis,
+                            ),
                           );
                         }).toList(),
                         onChanged: (s) {
@@ -961,7 +990,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
                       'platoon': platoonController.text.trim(),
                     });
                   },
-                  child: const Text('הוסף לרשימה', style: TextStyle(fontWeight: FontWeight.bold)),
+                  child: Text(isEdit ? 'שמור שינויים' : 'הוסף לרשימה', style: const TextStyle(fontWeight: FontWeight.bold)),
                 ),
               ],
             );
@@ -975,22 +1004,37 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
       final platoon = result['platoon']?.isEmpty == true ? null : result['platoon'];
 
       final unitId = AuthService().currentUser?.unitId;
-      final newId = const Uuid().v4();
+      final medicId = existingMedic?['id']?.toString() ?? const Uuid().v4();
+      final isManual = existingMedic != null ? (existingMedic['is_manual'] == true) : true;
 
       final medicData = <String, dynamic>{
-        'id': newId,
+        if (existingMedic != null) ...existingMedic,
+        'id': medicId,
         'name': name,
-        'role': 'COMBAT_MEDIC',
+        'role': existingMedic?['role'] ?? 'COMBAT_MEDIC',
         'phone_number': phone,
         'platoon': platoon,
-        'is_manual': true,
-        'standby': true,
+        'is_manual': isManual,
+        'standby': existingMedic != null ? (existingMedic['standby'] == true) : true,
       };
 
-      await StandbyMedicsService.saveManualMedic(unitId, medicData);
+      if (isManual) {
+        await StandbyMedicsService.saveManualMedic(unitId, medicData);
+      } else {
+        try {
+          await Supabase.instance.client
+              .from('users')
+              .update({
+                'name': name,
+                'phone_number': phone,
+                'platoon': platoon,
+              })
+              .eq('id', medicId);
+        } catch (_) {}
+      }
 
       setModalState(() {
-        final existingIdx = medics.indexWhere((m) => m['id'] == newId);
+        final existingIdx = medics.indexWhere((m) => m['id'] == medicId);
         if (existingIdx != -1) {
           medics[existingIdx] = medicData;
         } else {
@@ -1001,7 +1045,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
       ref.read(dashboardMetricsProvider.notifier).upsertMedicLocally(medicData);
 
       if (context.mounted) {
-        HopalFeedback.showSuccess(context, 'החובש $name נוסף בהצלחה');
+        HopalFeedback.showSuccess(context, isEdit ? 'פרטי החובש $name עודכנו' : 'החובש $name נוסף בהצלחה');
       }
     }
 
@@ -1064,12 +1108,14 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
                       message: 'הגדר / ערוך מספר טלפון של החוג"ד',
                       child: OutlinedButton(
                         style: OutlinedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                          backgroundColor: AppTheme.backgroundSecondary,
+                          foregroundColor: AppTheme.textPrimary,
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
                           side: BorderSide(color: AppTheme.borderSubtle),
                           shape: RoundedRectangleBorder(borderRadius: AppTheme.radiusMd),
                         ),
                         onPressed: () => BattalionMedicHelper.showSettingsSheet(context),
-                        child: Icon(LucideIcons.userCog, color: AppTheme.primaryGreen, size: 20),
+                        child: Icon(LucideIcons.userCog, color: AppTheme.textPrimary, size: 20),
                       ),
                     ),
                   ],
@@ -1080,7 +1126,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
                   label: 'הוסף חובש לרשימה (ידני / ממאגר)',
                   icon: LucideIcons.userPlus,
                   variant: HopalButtonVariant.secondary,
-                  onPressed: () => addMedic(setModalState),
+                  onPressed: () => addOrEditMedic(setModalState),
                 ),
                 const SizedBox(height: AppTheme.spacing16),
               ] else ...[
@@ -1112,113 +1158,275 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
               ...medics.map((medic) {
                 final isMe = medic['id'] == currentUserId;
                 final isManual = medic['is_manual'] == true;
-                final phone = medic['phone_number'] as String?;
-                final platoon = medic['platoon'] as String?;
+                final isOnStandby = medic['standby'] == true;
+                final rawName = (medic['name'] ?? '').toString().trim();
+                final displayName = rawName.isNotEmpty ? rawName : 'חובש ללא שם';
+                final phone = (medic['phone_number'] as String?)?.trim();
+                final platoon = (medic['platoon'] as String?)?.trim();
+                final hasPhone = phone != null && phone.isNotEmpty;
+                final hasPlatoon = platoon != null && platoon.isNotEmpty;
                 final canToggleThisMedic = isCompanyMedic || isMe;
+                final showActionRow = hasPhone || isCompanyMedic;
 
                 return Container(
-                  margin: const EdgeInsets.only(bottom: AppTheme.spacing8),
+                  margin: const EdgeInsets.only(bottom: AppTheme.spacing12),
+                  padding: const EdgeInsets.all(14),
                   decoration: BoxDecoration(
                     color: AppTheme.backgroundSecondary,
                     borderRadius: AppTheme.radiusMd,
                     border: Border.all(
-                      color: medic['standby'] == true
-                          ? AppTheme.primaryGreen.withValues(alpha: 0.3)
+                      color: isOnStandby
+                          ? AppTheme.successGreen.withValues(alpha: 0.45)
                           : AppTheme.borderSubtle,
                     ),
                   ),
-                  child: ListTile(
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                    leading: CircleAvatar(
-                      backgroundColor: medic['standby'] == true
-                          ? AppTheme.primaryGreen.withValues(alpha: 0.2)
-                          : AppTheme.backgroundTertiary,
-                      child: Icon(
-                        LucideIcons.stethoscope,
-                        color: medic['standby'] == true ? AppTheme.primaryGreen : AppTheme.textMuted,
-                        size: 20,
-                      ),
-                    ),
-                    title: Row(
-                      children: [
-                        Flexible(
-                          child: Text(
-                            isMe ? '${medic['name']} (אני)' : medic['name'] ?? '',
-                            style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.bold, fontSize: 15),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                        if (isManual && isCompanyMedic) ...[
-                          const SizedBox(width: 6),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: AppTheme.backgroundTertiary,
-                              borderRadius: BorderRadius.circular(4),
-                              border: Border.all(color: AppTheme.borderSubtle),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          CircleAvatar(
+                            radius: 22,
+                            backgroundColor: isOnStandby
+                                ? AppTheme.successGreen.withValues(alpha: 0.18)
+                                : AppTheme.backgroundTertiary,
+                            child: Text(
+                              _medicInitials(displayName),
+                              style: TextStyle(
+                                color: isOnStandby ? AppTheme.successGreen : AppTheme.textSecondary,
+                                fontWeight: FontWeight.w800,
+                                fontSize: 15,
+                              ),
                             ),
-                            child: Text('ידני', style: TextStyle(color: AppTheme.textMuted, fontSize: 10)),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Wrap(
+                                  crossAxisAlignment: WrapCrossAlignment.center,
+                                  spacing: 6,
+                                  runSpacing: 4,
+                                  children: [
+                                    Text(
+                                      displayName,
+                                      style: TextStyle(
+                                        color: AppTheme.textPrimary,
+                                        fontWeight: FontWeight.w800,
+                                        fontSize: 17,
+                                        letterSpacing: -0.3,
+                                      ),
+                                    ),
+                                    if (isMe)
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: AppTheme.infoBlue.withValues(alpha: 0.15),
+                                          borderRadius: BorderRadius.circular(6),
+                                          border: Border.all(color: AppTheme.infoBlue.withValues(alpha: 0.35)),
+                                        ),
+                                        child: Text(
+                                          'אני',
+                                          style: TextStyle(
+                                            color: AppTheme.infoBlue,
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                        ),
+                                      ),
+                                    if (isManual && isCompanyMedic)
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: AppTheme.backgroundTertiary,
+                                          borderRadius: BorderRadius.circular(6),
+                                          border: Border.all(color: AppTheme.borderSubtle),
+                                        ),
+                                        child: Text(
+                                          'ידני',
+                                          style: TextStyle(
+                                            color: AppTheme.textSecondary,
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                                if (hasPlatoon || hasPhone) ...[
+                                  const SizedBox(height: 5),
+                                  Wrap(
+                                    crossAxisAlignment: WrapCrossAlignment.center,
+                                    spacing: 8,
+                                    runSpacing: 4,
+                                    children: [
+                                      if (hasPlatoon)
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                                          decoration: BoxDecoration(
+                                            color: AppTheme.backgroundTertiary,
+                                            borderRadius: BorderRadius.circular(4),
+                                            border: Border.all(color: AppTheme.borderSubtle),
+                                          ),
+                                          child: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Icon(LucideIcons.shield, size: 11, color: AppTheme.militaryOlive),
+                                              const SizedBox(width: 4),
+                                              Text(
+                                                platoon,
+                                                style: TextStyle(
+                                                  color: AppTheme.textSecondary,
+                                                  fontSize: 11,
+                                                  fontWeight: FontWeight.w600,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      if (hasPhone)
+                                        Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Icon(LucideIcons.phone, size: 11, color: AppTheme.textMuted),
+                                            const SizedBox(width: 4),
+                                            Text(
+                                              _formatPhoneDisplay(phone),
+                                              style: TextStyle(
+                                                color: AppTheme.textMuted,
+                                                fontSize: 12,
+                                                fontWeight: FontWeight.w500,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                    ],
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              CupertinoSwitch(
+                                value: isOnStandby,
+                                activeTrackColor: AppTheme.successGreen,
+                                inactiveTrackColor: AppTheme.backgroundTertiary,
+                                onChanged: canToggleThisMedic
+                                    ? (bool value) async {
+                                        HapticFeedback.selectionClick();
+                                        setModalState(() => medic['standby'] = value);
+                                        try {
+                                          await ref
+                                              .read(dashboardMetricsProvider.notifier)
+                                              .toggleMedicStandby(medic, value);
+                                        } catch (e) {
+                                          setModalState(() => medic['standby'] = !value);
+                                          if (context.mounted) {
+                                            HopalFeedback.showError(
+                                              context,
+                                              AppErrorHelper.toHebrew(e, fallback: 'שגיאה בעדכון כוננות החובש.'),
+                                            );
+                                          }
+                                        }
+                                      }
+                                    : null,
+                              ),
+                              Text(
+                                isOnStandby ? 'במוצב' : 'לא זמין',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w600,
+                                  color: isOnStandby ? AppTheme.successGreen : AppTheme.textMuted,
+                                ),
+                              ),
+                            ],
                           ),
                         ],
-                      ],
-                    ),
-                    subtitle: platoon != null || phone != null
-                        ? Text(
-                            [if (platoon != null) platoon, if (phone != null) phone].join(' • '),
-                            style: TextStyle(color: AppTheme.textSecondary, fontSize: 12),
-                          )
-                        : null,
-                    trailing: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        if (phone != null && phone.isNotEmpty) ...[
-                          IconButton(
-                            icon: Icon(LucideIcons.phone, size: 18, color: AppTheme.primaryGreen),
-                            tooltip: 'חיוג',
-                            onPressed: () => launchUrl(Uri.parse('tel:$phone')),
-                          ),
-                          IconButton(
-                            icon: Icon(LucideIcons.messageCircle, size: 18, color: AppTheme.successGreen),
-                            tooltip: 'WhatsApp',
-                            onPressed: () {
-                              final clean = phone.replaceAll(RegExp(r'\D'), '');
-                              final formatted = clean.startsWith('0') ? '972${clean.substring(1)}' : clean;
-                              launchUrl(Uri.parse('https://wa.me/$formatted'), mode: LaunchMode.externalApplication);
-                            },
-                          ),
-                        ],
-                        CupertinoSwitch(
-                          value: medic['standby'] == true,
-                          activeTrackColor: AppTheme.successGreen,
-                          inactiveTrackColor: AppTheme.backgroundTertiary,
-                          onChanged: canToggleThisMedic
-                              ? (bool value) async {
-                                  HapticFeedback.selectionClick();
-                                  setModalState(() => medic['standby'] = value);
-                                  try {
-                                    await ref
-                                        .read(dashboardMetricsProvider.notifier)
-                                        .toggleMedicStandby(medic, value);
-                                  } catch (e) {
-                                    setModalState(() => medic['standby'] = !value);
-                                    if (context.mounted) {
-                                      HopalFeedback.showError(
-                                        context,
-                                        AppErrorHelper.toHebrew(e, fallback: 'שגיאה בעדכון כוננות החובש.'),
-                                      );
-                                    }
-                                  }
-                                }
-                              : null,
+                      ),
+                      if (showActionRow) ...[
+                        const SizedBox(height: 10),
+                        Divider(height: 1, color: AppTheme.borderSubtle),
+                        const SizedBox(height: 6),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 4,
+                          alignment: WrapAlignment.spaceBetween,
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          children: [
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                if (hasPhone) ...[
+                                  TextButton.icon(
+                                    style: TextButton.styleFrom(
+                                      foregroundColor: AppTheme.infoBlue,
+                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                      minimumSize: Size.zero,
+                                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                    ),
+                                    icon: const Icon(LucideIcons.phone, size: 16),
+                                    label: const Text('חיוג', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                                    onPressed: () => launchUrl(Uri.parse('tel:$phone')),
+                                  ),
+                                  const SizedBox(width: 4),
+                                  TextButton.icon(
+                                    style: TextButton.styleFrom(
+                                      foregroundColor: AppTheme.successGreen,
+                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                      minimumSize: Size.zero,
+                                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                    ),
+                                    icon: const Icon(LucideIcons.messageCircle, size: 16),
+                                    label: const Text('WhatsApp', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                                    onPressed: () {
+                                      final clean = phone.replaceAll(RegExp(r'\D'), '');
+                                      final formatted = clean.startsWith('0') ? '972${clean.substring(1)}' : clean;
+                                      launchUrl(Uri.parse('https://wa.me/$formatted'), mode: LaunchMode.externalApplication);
+                                    },
+                                  ),
+                                ],
+                              ],
+                            ),
+                            if (isCompanyMedic)
+                              Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  TextButton.icon(
+                                    style: TextButton.styleFrom(
+                                      foregroundColor: AppTheme.textSecondary,
+                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                      minimumSize: Size.zero,
+                                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                    ),
+                                    icon: const Icon(LucideIcons.pencil, size: 15),
+                                    label: const Text('עריכה', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                                    onPressed: () => addOrEditMedic(setModalState, existingMedic: medic),
+                                  ),
+                                  if (!isMe) ...[
+                                    const SizedBox(width: 4),
+                                    TextButton.icon(
+                                      style: TextButton.styleFrom(
+                                        foregroundColor: AppTheme.criticalRed,
+                                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                        minimumSize: Size.zero,
+                                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                      ),
+                                      icon: const Icon(LucideIcons.trash2, size: 15),
+                                      label: const Text('הסר', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                                      onPressed: () => removeMedic(setModalState, medic),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                          ],
                         ),
-                        if (isCompanyMedic && !isMe)
-                          IconButton(
-                            tooltip: 'הסר חובש',
-                            icon: Icon(LucideIcons.trash2, color: AppTheme.criticalRed, size: 18),
-                            onPressed: () => removeMedic(setModalState, medic),
-                          ),
                       ],
-                    ),
+                    ],
                   ),
                 );
               }),
@@ -1456,7 +1664,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
                     labelText: 'שעה (HH:MM)',
                     labelStyle: TextStyle(color: AppTheme.textSecondary),
                     suffixIcon: IconButton(
-                      icon: Icon(LucideIcons.clock, color: AppTheme.primaryGreen, size: 18),
+                      icon: Icon(LucideIcons.clock, color: AppTheme.infoBlue, size: 18),
                       tooltip: 'בחירת שעה',
                       onPressed: () async {
                         final parts = timeController.text.split(':');
@@ -1608,7 +1816,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
                     onTap: () => openTaskDialog(setModalState, existingEvent: event),
                     leading: Checkbox(
                       value: event['is_done'] == true,
-                      activeColor: AppTheme.primaryGreen,
+                      activeColor: AppTheme.successGreen,
+                      checkColor: Colors.white,
                       onChanged: (val) async {
                         final nextDone = val == true;
                         setModalState(() => event['is_done'] = nextDone);
