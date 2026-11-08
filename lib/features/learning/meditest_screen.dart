@@ -1,5 +1,7 @@
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:chopel_app/core/auth/auth_service.dart';
 import 'package:chopel_app/theme/app_theme.dart';
 import 'package:chopel_app/theme/components/hopal_button.dart';
 
@@ -25,30 +27,30 @@ class MeditestScreen extends StatefulWidget {
 }
 
 class _MeditestScreenState extends State<MeditestScreen> {
-  final List<QuizQuestion> _questions = [
-    const QuizQuestion(
-      question: 'מהו הצעד הראשון בסכמת טיפול בפצוע XCARE בגישת ה-X?',
+  static const List<QuizQuestion> _questionsBank = [
+    QuizQuestion(
+      question: 'באיזה מיקום מניחים חסם עורקים תחת אש (Care Under Fire)?',
       options: [
-        'פתיחת נתיב אוויר',
-        'הנחת חסם עורקים לעצירת דימום פורץ מגפה',
-        'מתן חמצן',
-        'סריקת גב',
+        'מעט מעל הפצע בלבד',
+        'הכי גבוה והכי חזק על הגפה (High & Tight)',
+        'מעל מפרק הברך או המרפק בלבד',
+        'ישירות על הפצע',
       ],
       correctIndex: 1,
-      explanation: 'בשלב X מטפלים קודם כל בדימומים פורצים ומסכני חיים באמצעות חסמי עורקים או לחץ ישיר.',
+      explanation: 'תחת אש מניחים חסם עורקים הכי גבוה והכי חזק (High & Tight) על הגפה הפגועה לעצירה מהירה ובטוחה של דימום קטלני.',
     ),
-    const QuizQuestion(
+    QuizQuestion(
       question: 'באילו מקרים אסור לתת אופטלגין?',
       options: [
         'כאב ויסרלי (עוויתי)',
         'פצוע עם חום גבוה',
-        'רגישות לפול (G6PD חסר)',
-        'פצוע לאחר חבלת ראש',
+        'חסר באנזים G6PD (רגישות לפול)',
+        'פצוע לאחר נקע בקרסול',
       ],
       correctIndex: 2,
-      explanation: 'אופטלגין אסור לאנשים עם חסר באנזים G6PD מחשש להרס כדוריות דם אדומות.',
+      explanation: 'אופטלגין (Dipyrone) אסור לבעלי חסר באנזים G6PD מחשש לתגובת פירוק כדוריות דם אדומות (המוליזה).',
     ),
-    const QuizQuestion(
+    QuizQuestion(
       question: 'מהו קצב העיסויים הנדרש בהחייאת מבוגר?',
       options: [
         '60-80 לדקה',
@@ -57,10 +59,10 @@ class _MeditestScreenState extends State<MeditestScreen> {
         '120-140 לדקה',
       ],
       correctIndex: 2,
-      explanation: 'קצב העיסויים המומלץ לפי הנחיות AHA הוא 100-120 עיסויים בדקה.',
+      explanation: 'קצב העיסויים המומלץ לפי הנחיות החייאה הוא 100-120 עיסויים בדקה, בעומק של כ-5-6 ס"מ.',
     ),
-    const QuizQuestion(
-      question: 'כמה מ"ג יש במזרק אפיפן צהוב (למבוגר)?',
+    QuizQuestion(
+      question: 'כמה מ"ג אדרנלין יש במזרק אפיפן צהוב (למבוגר)?',
       options: [
         '0.15 מ"ג',
         '0.3 מ"ג',
@@ -68,64 +70,72 @@ class _MeditestScreenState extends State<MeditestScreen> {
         '1.0 מ"ג',
       ],
       correctIndex: 1,
-      explanation: 'מזרק אפיפן צהוב (למבוגר) מכיל 0.3 מ"ג אדרנלין. מזרק ירוק (לילד) מכיל 0.15 מ"ג.',
+      explanation: 'מזרק אפיפן צהוב (מבוגר) מכיל 0.3 מ"ג אדרנלין. מזרק ירוק (ילדים) מכיל 0.15 מ"ג.',
     ),
-    const QuizQuestion(
-      question: 'באיזה מיקום נכון להניח חסם עורקים ראשוני בשטח?',
+    QuizQuestion(
+      question: 'מהו חלון הזמן למתן TXA (הקסאקפרון) לפצוע טראומה עם דימום קשה?',
       options: [
-        'מעט מעל הפצע',
-        'הכי גבוה והכי חזק (High & Tight)',
-        'מתחת למפרק הקרוב',
-        'על המפרק עצמו',
+        'עד 15 דקות מרגע הפציעה בלבד',
+        'תוך עד 3 שעות מרגע הפציעה',
+        'לאחר 6 שעות מרגע הפציעה',
+        'רק לאחר כניסה לחדר ניתוח',
       ],
       correctIndex: 1,
-      explanation: 'בשלב ה-Care Under Fire (הקו הראשון), ההנחיה היא להניח חסם עורקים הכי גבוה והכי חזק על הגפה כדי לעצור דימום מהר.',
+      explanation: 'מתן TXA יעיל ומותר בפרוטוקול בתוך 3 שעות מרגע הפציעה (מוקדם ככל הניתן). מעל 3 שעות אינו יעיל ואף עלול להזיק.',
     ),
-    const QuizQuestion(
-      question: 'מהו הטיפול המיידי המתאים להתייבשות קלה (מכת חום/התייבשות)?',
+    QuizQuestion(
+      question: 'מהו הטיפול המיידי המתאים לחייל בהכרה מלאה עם סימני התייבשות קלה?',
       options: [
-        'מתן עירוי של 2 ליטר נוזלים',
-        'מנוחה בצל, קירור והחזרת נוזלים בשתייה',
-        'מתן תרופות להורדת חום',
-        'כיסוי בשמיכת מילוט',
+        'העברת החייל לצל, קירור והחזרת נוזלים/מלחים בשתייה',
+        'מתן מורפין מניעתי',
+        'כיסוי מיידי בשמיכת חימום',
+        'מניעת שתייה במשך 4 שעות',
+      ],
+      correctIndex: 0,
+      explanation: 'בהתייבשות קלה ללא הקאות בלתי נשלטות או ירידה בהכרה, העברה לצל, הורדת עומס ושתייה (עדיף עם ORS) הן הטיפול הנכון.',
+    ),
+    QuizQuestion(
+      question: 'מהם שני המאפיינים המרכזיים המבדילים מכת חום מסכנת חיים מהתייבשות רגילה?',
+      options: [
+        'יובש בפה ועייפות קלה בלבד',
+        'חום גוף ליבה גבוה (בד"כ מעל 40°C) + שינוי במצב ההכרה / בלבול',
+        'צבע שתן צהוב כהה בלבד',
+        'כאב שרירים ברגליים בלבד',
       ],
       correctIndex: 1,
-      explanation: 'במקרים של התייבשות קלה ללא הקאות או אובדן הכרה, עדיף להחזיר נוזלים בשתייה יחד עם קירור ומנוחה בצל.',
+      explanation: 'במכת חום מופיעה פגיעה במערכת העצבים המרכזית (בלבול, אפתיה, אי-שקט, פרכוסים או ערפול הכרה) יחד עם חום ליבה גבוה — חובה קירור מיידי ופינוי דחוף.',
     ),
-    const QuizQuestion(
-      question: 'איזה סימן נחשב למאוחר ומעיד על הלם תת-נפחי חמור?',
+    QuizQuestion(
+      question: 'מהי מטרת תחבושת אטימה לחזה (כגון אשרמן / HyFin)?',
       options: [
-        'דופק מהיר (טכיקרדיה)',
-        'ירידה בלחץ הדם (ל"ד נמוך)',
-        'עור חיוור וקר',
-        'נשימה מהירה',
-      ],
-      correctIndex: 1,
-      explanation: 'ירידה בלחץ הדם היא סימן מאוחר להלם אצל אנשים צעירים ובריאים, ומעידה על איבוד משמעותי מאוד של דם (מעל 30-40%).',
-    ),
-    const QuizQuestion(
-      question: 'מהי מטרת תחבושת אשרמן (Asherman)?',
-      options: [
-        'עצירת דימום פורץ בגפיים',
+        'עצירת דימום פורץ בגפה עליונה',
         'קיבוע שבר פתוח',
-        'אטימת פצע חודר בחזה',
-        'חבישת כוויות נרחבות',
+        'אטימת פצע חודר בבית החזה למניעת כניסת אוויר לחלל הפלאורלי',
+        'חבישת כוויות שטחיות בגב',
       ],
       correctIndex: 2,
-      explanation: 'תחבושת אשרמן היא תחבושת אטימה (עם שסתום חד כיווני) המיועדת לפגיעות חזה חודרות כדי למנוע חזה אוויר בלחץ.',
+      explanation: 'תחבושת אטימה (עם שסתום או מאווררת) אוטמת פצע חזה פתוח ומונעת התפתחות חזה אוויר בלחץ.',
     ),
   ];
 
+  late List<QuizQuestion> _sessionQuestions;
   int _currentIndex = 0;
   int? _selectedIndex;
   bool _showExplanation = false;
   int _score = 0;
+  int _earnedPoints = 0;
   bool _quizFinished = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _sessionQuestions = List<QuizQuestion>.from(_questionsBank)..shuffle(Random());
+  }
 
   void _submitAnswer() {
     if (_selectedIndex == null) return;
-    
-    final isCorrect = _selectedIndex == _questions[_currentIndex].correctIndex;
+
+    final isCorrect = _selectedIndex == _sessionQuestions[_currentIndex].correctIndex;
     if (isCorrect) _score++;
 
     setState(() {
@@ -133,24 +143,34 @@ class _MeditestScreenState extends State<MeditestScreen> {
     });
   }
 
-  void _nextQuestion() {
-    setState(() {
-      if (_currentIndex < _questions.length - 1) {
+  Future<void> _nextQuestion() async {
+    if (_currentIndex < _sessionQuestions.length - 1) {
+      setState(() {
         _currentIndex++;
         _selectedIndex = null;
         _showExplanation = false;
-      } else {
-        _quizFinished = true;
+      });
+    } else {
+      final pts = _score * 5;
+      if (pts > 0) {
+        await AuthService().awardCompetencePoints(pts);
       }
-    });
+      if (!mounted) return;
+      setState(() {
+        _earnedPoints = pts;
+        _quizFinished = true;
+      });
+    }
   }
 
   void _restartQuiz() {
     setState(() {
+      _sessionQuestions = List<QuizQuestion>.from(_questionsBank)..shuffle(Random());
       _currentIndex = 0;
       _selectedIndex = null;
       _showExplanation = false;
       _score = 0;
+      _earnedPoints = 0;
       _quizFinished = false;
     });
   }
@@ -161,14 +181,19 @@ class _MeditestScreenState extends State<MeditestScreen> {
       return _buildResultsScreen();
     }
 
-    final question = _questions[_currentIndex];
+    final question = _sessionQuestions[_currentIndex];
 
     return Scaffold(
       backgroundColor: AppTheme.backgroundPrimary,
       appBar: AppBar(
-        title: const Text('Meditest - ריענון חובשים'),
+        title: const Text('Meditest - ריענון חובשים', style: TextStyle(fontWeight: FontWeight.bold)),
         backgroundColor: Colors.transparent,
         elevation: 0,
+        centerTitle: true,
+        leading: IconButton(
+          icon: Icon(LucideIcons.arrowRight, color: AppTheme.textPrimary),
+          onPressed: () => Navigator.pop(context),
+        ),
       ),
       body: SafeArea(
         child: Padding(
@@ -177,7 +202,7 @@ class _MeditestScreenState extends State<MeditestScreen> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               LinearProgressIndicator(
-                value: (_currentIndex + 1) / _questions.length,
+                value: (_currentIndex + 1) / _sessionQuestions.length,
                 backgroundColor: AppTheme.backgroundSecondary,
                 valueColor: AlwaysStoppedAnimation<Color>(AppTheme.primaryGreen),
               ),
@@ -188,29 +213,29 @@ class _MeditestScreenState extends State<MeditestScreen> {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       Text(
-                        'שאלה ${_currentIndex + 1} מתוך ${_questions.length}',
+                        'שאלה ${_currentIndex + 1} מתוך ${_sessionQuestions.length}',
                         style: TextStyle(color: AppTheme.textSecondary, fontWeight: FontWeight.bold),
                       ),
                       const SizedBox(height: AppTheme.spacing16),
                       Text(
                         question.question,
-                        style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: AppTheme.textPrimary),
+                        style: TextStyle(fontSize: 21, fontWeight: FontWeight.bold, color: AppTheme.textPrimary, height: 1.35),
                       ),
                       const SizedBox(height: AppTheme.spacing32),
                       ...List.generate(question.options.length, (index) {
                         final isSelected = _selectedIndex == index;
                         final isCorrect = index == question.correctIndex;
-                        
+
                         Color borderColor = isSelected ? AppTheme.primaryGreen : AppTheme.borderSubtle;
                         Color bgColor = isSelected ? AppTheme.primaryGreen.withValues(alpha: 0.1) : AppTheme.backgroundSecondary;
-                        
+
                         if (_showExplanation) {
                           if (isCorrect) {
                             borderColor = AppTheme.successGreen;
-                            bgColor = AppTheme.successGreen.withValues(alpha: 0.1);
+                            bgColor = AppTheme.successGreen.withValues(alpha: 0.12);
                           } else if (isSelected && !isCorrect) {
                             borderColor = AppTheme.criticalRed;
-                            bgColor = AppTheme.criticalRed.withValues(alpha: 0.1);
+                            bgColor = AppTheme.criticalRed.withValues(alpha: 0.12);
                           } else {
                             borderColor = AppTheme.borderSubtle;
                             bgColor = AppTheme.backgroundSecondary;
@@ -235,7 +260,7 @@ class _MeditestScreenState extends State<MeditestScreen> {
                                     child: Text(
                                       question.options[index],
                                       style: TextStyle(
-                                        fontSize: 16, 
+                                        fontSize: 16,
                                         fontWeight: isSelected || (_showExplanation && isCorrect) ? FontWeight.bold : FontWeight.normal,
                                         color: AppTheme.textPrimary,
                                       ),
@@ -258,13 +283,14 @@ class _MeditestScreenState extends State<MeditestScreen> {
                           decoration: BoxDecoration(
                             color: AppTheme.backgroundSecondary,
                             borderRadius: AppTheme.radiusMd,
+                            border: Border.all(color: AppTheme.borderSubtle),
                           ),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text('הסבר:', style: TextStyle(fontWeight: FontWeight.bold, color: AppTheme.textPrimary)),
                               const SizedBox(height: AppTheme.spacing8),
-                              Text(question.explanation, style: TextStyle(color: AppTheme.textSecondary, height: 1.4)),
+                              Text(question.explanation, style: TextStyle(color: AppTheme.textSecondary, height: 1.45)),
                             ],
                           ),
                         ),
@@ -282,7 +308,7 @@ class _MeditestScreenState extends State<MeditestScreen> {
                 )
               else
                 HopalButton(
-                  label: _currentIndex == _questions.length - 1 ? 'סיום מבחן' : 'השאלה הבאה',
+                  label: _currentIndex == _sessionQuestions.length - 1 ? 'סיום מבחן' : 'השאלה הבאה',
                   onPressed: _nextQuestion,
                   icon: LucideIcons.arrowLeft,
                 ),
@@ -294,15 +320,20 @@ class _MeditestScreenState extends State<MeditestScreen> {
   }
 
   Widget _buildResultsScreen() {
-    final percentage = (_score / _questions.length * 100).round();
+    final percentage = (_score / _sessionQuestions.length * 100).round();
     final isSuccess = percentage >= 75;
 
     return Scaffold(
       backgroundColor: AppTheme.backgroundPrimary,
       appBar: AppBar(
-        title: const Text('תוצאות המבחן'),
+        title: const Text('תוצאות המבחן', style: TextStyle(fontWeight: FontWeight.bold)),
         backgroundColor: Colors.transparent,
         elevation: 0,
+        centerTitle: true,
+        leading: IconButton(
+          icon: Icon(LucideIcons.arrowRight, color: AppTheme.textPrimary),
+          onPressed: () => Navigator.pop(context),
+        ),
       ),
       body: Center(
         child: SingleChildScrollView(
@@ -310,59 +341,78 @@ class _MeditestScreenState extends State<MeditestScreen> {
             padding: const EdgeInsets.all(AppTheme.spacing24),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                isSuccess ? LucideIcons.trophy : LucideIcons.bookOpen,
-                size: 80,
-                color: isSuccess ? AppTheme.successGreen : AppTheme.warningAmber,
-              ),
-              const SizedBox(height: AppTheme.spacing24),
-              Text(
-                isSuccess ? 'כל הכבוד! ציון מעולה' : 'יש מקום לשיפור',
-                style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: AppTheme.textPrimary),
-              ),
-              const SizedBox(height: AppTheme.spacing12),
-              Text(
-                'ענית נכונה על $_score מתוך ${_questions.length} שאלות.',
-                style: TextStyle(fontSize: 18, color: AppTheme.textSecondary),
-              ),
-              const SizedBox(height: AppTheme.spacing32),
-              Stack(
-                alignment: Alignment.center,
-                children: [
-                  SizedBox(
-                    width: 150,
-                    height: 150,
-                    child: CircularProgressIndicator(
-                      value: _score / _questions.length,
-                      strokeWidth: 12,
-                      backgroundColor: AppTheme.backgroundSecondary,
-                      valueColor: AlwaysStoppedAnimation<Color>(isSuccess ? AppTheme.successGreen : AppTheme.warningAmber),
+              children: [
+                Icon(
+                  isSuccess ? LucideIcons.trophy : LucideIcons.bookOpen,
+                  size: 80,
+                  color: isSuccess ? AppTheme.successGreen : AppTheme.warningAmber,
+                ),
+                const SizedBox(height: AppTheme.spacing24),
+                Text(
+                  isSuccess ? 'כל הכבוד! ציון מעולה' : 'יש מקום לשיפור',
+                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: AppTheme.textPrimary),
+                ),
+                const SizedBox(height: AppTheme.spacing12),
+                Text(
+                  'ענית נכונה על $_score מתוך ${_sessionQuestions.length} שאלות.',
+                  style: TextStyle(fontSize: 18, color: AppTheme.textSecondary),
+                ),
+                if (_earnedPoints > 0) ...[
+                  const SizedBox(height: AppTheme.spacing12),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: AppTheme.primaryGreen.withValues(alpha: 0.14),
+                      borderRadius: AppTheme.radiusPill,
+                      border: Border.all(color: AppTheme.primaryGreen.withValues(alpha: 0.35)),
+                    ),
+                    child: Text(
+                      '+$_earnedPoints נקודות כשירות נוספו לחשבונך',
+                      style: TextStyle(
+                        color: AppTheme.primaryGreen,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 13,
+                      ),
                     ),
                   ),
-                  Text(
-                    '$percentage%',
-                    style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: AppTheme.textPrimary),
-                  ),
                 ],
-              ),
-              const SizedBox(height: AppTheme.spacing48),
-              HopalButton(
-                label: 'חזרה למרכז הלמידה',
-                onPressed: () => Navigator.pop(context),
-                icon: LucideIcons.arrowRight,
-                variant: HopalButtonVariant.secondary,
-              ),
-              const SizedBox(height: AppTheme.spacing16),
-              HopalButton(
-                label: 'תרגול נוסף',
-                onPressed: _restartQuiz,
-                icon: LucideIcons.rotateCcw,
-              ),
-            ],
+                const SizedBox(height: AppTheme.spacing32),
+                Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    SizedBox(
+                      width: 150,
+                      height: 150,
+                      child: CircularProgressIndicator(
+                        value: _score / _sessionQuestions.length,
+                        strokeWidth: 12,
+                        backgroundColor: AppTheme.backgroundSecondary,
+                        valueColor: AlwaysStoppedAnimation<Color>(isSuccess ? AppTheme.successGreen : AppTheme.warningAmber),
+                      ),
+                    ),
+                    Text(
+                      '$percentage%',
+                      style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: AppTheme.textPrimary),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: AppTheme.spacing48),
+                HopalButton(
+                  label: 'חזרה למרכז הלמידה',
+                  onPressed: () => Navigator.pop(context),
+                  icon: LucideIcons.arrowRight,
+                  variant: HopalButtonVariant.secondary,
+                ),
+                const SizedBox(height: AppTheme.spacing16),
+                HopalButton(
+                  label: 'תרגול נוסף',
+                  onPressed: _restartQuiz,
+                  icon: LucideIcons.rotateCcw,
+                ),
+              ],
+            ),
           ),
         ),
-      ),
       ),
     );
   }

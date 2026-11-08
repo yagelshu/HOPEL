@@ -57,16 +57,17 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Future<void> _checkStoredCredentials() async {
     final prefs = await SharedPreferences.getInstance();
+    // Clean up any legacy plaintext password from earlier versions.
+    if (prefs.containsKey('saved_password')) {
+      await prefs.remove('saved_password');
+    }
     final savedEmail =
         prefs.getString('saved_email') ?? Supabase.instance.client.auth.currentUser?.email;
     final useBiometrics = prefs.getBool('use_biometrics') ?? false;
-    final hasSavedPassword =
-        prefs.containsKey('saved_email') && prefs.containsKey('saved_password');
 
     if (!mounted) return;
     setState(() {
-      _canSignInWithBiometrics =
-          useBiometrics && (AuthService().isAuthenticated || hasSavedPassword);
+      _canSignInWithBiometrics = useBiometrics && AuthService().isAuthenticated;
       if (savedEmail != null && _emailController.text.isEmpty) {
         _emailController.text = savedEmail;
       }
@@ -108,7 +109,7 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _isBiometricLoading = false);
 
     if (success) {
-      // Fast unlock when an authenticated session is already present
+      // Fast unlock via persisted encrypted Supabase session (never plaintext password)
       if (AuthService().isAuthenticated) {
         if (AuthService().currentUser == null) {
           await AuthService().loadProfile();
@@ -117,18 +118,10 @@ class _LoginScreenState extends State<LoginScreen> {
         return;
       }
 
-      // Otherwise sign in using stored credentials
-      final prefs = await SharedPreferences.getInstance();
-      final email = prefs.getString('saved_email');
-      final password = prefs.getString('saved_password');
-      if (email != null && password != null) {
-        _emailController.text = email;
-        _passwordController.text = password;
-        await _submit();
-      } else if (mounted) {
+      if (mounted) {
         HopalFeedback.showInfo(
           context,
-          'לאחר התנתקות מלאה יש להזין סיסמה פעם אחת לשמירת החיבור המהיר.',
+          'לאחר התנתקות מלאה יש להזין סיסמה פעם אחת לכניסה מחודשת.',
         );
       }
     } else if (mounted) {
@@ -187,7 +180,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('saved_email', email);
-      await prefs.setString('saved_password', password);
+      await prefs.remove('saved_password');
 
       _routeAfterAuthenticated();
     } else {

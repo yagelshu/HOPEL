@@ -113,7 +113,7 @@ class BattalionMedicHelper {
           FilledButton(
             style: FilledButton.styleFrom(
               backgroundColor: AppTheme.primaryGreen,
-              foregroundColor: Colors.white,
+              foregroundColor: AppTheme.onPrimaryGreen,
             ),
             onPressed: () async {
               final phone = phoneController.text.trim();

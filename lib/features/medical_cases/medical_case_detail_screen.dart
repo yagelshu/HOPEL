@@ -1,5 +1,6 @@
 import 'package:chopel_app/core/utils/platform_image.dart';
 import 'package:chopel_app/core/utils/app_error_helper.dart';
+import 'package:chopel_app/core/utils/doctor_consult_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -17,8 +18,6 @@ import 'package:chopel_app/theme/components/hopal_feedback.dart';
 import 'package:chopel_app/core/auth/auth_service.dart';
 import 'package:chopel_app/features/medical_cases/medical_case_create_screen.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:share_plus/share_plus.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 class MedicalCaseDetailScreen extends ConsumerStatefulWidget {
   final MedicalCase medicalCase;
@@ -170,110 +169,45 @@ class _MedicalCaseDetailScreenState extends ConsumerState<MedicalCaseDetailScree
     });
   }
 
-  Future<void> _shareWithDoctor() async {
-    final soldierLabel = _soldier != null
-        ? '${_soldier!.name}${_soldier!.personalNumber != null ? ' (מ.א ${_soldier!.personalNumber})' : ''}${_soldier!.platoon != null ? ' | מחלקה ${_soldier!.platoon}' : ''}'
-        : _soldierName;
-
-    final category = widget.medicalCase.category ?? 'שגרת מרפאה';
-    final severity = widget.medicalCase.severity ?? 'שגרה';
-    final statusHeb = _currentStatus == 'COMPLETED' ? 'הושלם' : 'בטיפול / מעקב';
-
-    final buffer = StringBuffer();
-    buffer.writeln('📋 *פנייה רפואית - חופ"ל*');
-    buffer.writeln('👤 *חייל:* $soldierLabel');
-    if (_soldier != null && _soldier!.hasAllergies) {
-      buffer.writeln('🚨 *רגישות ידועה:* ${_soldier!.allergies}');
-    }
-    buffer.writeln('🏷️ *קטגוריה:* $category | *דחיפות:* $severity');
-    buffer.writeln('🩺 *תלונה וסיכום:*');
-    buffer.writeln(_currentDescription);
-    buffer.writeln('📌 *סטטוס:* $statusHeb');
-    buffer.writeln('\nאשמח להנחיות רופא.');
-
-    final message = buffer.toString();
-    final prefs = await SharedPreferences.getInstance();
-    final doctorPhone = prefs.getString('doctor_phone_number');
-
-    if (doctorPhone != null && doctorPhone.trim().isNotEmpty) {
-      String cleanPhone = doctorPhone.replaceAll(RegExp(r'\D'), '');
-      if (cleanPhone.startsWith('0')) {
-        cleanPhone = '972${cleanPhone.substring(1)}';
-      }
-      final waUrl = Uri.parse('https://wa.me/$cleanPhone?text=${Uri.encodeComponent(message)}');
-      if (await canLaunchUrl(waUrl)) {
-        await launchUrl(waUrl, mode: LaunchMode.externalApplication);
-        return;
-      }
-    }
-
-    if (mounted) {
-      _showDoctorPhonePromptOrShare(message);
-    }
+  Future<void> _shareWithDoctor() {
+    return DoctorConsultHelper.shareMedicalCase(
+      context,
+      medicalCase: widget.medicalCase,
+      soldier: _soldier,
+      fallbackSoldierName: _soldierName,
+      descriptionOverride: _currentDescription,
+      statusOverride: _currentStatus,
+    );
   }
 
-  void _showDoctorPhonePromptOrShare(String message) {
-    final phoneController = TextEditingController();
+  void _showFullScreenPhoto(String path) {
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: AppTheme.backgroundSecondary,
-        title: Row(
+      builder: (ctx) => Dialog(
+        backgroundColor: Colors.black,
+        insetPadding: const EdgeInsets.all(AppTheme.spacing16),
+        child: Stack(
           children: [
-            Icon(LucideIcons.stethoscope, color: AppTheme.primaryGreen),
-            const SizedBox(width: AppTheme.spacing8),
-            Text('התייעצות עם רופא הגדוד', style: TextStyle(color: AppTheme.textPrimary, fontSize: 18, fontWeight: FontWeight.bold)),
+            InteractiveViewer(
+              child: Center(
+                child: Image(
+                  image: resolveLocalOrWebImage(path),
+                  fit: BoxFit.contain,
+                  errorBuilder: (_, __, ___) => Icon(LucideIcons.imageOff, color: AppTheme.textMuted, size: 48),
+                ),
+              ),
+            ),
+            Positioned(
+              top: 8,
+              left: 8,
+              child: IconButton(
+                style: IconButton.styleFrom(backgroundColor: Colors.black54),
+                icon: const Icon(LucideIcons.x, color: Colors.white),
+                onPressed: () => Navigator.pop(ctx),
+              ),
+            ),
           ],
         ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(
-              'טרם הוגדר מספר טלפון עבור רופא הגדוד.\nהזן את מספרו לפתיחת WhatsApp ישיר, או שתף דרך אפליקציה אחרת:',
-              style: TextStyle(color: AppTheme.textSecondary, fontSize: 13, height: 1.4),
-            ),
-            const SizedBox(height: AppTheme.spacing16),
-            HopalTextField(
-              controller: phoneController,
-              hint: 'מספר טלפון (למשל: 0501234567)',
-              icon: LucideIcons.phone,
-              keyboardType: TextInputType.phone,
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () async {
-              Navigator.pop(ctx);
-              if (widget.medicalCase.imagePath != null && widget.medicalCase.imagePath!.isNotEmpty) {
-                await Share.shareXFiles([XFile(widget.medicalCase.imagePath!)], text: message);
-              } else {
-                await Share.share(message);
-              }
-            },
-            child: Text('שיתוף כללי', style: TextStyle(color: AppTheme.textSecondary)),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primaryGreen),
-            onPressed: () async {
-              final phone = phoneController.text.trim();
-              if (phone.isEmpty) return;
-              Navigator.pop(ctx);
-              final prefs = await SharedPreferences.getInstance();
-              await prefs.setString('doctor_phone_number', phone);
-              String cleanPhone = phone.replaceAll(RegExp(r'\D'), '');
-              if (cleanPhone.startsWith('0')) {
-                cleanPhone = '972${cleanPhone.substring(1)}';
-              }
-              final waUrl = Uri.parse('https://wa.me/$cleanPhone?text=${Uri.encodeComponent(message)}');
-              if (await canLaunchUrl(waUrl)) {
-                await launchUrl(waUrl, mode: LaunchMode.externalApplication);
-              }
-            },
-            child: Text('שמור ופתח ב-WhatsApp', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
-          ),
-        ],
       ),
     );
   }
@@ -510,18 +444,38 @@ class _MedicalCaseDetailScreenState extends ConsumerState<MedicalCaseDetailScree
 
                     // Image Viewer (If exists)
                     if (widget.medicalCase.imagePath != null && widget.medicalCase.imagePath!.isNotEmpty) ...[
-                      Text('צילום מצורף:', style: TextStyle(fontSize: 14, color: AppTheme.textSecondary, fontWeight: FontWeight.bold)),
+                      Text('צילום מצורף (לחץ להגדלה):', style: TextStyle(fontSize: 14, color: AppTheme.textSecondary, fontWeight: FontWeight.bold)),
                       const SizedBox(height: AppTheme.spacing16),
-                      Container(
-                        width: double.infinity,
-                        height: 250,
-                        decoration: BoxDecoration(
+                      InkWell(
+                        onTap: () => _showFullScreenPhoto(widget.medicalCase.imagePath!),
+                        borderRadius: AppTheme.radiusLg,
+                        child: ClipRRect(
                           borderRadius: AppTheme.radiusLg,
-                          border: Border.all(color: AppTheme.borderSubtle),
-                          image: DecorationImage(
-                            image: resolveLocalOrWebImage(widget.medicalCase.imagePath!),
-                            onError: (_, __) {},
-                            fit: BoxFit.cover,
+                          child: Container(
+                            width: double.infinity,
+                            height: 250,
+                            decoration: BoxDecoration(
+                              color: AppTheme.backgroundSecondary,
+                              border: Border.all(color: AppTheme.borderSubtle),
+                              borderRadius: AppTheme.radiusLg,
+                            ),
+                            child: Image(
+                              image: resolveLocalOrWebImage(widget.medicalCase.imagePath!),
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, __, ___) => Center(
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(LucideIcons.imageOff, color: AppTheme.textMuted, size: 32),
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      'לא ניתן לטעון תמונה ישנה במכשיר זה',
+                                      style: TextStyle(color: AppTheme.textMuted, fontSize: 13),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
                           ),
                         ),
                       ),

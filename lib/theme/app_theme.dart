@@ -26,11 +26,13 @@ class AppTheme {
   // Brand Accents
   static Color primaryGreen = const Color(0xFF244033);
   static Color primaryGreenHover = const Color(0xFF2A4C3C);
+  static Color onPrimaryGreen = const Color(0xFFF2F2F2);
   static Color militaryOlive = const Color(0xFF868A78);
 
   // Semantic Status
   static Color successGreen = const Color(0xFF34C759); // Apple-like crisp green
   static Color warningAmber = const Color(0xFFFF9F0A); // Apple-like crisp amber
+  static Color onWarningAmber = const Color(0xFF111827); // Crisp dark text on amber fills
   static Color criticalRed = const Color(0xFFFF453A); // Apple-like crisp red
   static Color infoBlue = const Color(0xFF0A84FF);
 
@@ -47,12 +49,14 @@ class AppTheme {
     backgroundPrimary = const Color(0xFFF9FAFB); 
     backgroundSecondary = const Color(0xFFFFFFFF); 
     backgroundTertiary = const Color(0xFFF3F4F6); 
-    primaryGreen = const Color(0xFF34D399);
-    primaryGreenHover = const Color(0xFF10B981);
+    primaryGreen = const Color(0xFF166E43);
+    primaryGreenHover = const Color(0xFF125A37);
+    onPrimaryGreen = const Color(0xFFFFFFFF);
     militaryOlive = const Color(0xFF6B7280);
-    successGreen = const Color(0xFF34C759); 
+    successGreen = const Color(0xFF22A947); 
     warningAmber = const Color(0xFFFF9F0A); 
-    criticalRed = const Color(0xFFFF453A); 
+    onWarningAmber = const Color(0xFF111827);
+    criticalRed = const Color(0xFFE03127); 
     infoBlue = const Color(0xFF0A84FF);
     borderSubtle = const Color(0x1A000000); 
     borderStrong = const Color(0x33000000); 
@@ -67,9 +71,11 @@ class AppTheme {
     backgroundTertiary = const Color(0xFF1A241F); 
     primaryGreen = const Color(0xFF244033);
     primaryGreenHover = const Color(0xFF2A4C3C);
+    onPrimaryGreen = const Color(0xFFF2F2F2);
     militaryOlive = const Color(0xFF868A78);
     successGreen = const Color(0xFF34C759); 
     warningAmber = const Color(0xFFFF9F0A); 
+    onWarningAmber = const Color(0xFF111827);
     criticalRed = const Color(0xFFFF453A); 
     infoBlue = const Color(0xFF0A84FF);
     borderSubtle = const Color(0x1AFFFFFF); 

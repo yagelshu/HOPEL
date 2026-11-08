@@ -25,9 +25,16 @@ class SoldiersManagementScreen extends ConsumerStatefulWidget {
 }
 
 class _SoldiersManagementScreenState extends ConsumerState<SoldiersManagementScreen> {
+  final TextEditingController _searchController = TextEditingController();
   String _query = '';
   String _selectedPlatoon = 'הכל';
   bool _onlyAllergies = false;
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
 
   /// Add (soldier == null) or edit.
   void _showSoldierDialog([Soldier? soldier]) {
@@ -106,7 +113,7 @@ class _SoldiersManagementScreenState extends ConsumerState<SoldiersManagementScr
           FilledButton(
             style: FilledButton.styleFrom(
               backgroundColor: AppTheme.primaryGreen,
-              foregroundColor: Colors.white,
+              foregroundColor: AppTheme.onPrimaryGreen,
             ),
             onPressed: () async {
               if (nameController.text.trim().isEmpty) {
@@ -130,7 +137,10 @@ class _SoldiersManagementScreenState extends ConsumerState<SoldiersManagementScr
                   try {
                     await client.from('soldiers').update(data).eq('id', soldier.id);
                   } on PostgrestException catch (pe) {
-                    if (pe.code == 'PGRST204' || pe.code == '42703' || pe.message.contains('allergies') || pe.message.contains('personal_number')) {
+                    if (pe.code == 'PGRST204' ||
+                        pe.code == '42703' ||
+                        pe.message.contains('allergies') ||
+                        pe.message.contains('personal_number')) {
                       final fallbackData = <String, dynamic>{
                         'name': rawPn != null && rawPn.isNotEmpty ? '$rawName ($rawPn)' : rawName,
                         'phone_number': orNull(phoneController.text),
@@ -147,7 +157,10 @@ class _SoldiersManagementScreenState extends ConsumerState<SoldiersManagementScr
                   try {
                     await client.from('soldiers').insert({...data, 'unit_id': unitId});
                   } on PostgrestException catch (pe) {
-                    if (pe.code == 'PGRST204' || pe.code == '42703' || pe.message.contains('allergies') || pe.message.contains('personal_number')) {
+                    if (pe.code == 'PGRST204' ||
+                        pe.code == '42703' ||
+                        pe.message.contains('allergies') ||
+                        pe.message.contains('personal_number')) {
                       final fallbackData = <String, dynamic>{
                         'name': rawPn != null && rawPn.isNotEmpty ? '$rawName ($rawPn)' : rawName,
                         'phone_number': orNull(phoneController.text),
@@ -165,15 +178,15 @@ class _SoldiersManagementScreenState extends ConsumerState<SoldiersManagementScr
                 }
                 if (mounted) {
                   ref.invalidate(soldiersProvider);
-                  HopalFeedback.showSuccess(this.context, isEdit ? 'פרטי החייל עודכנו' : 'החייל נוסף בהצלחה');
+                  HopalFeedback.showSuccess(context, isEdit ? 'פרטי החייל עודכנו' : 'החייל נוסף בהצלחה');
                 }
               } on PostgrestException catch (e) {
                 if (mounted) {
-                  HopalFeedback.showError(this.context, AppErrorHelper.toHebrew(e, fallback: 'שגיאה בשמירת פרטי החייל.'));
+                  HopalFeedback.showError(context, AppErrorHelper.toHebrew(e, fallback: 'שגיאה בשמירת פרטי החייל.'));
                 }
               } catch (e) {
                 if (mounted) {
-                  HopalFeedback.showError(this.context, AppErrorHelper.toHebrew(e, fallback: 'שגיאה בשמירת פרטי החייל.'));
+                  HopalFeedback.showError(context, AppErrorHelper.toHebrew(e, fallback: 'שגיאה בשמירת פרטי החייל.'));
                 }
               }
             },
@@ -232,6 +245,37 @@ class _SoldiersManagementScreenState extends ConsumerState<SoldiersManagementScr
       context,
       MaterialPageRoute(
         builder: (_) => MedicalCaseCreateScreen(initialSoldierId: soldier.id),
+      ),
+    );
+  }
+
+  Widget _buildQuickAction({
+    required IconData icon,
+    required String label,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: AppTheme.radiusSm,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.12),
+          borderRadius: AppTheme.radiusSm,
+          border: Border.all(color: color.withValues(alpha: 0.25)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 14, color: color),
+            const SizedBox(width: 5),
+            Text(
+              label,
+              style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.bold),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -334,14 +378,25 @@ class _SoldiersManagementScreenState extends ConsumerState<SoldiersManagementScr
                   Padding(
                     padding: const EdgeInsets.fromLTRB(AppTheme.spacing16, AppTheme.spacing8, AppTheme.spacing16, 0),
                     child: TextField(
+                      controller: _searchController,
                       onChanged: (v) => setState(() => _query = v),
                       style: TextStyle(color: AppTheme.textPrimary),
                       decoration: InputDecoration(
                         hintText: 'חיפוש לפי שם, מ.א, מחלקה, טלפון או רגישות...',
                         prefixIcon: Icon(LucideIcons.search, color: AppTheme.textSecondary),
+                        suffixIcon: _query.isNotEmpty
+                            ? IconButton(
+                                icon: Icon(LucideIcons.x, size: 16, color: AppTheme.textSecondary),
+                                tooltip: 'נקה חיפוש',
+                                onPressed: () {
+                                  _searchController.clear();
+                                  setState(() => _query = '');
+                                },
+                              )
+                            : null,
                         filled: true,
                         fillColor: AppTheme.backgroundSecondary,
-                        border: OutlineInputBorder(borderRadius: AppTheme.radiusMd, borderSide: BorderSide.none),
+                        border: const OutlineInputBorder(borderRadius: AppTheme.radiusMd, borderSide: BorderSide.none),
                       ),
                     ),
                   ),
@@ -362,6 +417,7 @@ class _SoldiersManagementScreenState extends ConsumerState<SoldiersManagementScr
                               ),
                               label: const Text('בעלי רגישות'),
                               selected: _onlyAllergies,
+                              checkmarkColor: AppTheme.criticalRed,
                               onSelected: (v) => setState(() => _onlyAllergies = v),
                               selectedColor: AppTheme.criticalRed.withValues(alpha: 0.18),
                               backgroundColor: AppTheme.backgroundSecondary,
@@ -379,11 +435,12 @@ class _SoldiersManagementScreenState extends ConsumerState<SoldiersManagementScr
                               child: ChoiceChip(
                                 label: Text(p),
                                 selected: isSelected,
+                                checkmarkColor: AppTheme.onPrimaryGreen,
                                 onSelected: (_) => setState(() => _selectedPlatoon = p),
-                                selectedColor: AppTheme.primaryGreen.withValues(alpha: 0.2),
+                                selectedColor: AppTheme.primaryGreen,
                                 backgroundColor: AppTheme.backgroundSecondary,
                                 labelStyle: TextStyle(
-                                  color: isSelected ? AppTheme.primaryGreen : AppTheme.textSecondary,
+                                  color: isSelected ? AppTheme.onPrimaryGreen : AppTheme.textSecondary,
                                   fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
                                 ),
                               ),
@@ -428,95 +485,105 @@ class _SoldiersManagementScreenState extends ConsumerState<SoldiersManagementScr
                                     ].join(' • ');
 
                                     return HopalCard(
-                                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                      padding: const EdgeInsets.fromLTRB(12, 12, 12, 10),
                                       borderColor: soldier.hasAllergies
-                                          ? AppTheme.criticalRed.withValues(alpha: 0.4)
+                                          ? AppTheme.criticalRed.withValues(alpha: 0.45)
                                           : AppTheme.borderSubtle,
                                       onTap: isCompanyMedic
                                           ? () => _showSoldierDialog(soldier)
                                           : () => _openMedicalCaseForSoldier(soldier),
-                                      child: Row(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
                                         children: [
-                                          CircleAvatar(
-                                            radius: 20,
-                                            backgroundColor: soldier.hasAllergies
-                                                ? AppTheme.criticalRed.withValues(alpha: 0.15)
-                                                : AppTheme.primaryGreen.withValues(alpha: 0.12),
-                                            child: Icon(
-                                              soldier.hasAllergies ? LucideIcons.alertTriangle : LucideIcons.user,
-                                              size: 18,
-                                              color: soldier.hasAllergies ? AppTheme.criticalRed : AppTheme.primaryGreen,
-                                            ),
-                                          ),
-                                          const SizedBox(width: 12),
-                                          Expanded(
-                                            child: Column(
-                                              crossAxisAlignment: CrossAxisAlignment.start,
-                                              children: [
-                                                Wrap(
-                                                  spacing: 6,
-                                                  runSpacing: 4,
-                                                  crossAxisAlignment: WrapCrossAlignment.center,
+                                          Row(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              CircleAvatar(
+                                                radius: 20,
+                                                backgroundColor: soldier.hasAllergies
+                                                    ? AppTheme.criticalRed.withValues(alpha: 0.15)
+                                                    : AppTheme.primaryGreen.withValues(alpha: 0.12),
+                                                child: Icon(
+                                                  soldier.hasAllergies ? LucideIcons.alertTriangle : LucideIcons.user,
+                                                  size: 18,
+                                                  color: soldier.hasAllergies ? AppTheme.criticalRed : AppTheme.primaryGreen,
+                                                ),
+                                              ),
+                                              const SizedBox(width: 12),
+                                              Expanded(
+                                                child: Column(
+                                                  crossAxisAlignment: CrossAxisAlignment.start,
                                                   children: [
-                                                    Text(
-                                                      soldier.name,
-                                                      style: TextStyle(
-                                                        color: AppTheme.textPrimary,
-                                                        fontWeight: FontWeight.bold,
-                                                        fontSize: 15,
-                                                      ),
-                                                    ),
-                                                    if (soldier.hasAllergies)
-                                                      Container(
-                                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                                        decoration: BoxDecoration(
-                                                          color: AppTheme.criticalRed.withValues(alpha: 0.15),
-                                                          borderRadius: BorderRadius.circular(4),
-                                                          border: Border.all(color: AppTheme.criticalRed.withValues(alpha: 0.45)),
-                                                        ),
-                                                        child: Text(
-                                                          'רגישות: ${soldier.allergies}',
+                                                    Wrap(
+                                                      spacing: 8,
+                                                      runSpacing: 4,
+                                                      crossAxisAlignment: WrapCrossAlignment.center,
+                                                      children: [
+                                                        Text(
+                                                          soldier.name,
                                                           style: TextStyle(
-                                                            fontSize: 10,
-                                                            color: AppTheme.criticalRed,
+                                                            color: AppTheme.textPrimary,
                                                             fontWeight: FontWeight.bold,
+                                                            fontSize: 16,
                                                           ),
                                                         ),
-                                                      ),
+                                                        if (soldier.hasAllergies)
+                                                          Container(
+                                                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                                            decoration: BoxDecoration(
+                                                              color: AppTheme.criticalRed.withValues(alpha: 0.15),
+                                                              borderRadius: BorderRadius.circular(4),
+                                                              border: Border.all(color: AppTheme.criticalRed.withValues(alpha: 0.45)),
+                                                            ),
+                                                            child: Text(
+                                                              'רגישות: ${soldier.allergies}',
+                                                              style: TextStyle(
+                                                                fontSize: 11,
+                                                                color: AppTheme.criticalRed,
+                                                                fontWeight: FontWeight.bold,
+                                                              ),
+                                                            ),
+                                                          ),
+                                                      ],
+                                                    ),
+                                                    const SizedBox(height: 4),
+                                                    Text(
+                                                      details.isEmpty ? 'ללא פרטים נוספים' : details,
+                                                      style: TextStyle(color: AppTheme.textSecondary, fontSize: 12.5),
+                                                    ),
                                                   ],
                                                 ),
-                                                const SizedBox(height: 3),
-                                                Text(
-                                                  details.isEmpty ? 'ללא פרטים נוספים' : details,
-                                                  style: TextStyle(color: AppTheme.textSecondary, fontSize: 12),
-                                                ),
-                                              ],
-                                            ),
+                                              ),
+                                            ],
                                           ),
-                                          Row(
-                                            mainAxisSize: MainAxisSize.min,
+                                          const SizedBox(height: 10),
+                                          Divider(height: 1, color: AppTheme.borderSubtle),
+                                          const SizedBox(height: 8),
+                                          Wrap(
+                                            spacing: 8,
+                                            runSpacing: 6,
                                             children: [
-                                              IconButton(
-                                                icon: Icon(LucideIcons.filePlus2, color: AppTheme.primaryGreen, size: 18),
-                                                tooltip: 'פתיחת פנייה רפואית',
-                                                visualDensity: VisualDensity.compact,
-                                                onPressed: () => _openMedicalCaseForSoldier(soldier),
+                                              _buildQuickAction(
+                                                icon: LucideIcons.filePlus2,
+                                                label: 'פנייה',
+                                                color: AppTheme.primaryGreen,
+                                                onTap: () => _openMedicalCaseForSoldier(soldier),
                                               ),
                                               if (hasPhone) ...[
-                                                IconButton(
-                                                  icon: Icon(LucideIcons.phone, color: AppTheme.primaryGreen, size: 17),
-                                                  tooltip: 'חיוג לחייל',
-                                                  visualDensity: VisualDensity.compact,
-                                                  onPressed: () async {
+                                                _buildQuickAction(
+                                                  icon: LucideIcons.phone,
+                                                  label: 'חיוג',
+                                                  color: AppTheme.infoBlue,
+                                                  onTap: () async {
                                                     final uri = Uri.parse('tel:${soldier.phoneNumber!.replaceAll(RegExp(r'\D'), '')}');
                                                     if (await canLaunchUrl(uri)) await launchUrl(uri);
                                                   },
                                                 ),
-                                                IconButton(
-                                                  icon: Icon(LucideIcons.messageCircle, color: AppTheme.successGreen, size: 17),
-                                                  tooltip: 'שלח WhatsApp',
-                                                  visualDensity: VisualDensity.compact,
-                                                  onPressed: () async {
+                                                _buildQuickAction(
+                                                  icon: LucideIcons.messageCircle,
+                                                  label: 'WhatsApp',
+                                                  color: AppTheme.successGreen,
+                                                  onTap: () async {
                                                     var phone = soldier.phoneNumber!.replaceAll(RegExp(r'\D'), '');
                                                     if (phone.startsWith('0')) phone = '972${phone.substring(1)}';
                                                     final uri = Uri.parse('https://wa.me/$phone');
@@ -527,11 +594,11 @@ class _SoldiersManagementScreenState extends ConsumerState<SoldiersManagementScr
                                                 ),
                                               ],
                                               if (isCompanyMedic)
-                                                IconButton(
-                                                  icon: Icon(LucideIcons.pencil, color: AppTheme.infoBlue, size: 17),
-                                                  tooltip: 'ערוך פרטי חייל',
-                                                  visualDensity: VisualDensity.compact,
-                                                  onPressed: () => _showSoldierDialog(soldier),
+                                                _buildQuickAction(
+                                                  icon: LucideIcons.pencil,
+                                                  label: 'עריכה',
+                                                  color: AppTheme.textSecondary,
+                                                  onTap: () => _showSoldierDialog(soldier),
                                                 ),
                                             ],
                                           ),
@@ -563,10 +630,10 @@ class _SoldiersManagementScreenState extends ConsumerState<SoldiersManagementScr
                     key: const Key('soldiers_add_button'),
                     onPressed: () => _showSoldierDialog(),
                     backgroundColor: AppTheme.primaryGreen,
-                    icon: const Icon(LucideIcons.userPlus, color: Colors.white, size: 18),
-                    label: const Text(
+                    icon: Icon(LucideIcons.userPlus, color: AppTheme.onPrimaryGreen, size: 18),
+                    label: Text(
                       'הוסף חייל',
-                      style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                      style: TextStyle(color: AppTheme.onPrimaryGreen, fontWeight: FontWeight.bold),
                     ),
                   ),
                 )

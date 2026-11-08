@@ -87,13 +87,13 @@ class _HopalFABState extends State<HopalFAB> with SingleTickerProviderStateMixin
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(widget.icon, color: Colors.white, size: 24),
+                    Icon(widget.icon, color: AppTheme.onPrimaryGreen, size: 24),
                     if (widget.label != null) ...[
                       const SizedBox(width: AppTheme.spacing12),
                       Text(
                         widget.label!,
-                        style: const TextStyle(
-                          color: Colors.white,
+                        style: TextStyle(
+                          color: AppTheme.onPrimaryGreen,
                           fontSize: 16,
                           fontWeight: FontWeight.bold,
                         ),

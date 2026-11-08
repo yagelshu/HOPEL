@@ -1,12 +1,11 @@
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:chopel_app/core/auth/auth_service.dart';
 import 'package:chopel_app/theme/app_theme.dart';
 import 'package:chopel_app/theme/components/hopal_button.dart';
 import 'package:chopel_app/theme/components/hopal_card.dart';
-import 'dart:math';
-import 'package:supabase_flutter/supabase_flutter.dart' hide User;
-import 'package:chopel_app/core/auth/auth_service.dart';
 import 'package:chopel_app/theme/components/hopal_feedback.dart';
 
 class TriviaScreen extends ConsumerStatefulWidget {
@@ -26,13 +25,13 @@ class _TriviaScreenState extends ConsumerState<TriviaScreen> {
     {
       'question': 'פצוע מגיע עם דופק 120 ולחץ דם 90/60 לאחר הדיפה מפיצוץ. מהי הפעולה הראשונה?',
       'options': [
-        'מתן נוזלים לוריד',
-        'הנחת חוסם עורקים',
-        'בדיקת נתיב אוויר והנשמה',
-        'סריקה לזיהוי מקור דימום וטיפול בו'
+        'מתן נוזלים לווריד',
+        'הנחת חוסם עורקים אוטומטית בכל גפה',
+        'בדיקת נתיב אוויר והנשמה תחילה',
+        'סריקה לזיהוי מקור דימום פורץ ועצירתו מיד',
       ],
       'correctIndex': 3,
-      'explanation': 'לפי סכמת PHTLS, יש לעצור דימומים פורצים (M/C) לפני כל פעולה אחרת.',
+      'explanation': 'לפי סכמת X-CARE / PHTLS, יש לזהות ולעצור דימומים פורצים מסכני חיים לפני כל פעולה אחרת.',
     },
     {
       'question': 'מהו הסימן המוקדם ביותר להתייבשות / הלם תת-נפחי?',
@@ -40,66 +39,66 @@ class _TriviaScreenState extends ConsumerState<TriviaScreen> {
         'ירידה בלחץ דם',
         'טכיקרדיה (דופק מהיר)',
         'איבוד הכרה',
-        'חיוורון והזעה'
+        'ירידה בסטורציה ל-80%',
       ],
       'correctIndex': 1,
-      'explanation': 'הגוף מפצה על חוסר נוזלים תחילה בעליית דופק. ירידת לחץ דם היא סימן מאוחר יחסית המעיד על קריסה מערכתית.',
+      'explanation': 'הגוף מפצה על חוסר נוזלים או אובדן דם תחילה בעליית דופק. ירידת לחץ דם היא סימן מאוחר המעיד על קריסת פיצוי.',
     },
     {
-      'question': 'איזו פעולה אסור לבצע בעת טיפול בכוויות חום שטחית?',
+      'question': 'איזו פעולה אסור לבצע בעת טיפול בכווית חום שטחית?',
       'options': [
         'שטיפה במים זורמים קרירים',
-        'הסרת בגדים שאינם דבוקים לכויה',
+        'הסרת בגדים ותכשיטים שאינם דבוקים לכוויה',
         'מריחת משחת שיניים או קרח ישירות',
-        'כיסוי בחבישה סטרילית'
+        'כיסוי בחבישה נקייה שאינה נדבקת',
       ],
       'correctIndex': 2,
-      'explanation': 'קרח או משחות סבתא עלולים לגרום לנזק רקמתי נוסף או זיהום. מים קרירים וחבישה הם הטיפול המומלץ.',
+      'explanation': 'קרח ישיר או משחות ביתיות עלולים לגרום לנזק רקמתי נוסף או לזיהום. קירור עדין במים פושרים/קרירים וחבישה נקייה הם הטיפול הנכון.',
     },
     {
-      'question': 'מה המינון המקסימלי של קטמין למתן תוך שרירי (IM) בפצוע שוקל 80 ק"ג?',
+      'question': 'מה המינון המקובל של קטמין למתן תוך-שרירי (IM) כאלחוש לפצוע טראומה?',
       'options': [
-        '50 מ"ג',
-        '250 מ"ג',
-        '400 מ"ג (5 מ"ג לק"ג)',
-        '500 מ"ג'
+        '0.5 מ"ג לק"ג',
+        '2 מ"ג לק"ג',
+        '5 מ"ג לק"ג',
+        '10 מ"ג לק"ג',
       ],
       'correctIndex': 2,
-      'explanation': 'המינון של קטמין לשריר למטרות אלחוש וניתוק הוא 5 מ"ג לק"ג.',
+      'explanation': 'בסמכות מתן קטמין לשריר (IM) לאלחוש/ניתוק בפצוע טראומה, המינון המקובל לפי פרוטוקול הוא כ-5 מ"ג לק"ג (בד"כ עד 400 מ"ג בפצוע במשקל 80 ק"ג).',
     },
     {
-      'question': 'כמה זמן מרגע פציעת חוסם עורקים מתחיל להיווצר נזק איסכמי בלתי הפיך לגפה?',
+      'question': 'מתי מתחיל להיווצר נזק איסכמי משמעותי לגפה בעקבות השארת חסם עורקים?',
       'options': [
-        'שעה אחת',
-        'בין 4 ל-6 שעות',
-        '12 שעות',
-        '24 שעות'
+        'אחרי 15 דקות בלבד',
+        'החל מ-2 שעות ובעיקר מעל 4-6 שעות',
+        'אחרי 18 שעות',
+        'אין שום סכנה של נזק איסכמי מחסם עורקים',
       ],
       'correctIndex': 1,
-      'explanation': 'נזק רקמתי בלתי הפיך מהעדר אספקת דם בגלל חסם עורקים מתחיל לאחר כ-4 עד 6 שעות.',
+      'explanation': 'נזק איסכמי מתחיל להתפתח מעבר לכ-2 שעות והופך לבלתי הפיך בעיקר סביב 4-6 שעות; חשוב לתעד שעת הנחה מדויקת ולהתייעץ עם רופא על המרת ח"ע במידת הצורך.',
     },
     {
-      'question': 'איזה מהבאים הוא התווית נגד למתן מורפין?',
+      'question': 'איזה מהבאים הוא התווית נגד ברורה למתן מורפין בשטח?',
       'options': [
-        'כאב עצבני',
-        'לחץ דם סיסטולי נמוך מ-90',
-        'פציעה חודרת בבטן',
-        'קטיעה של גפה'
+        'שבר פתוח בגפה עם לחץ דם תקין',
+        'לחץ דם סיסטולי נמוך מ-90 ממ"כ / הלם',
+        'כוויה מקומית ביד',
+        'הפצוע בהכרה מלאה ומתמצא',
       ],
       'correctIndex': 1,
-      'explanation': 'מורפין מרחיב כלי דם ועלול להוריד את לחץ הדם עוד יותר, ולכן מסוכן בפצועים בהלם תת-נפחי.',
+      'explanation': 'מורפין עלול לגרום להרחבת כלי דם ולירידת לחץ דם ודיכוי נשימתי, ולכן אסור במתן לפצועים בהלם או בל"ד סיסטולי נמוך מ-90.',
     },
     {
-      'question': 'באיזה מצב יש לבצע מחט חזה (AW) לפצוע טראומה?',
+      'question': 'באיזה מצב חירום יש לבצע ניקוז מחט לחזה (AW / Needle Decompression)?',
       'options': [
         'חזה אוויר בלחץ (Tension Pneumothorax)',
         'דימום פנימי בבטן',
-        'דום לב',
-        'חוסר הכרה מסיבה לא ידועה'
+        'דום לב ללא טראומה',
+        'התייבשות קלה אחרי מסע',
       ],
       'correctIndex': 0,
-      'explanation': 'מחט חזה נועדה לשחרר אוויר שהצטבר בלחץ בחלל הפלאורלי ומונע מהריאה להתרחב.',
-    }
+      'explanation': 'ניקוז חזה במחט נועד לשחרר אוויר לכוד תחת לחץ בחלל הפלאורלי המונע מהריאה להתרחב ולוחץ על כלי הדם הגדולים.',
+    },
   ];
 
   late List<Map<String, dynamic>> _sessionQuestions;
@@ -107,8 +106,8 @@ class _TriviaScreenState extends ConsumerState<TriviaScreen> {
   @override
   void initState() {
     super.initState();
-    _questions.shuffle(Random());
-    _sessionQuestions = _questions.take(3).toList();
+    final shuffled = List<Map<String, dynamic>>.from(_questions)..shuffle(Random());
+    _sessionQuestions = shuffled.take(3).toList();
   }
 
   void _submitAnswer(int index) {
@@ -133,43 +132,39 @@ class _TriviaScreenState extends ConsumerState<TriviaScreen> {
         _answered = false;
         _selectedAnswerIndex = null;
       } else {
-        // End of trivia
         _showCompletionDialog();
       }
     });
   }
 
   Future<void> _showCompletionDialog() async {
-    // Add points to user
-    final authService = AuthService();
-    final user = authService.currentUser;
-    if (user != null && _score > 0) {
-      try {
-        // Queue the points update to ensure it syncs offline
-        await Supabase.instance.client.from('users').update({
-          'competence_points': user.competencePoints + _score,
-        }).eq('id', user.id);
-        authService.updateCompetencePoints(_score);
-      } catch (e) {
-        // Handle error gracefully if offline
-      }
+    if (_score > 0) {
+      await AuthService().awardCompetencePoints(_score);
     }
 
     if (!mounted) return;
 
     showDialog(
       context: context,
+      barrierDismissible: false,
       builder: (context) => AlertDialog(
         backgroundColor: AppTheme.backgroundSecondary,
-        title: Text('תרגול יומי הושלם!', style: TextStyle(color: AppTheme.textPrimary)),
-        content: Text('סיימת את התרגול היומי.\nצברת $_score נקודות כשירות!', style: TextStyle(color: AppTheme.textSecondary)),
+        title: Text('תרגול יומי הושלם!', style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.bold)),
+        content: Text(
+          'סיימת את התרגול היומי.\nצברת $_score נקודות כשירות!',
+          style: TextStyle(color: AppTheme.textSecondary, height: 1.45),
+        ),
         actions: [
-          TextButton(
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: AppTheme.primaryGreen,
+              foregroundColor: AppTheme.onPrimaryGreen,
+            ),
             onPressed: () {
               Navigator.pop(context); // Close dialog
               Navigator.pop(context); // Close screen
             },
-            child: Text('מעולה', style: TextStyle(color: AppTheme.primaryGreen)),
+            child: const Text('מעולה', style: TextStyle(fontWeight: FontWeight.bold)),
           ),
         ],
       ),
@@ -184,7 +179,7 @@ class _TriviaScreenState extends ConsumerState<TriviaScreen> {
     return Scaffold(
       backgroundColor: AppTheme.backgroundPrimary,
       appBar: AppBar(
-        title: Text('תרגול יומי 🧠', style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.bold)),
+        title: Text('תרגול יומי לחובש', style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.bold)),
         backgroundColor: AppTheme.backgroundPrimary,
         elevation: 0,
         centerTitle: true,
@@ -223,17 +218,17 @@ class _TriviaScreenState extends ConsumerState<TriviaScreen> {
                     ...List.generate(options.length, (index) {
                       final isSelected = _selectedAnswerIndex == index;
                       final isCorrect = index == currentQ['correctIndex'];
-                      
+
                       Color bgColor = AppTheme.backgroundSecondary;
                       Color borderColor = AppTheme.borderSubtle;
-                      
+
                       if (_answered) {
                         if (isCorrect) {
                           bgColor = AppTheme.successGreen.withValues(alpha: 0.2);
                           borderColor = AppTheme.successGreen;
                         } else if (isSelected) {
-                          bgColor = AppTheme.warningAmber.withValues(alpha: 0.2);
-                          borderColor = AppTheme.warningAmber;
+                          bgColor = AppTheme.criticalRed.withValues(alpha: 0.2);
+                          borderColor = AppTheme.criticalRed;
                         }
                       } else if (isSelected) {
                         borderColor = AppTheme.primaryGreen;
@@ -262,7 +257,7 @@ class _TriviaScreenState extends ConsumerState<TriviaScreen> {
                                 if (_answered && isCorrect)
                                   Icon(LucideIcons.checkCircle2, color: AppTheme.successGreen)
                                 else if (_answered && isSelected && !isCorrect)
-                                  Icon(LucideIcons.xCircle, color: AppTheme.warningAmber),
+                                  Icon(LucideIcons.xCircle, color: AppTheme.criticalRed),
                               ],
                             ),
                           ),
@@ -284,23 +279,21 @@ class _TriviaScreenState extends ConsumerState<TriviaScreen> {
                             Row(
                               children: [
                                 Icon(LucideIcons.info, color: AppTheme.infoBlue, size: 20),
-                                SizedBox(width: 8),
+                                const SizedBox(width: 8),
                                 Text('הסבר קצר', style: TextStyle(color: AppTheme.infoBlue, fontWeight: FontWeight.bold)),
                               ],
                             ),
                             const SizedBox(height: 8),
-                            Container(
-                              constraints: const BoxConstraints(maxHeight: 150),
-                              child: SingleChildScrollView(
-                                child: Text(currentQ['explanation'], style: TextStyle(color: AppTheme.textPrimary)),
-                              ),
+                            Text(
+                              currentQ['explanation'],
+                              style: TextStyle(color: AppTheme.textPrimary, height: 1.4),
                             ),
                           ],
                         ),
                       ),
                       const SizedBox(height: AppTheme.spacing24),
                       HopalButton(
-                        label: 'הבא',
+                        label: _currentQuestionIndex == _sessionQuestions.length - 1 ? 'סיום ותיעוד נקודות' : 'הבא',
                         onPressed: _nextQuestion,
                         isExpanded: true,
                         icon: LucideIcons.arrowLeft,
@@ -351,7 +344,9 @@ class _TriviaScreenState extends ConsumerState<TriviaScreen> {
           ),
           const SizedBox(height: AppTheme.spacing8),
           Text(
-            points >= goal ? 'הגעת ליעד הכשירות המרבי! המשך לתרגל כדי לשמור עליו.' : 'ענה על שאלות כדי להעלות את נקודות הכשירות שלך.',
+            points >= goal
+                ? 'הגעת ליעד הכשירות המרבי! המשך לתרגל כדי לשמור עליו.'
+                : 'ענה על שאלות כדי להעלות את נקודות הכשירות שלך.',
             style: TextStyle(color: AppTheme.textSecondary, fontSize: 12),
           ),
         ],

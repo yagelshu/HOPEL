@@ -76,7 +76,7 @@ class _HopalButtonState extends State<HopalButton> with SingleTickerProviderStat
     switch (widget.variant) {
       case HopalButtonVariant.primary:
         backgroundColor = AppTheme.primaryGreen;
-        foregroundColor = AppTheme.textPrimary;
+        foregroundColor = AppTheme.onPrimaryGreen;
         borderColor = AppTheme.primaryGreen;
         break;
       case HopalButtonVariant.secondary:

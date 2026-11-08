@@ -24,10 +24,19 @@ class MainLayoutScreen extends ConsumerStatefulWidget {
 class _MainLayoutScreenState extends ConsumerState<MainLayoutScreen> {
   int _currentIndex = 0;
 
+  void _switchTab(int index) {
+    if (index >= 0 && index <= 4) {
+      setState(() => _currentIndex = index);
+    }
+  }
+
   Widget _buildActiveScreen() {
     switch (_currentIndex) {
       case 0:
-        return DashboardScreen(animateEntrance: widget.animateEntrance);
+        return DashboardScreen(
+          animateEntrance: widget.animateEntrance,
+          onSwitchTab: _switchTab,
+        );
       case 1:
         return const MedicalCasesListScreen();
       case 2:
@@ -37,7 +46,10 @@ class _MainLayoutScreenState extends ConsumerState<MainLayoutScreen> {
       case 4:
         return const LearningCenterScreen();
       default:
-        return DashboardScreen(animateEntrance: widget.animateEntrance);
+        return DashboardScreen(
+          animateEntrance: widget.animateEntrance,
+          onSwitchTab: _switchTab,
+        );
     }
   }
 

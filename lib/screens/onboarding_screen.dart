@@ -143,10 +143,10 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                                       Text(
                                         _pages[index]['headline']!,
                                         textAlign: TextAlign.center,
-                                        style: const TextStyle(
+                                        style: TextStyle(
                                           fontSize: 32,
                                           fontWeight: FontWeight.w900,
-                                          color: Colors.white,
+                                          color: AppTheme.textPrimary,
                                           height: 1.15,
                                           letterSpacing: -1.0,
                                         ),

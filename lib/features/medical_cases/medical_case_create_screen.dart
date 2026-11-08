@@ -13,6 +13,7 @@ import 'package:chopel_app/theme/components/hopal_segmented_control.dart';
 import 'package:chopel_app/theme/components/hopal_card.dart';
 import 'package:chopel_app/theme/components/hopal_status_badge.dart';
 import 'package:chopel_app/core/utils/platform_image.dart';
+import 'package:chopel_app/core/utils/image_data_uri_helper.dart';
 import 'package:chopel_app/core/utils/app_error_helper.dart';
 import 'package:chopel_app/core/auth/auth_service.dart';
 import 'package:chopel_app/features/medical_cases/providers.dart';
@@ -37,7 +38,7 @@ class MedicalCaseCreateScreen extends ConsumerStatefulWidget {
 class _MedicalCaseCreateScreenState extends ConsumerState<MedicalCaseCreateScreen> {
   String? _selectedSoldierId;
   final _descController = TextEditingController();
-  
+
   String _selectedOutcome = 'COMPLETED';
   String _selectedCategory = 'שגרת מרפאה';
   String _selectedSeverity = 'שגרה';
@@ -62,7 +63,7 @@ class _MedicalCaseCreateScreenState extends ConsumerState<MedicalCaseCreateScree
       }
       _loadDraft();
     }
-    
+
     _descController.addListener(_saveDraft);
   }
 
@@ -89,7 +90,17 @@ class _MedicalCaseCreateScreenState extends ConsumerState<MedicalCaseCreateScree
   }
 
   final List<String> _quickTags = [
-    'שפשפות', 'חום/צינון', 'כאבי גרון', 'כאבי בטן/שלשולים', 'כאב ראש', 'כאבי גב/ברכיים', 'נקע/חבלה', 'פטרת/פריחה', 'טראומה', 'בקשת תור לרופא', 'הוצאת גימלים'
+    'שפשפות',
+    'חום/צינון',
+    'כאבי גרון',
+    'כאבי בטן/שלשולים',
+    'כאב ראש',
+    'כאבי גב/ברכיים',
+    'נקע/חבלה',
+    'פטרת/פריחה',
+    'טראומה',
+    'בקשת תור לרופא',
+    'הוצאת גימלים',
   ];
 
   void _addTag(String tag) {
@@ -129,17 +140,16 @@ class _MedicalCaseCreateScreenState extends ConsumerState<MedicalCaseCreateScree
     if (source == null) return;
 
     try {
-      final XFile? image = await _picker.pickImage(
-        source: source,
-        imageQuality: 70,
-      );
-      if (image != null) {
+      final dataUri = await ImageDataUriHelper.pickAsDataUri(_picker, source);
+      if (dataUri != null && mounted) {
         setState(() {
-          _imagePath = image.path;
+          _imagePath = dataUri;
         });
       }
     } catch (e) {
-      HopalFeedback.showError(context, 'שגיאה בטעינת התמונה');
+      if (mounted) {
+        HopalFeedback.showError(context, 'שגיאה בטעינת התמונה');
+      }
     }
   }
 
@@ -148,7 +158,6 @@ class _MedicalCaseCreateScreenState extends ConsumerState<MedicalCaseCreateScree
     final idController = TextEditingController();
     final phoneController = TextEditingController();
     final platoonController = TextEditingController();
-    
     final allergiesController = TextEditingController();
 
     showDialog(
@@ -214,8 +223,11 @@ class _MedicalCaseCreateScreenState extends ConsumerState<MedicalCaseCreateScree
               onPressed: () => Navigator.pop(context),
               child: Text('ביטול', style: TextStyle(color: AppTheme.textSecondary)),
             ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primaryGreen),
+            FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: AppTheme.primaryGreen,
+                foregroundColor: AppTheme.onPrimaryGreen,
+              ),
               onPressed: () async {
                 final rawName = nameController.text.trim();
                 final personalNum = idController.text.trim();
@@ -227,10 +239,10 @@ class _MedicalCaseCreateScreenState extends ConsumerState<MedicalCaseCreateScree
                   HopalFeedback.showError(context, 'נא למלא שם ומספר אישי');
                   return;
                 }
-                
+
                 final user = AuthService().currentUser;
                 final soldierId = const Uuid().v4();
-                
+
                 final payload = <String, dynamic>{
                   'id': soldierId,
                   'name': rawName,
@@ -245,8 +257,10 @@ class _MedicalCaseCreateScreenState extends ConsumerState<MedicalCaseCreateScree
                   try {
                     await Supabase.instance.client.from('soldiers').insert(payload);
                   } on PostgrestException catch (pe) {
-                    // Fallback if allergies or personal_number column is not in Supabase
-                    if (pe.code == 'PGRST204' || pe.code == '42703' || pe.message.contains('allergies') || pe.message.contains('personal_number')) {
+                    if (pe.code == 'PGRST204' ||
+                        pe.code == '42703' ||
+                        pe.message.contains('allergies') ||
+                        pe.message.contains('personal_number')) {
                       payload.remove('allergies');
                       final fallbackPayload = <String, dynamic>{
                         'id': soldierId,
@@ -260,7 +274,7 @@ class _MedicalCaseCreateScreenState extends ConsumerState<MedicalCaseCreateScree
                       rethrow;
                     }
                   }
-                  
+
                   if (!context.mounted) return;
                   ref.invalidate(soldiersProvider);
                   Navigator.pop(context);
@@ -274,7 +288,7 @@ class _MedicalCaseCreateScreenState extends ConsumerState<MedicalCaseCreateScree
                   }
                 }
               },
-              child: Text('הוסף חייל', style: TextStyle(color: AppTheme.backgroundPrimary, fontWeight: FontWeight.bold)),
+              child: const Text('הוסף חייל', style: TextStyle(fontWeight: FontWeight.bold)),
             ),
           ],
         );
@@ -283,6 +297,7 @@ class _MedicalCaseCreateScreenState extends ConsumerState<MedicalCaseCreateScree
   }
 
   void _openSoldierSearchSheet(List<Soldier> soldiers) {
+    final searchController = TextEditingController();
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -345,15 +360,26 @@ class _MedicalCaseCreateScreenState extends ConsumerState<MedicalCaseCreateScree
                   ),
                   const SizedBox(height: 12),
                   TextField(
+                    controller: searchController,
                     autofocus: true,
                     style: TextStyle(color: AppTheme.textPrimary),
                     onChanged: (val) => setModalState(() => searchQuery = val),
                     decoration: InputDecoration(
                       hintText: 'הקלד שם, מספר אישי או מחלקה...',
                       prefixIcon: Icon(LucideIcons.search, color: AppTheme.textSecondary),
+                      suffixIcon: searchQuery.isNotEmpty
+                          ? IconButton(
+                              icon: Icon(LucideIcons.x, size: 16, color: AppTheme.textSecondary),
+                              tooltip: 'נקה חיפוש',
+                              onPressed: () {
+                                searchController.clear();
+                                setModalState(() => searchQuery = '');
+                              },
+                            )
+                          : null,
                       filled: true,
                       fillColor: AppTheme.backgroundTertiary,
-                      border: OutlineInputBorder(borderRadius: AppTheme.radiusMd, borderSide: BorderSide.none),
+                      border: const OutlineInputBorder(borderRadius: AppTheme.radiusMd, borderSide: BorderSide.none),
                       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                     ),
                   ),
@@ -371,11 +397,12 @@ class _MedicalCaseCreateScreenState extends ConsumerState<MedicalCaseCreateScree
                           return ChoiceChip(
                             label: Text(p),
                             selected: isSel,
+                            checkmarkColor: AppTheme.onPrimaryGreen,
                             onSelected: (_) => setModalState(() => selectedPlatoon = p),
-                            selectedColor: AppTheme.primaryGreen.withValues(alpha: 0.2),
+                            selectedColor: AppTheme.primaryGreen,
                             backgroundColor: AppTheme.backgroundTertiary,
                             labelStyle: TextStyle(
-                              color: isSel ? AppTheme.primaryGreen : AppTheme.textSecondary,
+                              color: isSel ? AppTheme.onPrimaryGreen : AppTheme.textSecondary,
                               fontWeight: isSel ? FontWeight.bold : FontWeight.normal,
                               fontSize: 12,
                             ),
@@ -395,14 +422,17 @@ class _MedicalCaseCreateScreenState extends ConsumerState<MedicalCaseCreateScree
                                 const SizedBox(height: 8),
                                 Text('לא נמצא חייל תואם', style: TextStyle(color: AppTheme.textSecondary)),
                                 const SizedBox(height: 12),
-                                ElevatedButton.icon(
-                                  style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primaryGreen),
+                                FilledButton.icon(
+                                  style: FilledButton.styleFrom(
+                                    backgroundColor: AppTheme.primaryGreen,
+                                    foregroundColor: AppTheme.onPrimaryGreen,
+                                  ),
                                   onPressed: () {
                                     Navigator.pop(context);
                                     _showAddSoldierDialog();
                                   },
-                                  icon: const Icon(LucideIcons.userPlus, size: 16, color: Colors.white),
-                                  label: const Text('הוסף חייל חדש עכשיו', style: TextStyle(color: Colors.white)),
+                                  icon: const Icon(LucideIcons.userPlus, size: 16),
+                                  label: const Text('הוסף חייל חדש עכשיו', style: TextStyle(fontWeight: FontWeight.bold)),
                                 ),
                               ],
                             ),
@@ -415,50 +445,51 @@ class _MedicalCaseCreateScreenState extends ConsumerState<MedicalCaseCreateScree
                               final hasPn = s.personalNumber != null && s.personalNumber!.isNotEmpty;
                               final hasPlatoon = s.platoon != null && s.platoon!.isNotEmpty;
 
-                                return ListTile(
-                                  leading: CircleAvatar(
-                                    backgroundColor: s.hasAllergies 
-                                        ? AppTheme.criticalRed.withValues(alpha: 0.15)
-                                        : AppTheme.primaryGreen.withValues(alpha: 0.15),
-                                    child: Icon(
-                                      s.hasAllergies ? LucideIcons.alertTriangle : LucideIcons.user, 
-                                      color: s.hasAllergies ? AppTheme.criticalRed : AppTheme.primaryGreen
-                                    ),
+                              return ListTile(
+                                leading: CircleAvatar(
+                                  backgroundColor: s.hasAllergies
+                                      ? AppTheme.criticalRed.withValues(alpha: 0.15)
+                                      : AppTheme.primaryGreen.withValues(alpha: 0.15),
+                                  child: Icon(
+                                    s.hasAllergies ? LucideIcons.alertTriangle : LucideIcons.user,
+                                    color: s.hasAllergies ? AppTheme.criticalRed : AppTheme.primaryGreen,
                                   ),
-                                  title: Row(
-                                    children: [
-                                      Text(s.name,
-                                          style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.bold)),
-                                      if (s.hasAllergies) ...[
-                                        const SizedBox(width: 8),
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                          decoration: BoxDecoration(
-                                            color: AppTheme.criticalRed.withValues(alpha: 0.15),
-                                            borderRadius: BorderRadius.circular(4),
-                                            border: Border.all(color: AppTheme.criticalRed.withValues(alpha: 0.4)),
-                                          ),
-                                          child: Text(
-                                            'רגישות: ${s.allergies}',
-                                            style: TextStyle(fontSize: 10, color: AppTheme.criticalRed, fontWeight: FontWeight.bold),
-                                          ),
+                                ),
+                                title: Wrap(
+                                  spacing: 8,
+                                  runSpacing: 4,
+                                  crossAxisAlignment: WrapCrossAlignment.center,
+                                  children: [
+                                    Text(s.name,
+                                        style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.bold)),
+                                    if (s.hasAllergies)
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: AppTheme.criticalRed.withValues(alpha: 0.15),
+                                          borderRadius: BorderRadius.circular(4),
+                                          border: Border.all(color: AppTheme.criticalRed.withValues(alpha: 0.4)),
                                         ),
-                                      ],
-                                    ],
-                                  ),
-                                  subtitle: Text(
-                                    [
-                                      if (hasPn) 'מ.א: ${s.personalNumber}',
-                                      if (hasPlatoon) 'מחלקה ${s.platoon}',
-                                      if (s.phoneNumber != null) s.phoneNumber!,
-                                    ].join(' • '),
-                                    style: TextStyle(color: AppTheme.textSecondary, fontSize: 12),
-                                  ),
-                                  onTap: () {
-                                    setState(() => _selectedSoldierId = s.id);
-                                    Navigator.pop(context);
-                                  },
-                                );
+                                        child: Text(
+                                          'רגישות: ${s.allergies}',
+                                          style: TextStyle(fontSize: 10, color: AppTheme.criticalRed, fontWeight: FontWeight.bold),
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                                subtitle: Text(
+                                  [
+                                    if (hasPn) 'מ.א: ${s.personalNumber}',
+                                    if (hasPlatoon) 'מחלקה ${s.platoon}',
+                                    if (s.phoneNumber != null) s.phoneNumber!,
+                                  ].join(' • '),
+                                  style: TextStyle(color: AppTheme.textSecondary, fontSize: 12),
+                                ),
+                                onTap: () {
+                                  setState(() => _selectedSoldierId = s.id);
+                                  Navigator.pop(context);
+                                },
+                              );
                             },
                           ),
                   ),
@@ -468,7 +499,7 @@ class _MedicalCaseCreateScreenState extends ConsumerState<MedicalCaseCreateScree
           },
         );
       },
-    );
+    ).whenComplete(searchController.dispose);
   }
 
   Future<void> _runCopilot() async {
@@ -478,6 +509,13 @@ class _MedicalCaseCreateScreenState extends ConsumerState<MedicalCaseCreateScree
       return;
     }
 
+    final soldiers = ref.read(soldiersProvider).maybeWhen(
+          data: (list) => list,
+          orElse: () => <Soldier>[],
+        );
+    final selectedSoldier = soldiers.where((s) => s.id == _selectedSoldierId).firstOrNull;
+    final soldierAllergies = selectedSoldier?.allergies;
+
     showModalBottomSheet(
       context: context,
       backgroundColor: AppTheme.backgroundSecondary,
@@ -485,8 +523,15 @@ class _MedicalCaseCreateScreenState extends ConsumerState<MedicalCaseCreateScree
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
       builder: (context) {
         return FutureBuilder<Map<String, dynamic>>(
-          future: MedicalCopilotService().analyzeSymptoms(complaint),
+          future: MedicalCopilotService().analyzeSymptoms(
+            complaint,
+            allergies: soldierAllergies,
+          ),
           builder: (context, snapshot) {
+            final warnings = List<String>.from(snapshot.data?['allergyWarnings'] as List? ?? const []);
+            final redFlags = List<String>.from(snapshot.data?['redFlags'] as List? ?? const []);
+            final medications = List<String>.from(snapshot.data?['medications'] as List? ?? const []);
+
             return Padding(
               padding: EdgeInsets.only(
                 bottom: MediaQuery.of(context).viewInsets.bottom,
@@ -499,34 +544,82 @@ class _MedicalCaseCreateScreenState extends ConsumerState<MedicalCaseCreateScree
                   children: [
                     Row(
                       children: [
-                        Icon(LucideIcons.sparkles, color: AppTheme.primaryGreen),
+                        Icon(LucideIcons.stethoscope, color: AppTheme.primaryGreen),
                         const SizedBox(width: 8),
                         Expanded(
-                          child: Text('AI Copilot - המלצות רפואיות', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppTheme.textPrimary)),
+                          child: Text(
+                            'עזר החלטה קליני והצלבת רגישויות',
+                            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppTheme.textPrimary),
+                          ),
                         ),
                         IconButton(icon: const Icon(LucideIcons.x), onPressed: () => Navigator.pop(context)),
                       ],
                     ),
-                    const SizedBox(height: AppTheme.spacing24),
+                    const SizedBox(height: AppTheme.spacing16),
                     if (snapshot.connectionState == ConnectionState.waiting)
                       const Center(child: Padding(padding: EdgeInsets.all(32.0), child: CircularProgressIndicator()))
                     else if (snapshot.hasError)
-                      Text('שגיאה בגישה ל-AI: ${snapshot.error}', style: TextStyle(color: AppTheme.warningAmber))
+                      Text('שגיאה בניתוח התלונה: ${snapshot.error}', style: TextStyle(color: AppTheme.warningAmber))
                     else if (snapshot.hasData) ...[
+                      if (warnings.isNotEmpty) ...[
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(AppTheme.spacing12),
+                          margin: const EdgeInsets.only(bottom: AppTheme.spacing16),
+                          decoration: BoxDecoration(
+                            color: AppTheme.criticalRed.withValues(alpha: 0.14),
+                            borderRadius: AppTheme.radiusMd,
+                            border: Border.all(color: AppTheme.criticalRed.withValues(alpha: 0.65)),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Icon(LucideIcons.shieldAlert, color: AppTheme.criticalRed, size: 18),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    'התראת בטיחות ורגישויות',
+                                    style: TextStyle(
+                                      color: AppTheme.criticalRed,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 6),
+                              ...warnings.map(
+                                (w) => Padding(
+                                  padding: const EdgeInsets.only(top: 3),
+                                  child: Text('• $w', style: TextStyle(color: AppTheme.textPrimary, fontSize: 13)),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                       Text('אבחנה משוערת:', style: TextStyle(fontWeight: FontWeight.bold, color: AppTheme.textSecondary)),
-                      Text(snapshot.data!['diagnosis'], style: TextStyle(color: AppTheme.textPrimary, fontSize: 16)),
+                      Text(snapshot.data!['diagnosis'].toString(), style: TextStyle(color: AppTheme.textPrimary, fontSize: 16)),
                       const SizedBox(height: AppTheme.spacing16),
                       Text('המלצת טיפול:', style: TextStyle(fontWeight: FontWeight.bold, color: AppTheme.textSecondary)),
-                      Text(snapshot.data!['treatment'], style: TextStyle(color: AppTheme.textPrimary)),
+                      Text(snapshot.data!['treatment'].toString(), style: TextStyle(color: AppTheme.textPrimary, height: 1.4)),
                       const SizedBox(height: AppTheme.spacing16),
-                      if (snapshot.data!['redFlags'].isNotEmpty) ...[
+                      if (redFlags.isNotEmpty) ...[
                         Text('דגלים אדומים (סכנה):', style: TextStyle(fontWeight: FontWeight.bold, color: AppTheme.warningAmber)),
-                        ...List.generate(snapshot.data!['redFlags'].length, (index) => Text('• ${snapshot.data!['redFlags'][index]}', style: TextStyle(color: AppTheme.textPrimary))),
+                        const SizedBox(height: 4),
+                        ...redFlags.map((flag) => Text('• $flag', style: TextStyle(color: AppTheme.textPrimary))),
                         const SizedBox(height: AppTheme.spacing16),
                       ],
-                      if (snapshot.data!['medications'].isNotEmpty) ...[
-                        Text('תרופות מארגז חופ"ל:', style: TextStyle(fontWeight: FontWeight.bold, color: AppTheme.infoBlue)),
-                        ...List.generate(snapshot.data!['medications'].length, (index) => Text('• ${snapshot.data!['medications'][index]}', style: TextStyle(color: AppTheme.textPrimary))),
+                      if (medications.isNotEmpty) ...[
+                        Text('תרופות מתאימות מארגז חופ"ל:', style: TextStyle(fontWeight: FontWeight.bold, color: AppTheme.infoBlue)),
+                        const SizedBox(height: 4),
+                        ...medications.map((med) => Text('• $med', style: TextStyle(color: AppTheme.textPrimary))),
+                      ] else if (warnings.isNotEmpty) ...[
+                        Text(
+                          'כל התרופות שנשקלו סומנו לבדיקה חוזרת עקב רגישויות החייל — יש להיוועץ ברופא.',
+                          style: TextStyle(color: AppTheme.warningAmber, fontSize: 13, fontWeight: FontWeight.w600),
+                        ),
                       ],
                       const SizedBox(height: AppTheme.spacing24),
                     ],
@@ -602,16 +695,17 @@ class _MedicalCaseCreateScreenState extends ConsumerState<MedicalCaseCreateScree
     }
 
     if (!mounted) return;
-    
+
     if (widget.existingCase == null) {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove('medical_case_draft');
+      if (!mounted) return;
     }
-    
+
     // Refresh the list providers
     ref.read(medicalCasesProvider.notifier).refresh();
     ref.invalidate(dashboardMetricsProvider);
-    
+
     HopalFeedback.showSuccess(context, widget.existingCase == null ? 'הפנייה הרפואית נפתחה בהצלחה' : 'הפנייה הרפואית עודכנה בהצלחה');
     Navigator.pop(context);
   }
@@ -625,7 +719,10 @@ class _MedicalCaseCreateScreenState extends ConsumerState<MedicalCaseCreateScree
       body: CustomScrollView(
         slivers: [
           SliverAppBar(
-            title: Text(widget.existingCase == null ? 'פנייה חדשה' : 'עריכת פנייה', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: AppTheme.textPrimary)),
+            title: Text(
+              widget.existingCase == null ? 'פנייה חדשה' : 'עריכת פנייה',
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: AppTheme.textPrimary),
+            ),
             backgroundColor: AppTheme.backgroundPrimary,
             elevation: 0,
             centerTitle: true,
@@ -714,9 +811,11 @@ class _MedicalCaseCreateScreenState extends ConsumerState<MedicalCaseCreateScree
                                                 children: [
                                                   Icon(LucideIcons.alertTriangle, size: 14, color: AppTheme.criticalRed),
                                                   const SizedBox(width: 6),
-                                                  Text(
-                                                    'רגישות רפואית: ${soldier.allergies}',
-                                                    style: TextStyle(fontSize: 12, color: AppTheme.criticalRed, fontWeight: FontWeight.bold),
+                                                  Flexible(
+                                                    child: Text(
+                                                      'רגישות רפואית: ${soldier.allergies}',
+                                                      style: TextStyle(fontSize: 12, color: AppTheme.criticalRed, fontWeight: FontWeight.bold),
+                                                    ),
                                                   ),
                                                 ],
                                               ),
@@ -819,7 +918,7 @@ class _MedicalCaseCreateScreenState extends ConsumerState<MedicalCaseCreateScree
                   ],
                 ),
                 const SizedBox(height: AppTheme.spacing24),
-                
+
                 HopalFormSection(
                   title: 'תגיות מהירות (הזנה ללא הקלדה)',
                   children: [
@@ -833,11 +932,14 @@ class _MedicalCaseCreateScreenState extends ConsumerState<MedicalCaseCreateScree
                           child: Container(
                             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                             decoration: BoxDecoration(
-                              color: AppTheme.primaryGreen.withValues(alpha: 0.8),
+                              color: AppTheme.primaryGreen,
                               border: Border.all(color: AppTheme.primaryGreen),
                               borderRadius: BorderRadius.circular(20),
                             ),
-                            child: Text(tag, style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                            child: Text(
+                              tag,
+                              style: TextStyle(color: AppTheme.onPrimaryGreen, fontWeight: FontWeight.bold),
+                            ),
                           ),
                         );
                       }).toList(),
@@ -853,17 +955,17 @@ class _MedicalCaseCreateScreenState extends ConsumerState<MedicalCaseCreateScree
                       onTap: _pickImage,
                       borderRadius: AppTheme.radiusMd,
                       child: Container(
-                        height: _imagePath == null ? null : 160,
+                        height: _imagePath == null ? null : 180,
                         padding: _imagePath == null ? const EdgeInsets.all(AppTheme.spacing16) : null,
                         decoration: BoxDecoration(
                           color: AppTheme.backgroundSecondary,
-                          border: Border.all(color: AppTheme.borderSubtle, style: BorderStyle.solid, width: 2),
+                          border: Border.all(
+                            color: _imagePath != null ? AppTheme.primaryGreen : AppTheme.borderSubtle,
+                            width: 1.5,
+                          ),
                           borderRadius: AppTheme.radiusMd,
-                          image: _imagePath != null
-                              ? DecorationImage(image: resolveLocalOrWebImage(_imagePath!), fit: BoxFit.cover)
-                              : null,
                         ),
-                        child: _imagePath == null 
+                        child: _imagePath == null
                             ? Row(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
@@ -872,33 +974,74 @@ class _MedicalCaseCreateScreenState extends ConsumerState<MedicalCaseCreateScree
                                   Text('הוסף צילום רפואי (אופציונלי)', style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.bold)),
                                 ],
                               )
-                            : Container(
-                                alignment: Alignment.bottomCenter,
-                                decoration: BoxDecoration(
-                                  gradient: LinearGradient(
-                                    begin: Alignment.topCenter,
-                                    end: Alignment.bottomCenter,
-                                    colors: [Colors.transparent, Colors.black.withValues(alpha: 0.7)],
+                            : Stack(
+                                fit: StackFit.expand,
+                                children: [
+                                  ClipRRect(
+                                    borderRadius: AppTheme.radiusMd,
+                                    child: Image(
+                                      image: resolveLocalOrWebImage(_imagePath!),
+                                      fit: BoxFit.cover,
+                                      errorBuilder: (_, __, ___) => Center(
+                                        child: Icon(LucideIcons.imageOff, color: AppTheme.textMuted, size: 32),
+                                      ),
+                                    ),
                                   ),
-                                  borderRadius: AppTheme.radiusMd,
-                                ),
-                                padding: const EdgeInsets.all(8),
-                                child: Row(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Icon(LucideIcons.checkCircle2, color: AppTheme.successGreen, size: 16),
-                                    const SizedBox(width: 8),
-                                    Text('תמונה צורפה בהצלחה', style: TextStyle(color: AppTheme.successGreen, fontWeight: FontWeight.bold)),
-                                  ],
-                                ),
+                                  Positioned(
+                                    top: 8,
+                                    left: 8,
+                                    child: Material(
+                                      color: Colors.black.withValues(alpha: 0.7),
+                                      borderRadius: BorderRadius.circular(20),
+                                      child: InkWell(
+                                        borderRadius: BorderRadius.circular(20),
+                                        onTap: () => setState(() => _imagePath = null),
+                                        child: const Padding(
+                                          padding: EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                          child: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Icon(LucideIcons.trash2, color: Colors.white, size: 14),
+                                              SizedBox(width: 4),
+                                              Text('הסר', style: TextStyle(color: Colors.white, fontSize: 12)),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  Align(
+                                    alignment: Alignment.bottomCenter,
+                                    child: Container(
+                                      width: double.infinity,
+                                      decoration: BoxDecoration(
+                                        gradient: LinearGradient(
+                                          begin: Alignment.topCenter,
+                                          end: Alignment.bottomCenter,
+                                          colors: [Colors.transparent, Colors.black.withValues(alpha: 0.72)],
+                                        ),
+                                        borderRadius: const BorderRadius.vertical(bottom: Radius.circular(11)),
+                                      ),
+                                      padding: const EdgeInsets.all(8),
+                                      child: Row(
+                                        mainAxisAlignment: MainAxisAlignment.center,
+                                        children: [
+                                          Icon(LucideIcons.checkCircle2, color: AppTheme.successGreen, size: 16),
+                                          const SizedBox(width: 8),
+                                          const Text('תמונה צורפה • לחץ להחלפה', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ],
                               ),
                       ),
                     ),
 
                     const SizedBox(height: AppTheme.spacing16),
                     HopalButton(
-                      label: 'בקש המלצת טיפול מ-AI Copilot',
-                      icon: LucideIcons.sparkles,
+                      label: 'הפק הנחיות טיפול והצלבת רגישויות',
+                      icon: LucideIcons.stethoscope,
                       onPressed: _runCopilot,
                       isExpanded: true,
                     ),
@@ -936,7 +1079,7 @@ class _MedicalCaseCreateScreenState extends ConsumerState<MedicalCaseCreateScree
                     ],
                   ),
                 ),
-                
+
                 const SizedBox(height: AppTheme.spacing32),
                 HopalButton(
                   label: widget.existingCase == null ? 'שמור פנייה' : 'עדכן פנייה',

@@ -16,10 +16,12 @@ import 'package:chopel_app/theme/components/hopal_bottom_sheet.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:chopel_app/theme/components/hopal_shimmer.dart';
 
+import 'package:chopel_app/models/medical_case.dart';
 import 'package:chopel_app/models/soldier.dart';
 import 'package:chopel_app/theme/components/hopal_feedback.dart';
 import 'package:chopel_app/core/network/sync_engine.dart';
 import 'package:chopel_app/features/medical_cases/medical_case_detail_screen.dart';
+import 'package:chopel_app/features/medical_cases/medical_cases_list_screen.dart';
 import 'package:chopel_app/features/medical_cases/providers.dart';
 import 'package:chopel_app/features/medical_cases/medical_case_create_screen.dart';
 import 'package:chopel_app/features/equipment/equipment_list_screen.dart';
@@ -30,12 +32,19 @@ import 'package:chopel_app/core/database/draft_service.dart';
 import 'package:chopel_app/core/services/standby_medics_service.dart';
 import 'package:chopel_app/core/utils/app_error_helper.dart';
 import 'package:chopel_app/core/utils/battalion_medic_helper.dart';
+import 'package:chopel_app/core/utils/doctor_consult_helper.dart';
 import 'package:uuid/uuid.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class DashboardScreen extends ConsumerStatefulWidget {
   final bool animateEntrance;
-  const DashboardScreen({super.key, this.animateEntrance = false});
+  final ValueChanged<int>? onSwitchTab;
+
+  const DashboardScreen({
+    super.key,
+    this.animateEntrance = false,
+    this.onSwitchTab,
+  });
 
   @override
   ConsumerState<DashboardScreen> createState() => _DashboardScreenState();
@@ -374,6 +383,65 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
     );
   }
 
+  void _openCasesTab() {
+    if (widget.onSwitchTab != null) {
+      widget.onSwitchTab!(1);
+    } else {
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (context) => const MedicalCasesListScreen()),
+      );
+    }
+  }
+
+  void _openEquipmentTab() {
+    if (widget.onSwitchTab != null) {
+      widget.onSwitchTab!(3);
+    } else {
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (context) => const EquipmentListScreen()),
+      );
+    }
+  }
+
+  Future<bool> _completeMedicalCaseWithSummary(MedicalCase medCase) async {
+    final String? notes = await _showSummaryBottomSheet(context);
+    if (notes == null) return false;
+
+    final updatedCase = {
+      'id': medCase.id,
+      'soldier_id': medCase.soldierId,
+      'status': 'COMPLETED',
+      'description': medCase.description,
+      'created_date': medCase.createdDate,
+      'updated_date': DateTime.now().toIso8601String(),
+      'closed_date': DateTime.now().toIso8601String(),
+    };
+
+    if (notes.trim().isNotEmpty) {
+      updatedCase['description'] = '${updatedCase['description'] ?? ''}\n\n[סיכום טיפול]: $notes'.trim();
+    }
+
+    try {
+      await Supabase.instance.client
+          .from('medical_cases')
+          .update(updatedCase)
+          .eq('id', medCase.id);
+    } catch (_) {
+      try {
+        await SyncEngine().queueMutation(
+          entityType: 'medical_cases',
+          action: 'UPDATE',
+          entityId: medCase.id,
+          payload: updatedCase,
+        );
+      } catch (_) {}
+    }
+
+    return true;
+  }
+
   Widget _buildPriorityActions(DashboardMetrics metrics) {
     final activeCasesList = ref.watch(medicalCasesProvider).maybeWhen(
       data: (cases) => cases.where((c) => c.status == 'REQUIRES_ATTENTION').toList(),
@@ -413,7 +481,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
                 title: 'חוסר ציוד',
                 description: '${metrics.missingEquipment} פריטים חסרים בתיק',
                 variant: HopalStatusBadgeVariant.warning,
-                targetScreen: const EquipmentListScreen(),
+                onTap: _openEquipmentTab,
               ),
             ),
             const SizedBox(height: AppTheme.spacing16),
@@ -434,42 +502,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
                         child: Dismissible(
                           key: Key(medCase.id),
                           direction: DismissDirection.endToStart,
-                          confirmDismiss: (direction) async {
-                            final String? notes = await _showSummaryBottomSheet(context);
-                            if (notes == null) return false;
-
-                            final updatedCase = {
-                              'id': medCase.id,
-                              'soldier_id': medCase.soldierId,
-                              'status': 'COMPLETED',
-                              'description': medCase.description,
-                              'created_date': medCase.createdDate,
-                              'updated_date': DateTime.now().toIso8601String(),
-                              'closed_date': DateTime.now().toIso8601String(),
-                            };
-
-                            if (notes.trim().isNotEmpty) {
-                              updatedCase['description'] = '${updatedCase['description'] ?? ''}\n\n[סיכום טיפול]: $notes'.trim();
-                            }
-
-                            try {
-                              await Supabase.instance.client
-                                  .from('medical_cases')
-                                  .update(updatedCase)
-                                  .eq('id', medCase.id);
-                            } catch (_) {
-                              try {
-                                await SyncEngine().queueMutation(
-                                  entityType: 'medical_cases',
-                                  action: 'UPDATE',
-                                  entityId: medCase.id,
-                                  payload: updatedCase,
-                                );
-                              } catch (_) {}
-                            }
-
-                            return true;
-                          },
+                          confirmDismiss: (direction) => _completeMedicalCaseWithSummary(medCase),
                           onDismissed: (direction) {
                             if (mounted) {
                               ref.read(medicalCasesProvider.notifier).refresh();
@@ -484,7 +517,14 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
                             ),
                             alignment: Alignment.centerRight,
                             padding: const EdgeInsets.only(right: 20),
-                            child: const Icon(LucideIcons.checkCheck, color: Colors.white),
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(LucideIcons.checkCheck, color: Colors.white),
+                                SizedBox(width: 8),
+                                Text('סגירת תיק', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                              ],
+                            ),
                           ),
                           child: InkWell(
                             onTap: () {
@@ -517,6 +557,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
                                           ],
                                         ),
                                       ),
+                                      Tooltip(
+                                        message: 'ניתן להחליק שמאלה או ללחוץ לסיום טיפול',
+                                        child: Icon(LucideIcons.chevronsLeft, size: 16, color: AppTheme.textMuted),
+                                      ),
                                     ],
                                   ),
                                   const SizedBox(height: AppTheme.spacing12),
@@ -524,37 +568,62 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
                                   Row(
                                     mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                                     children: [
-                                      TextButton.icon(
-                                        onPressed: () async {
-                                          final text = 'היי ד"ר, מצ"ב פנייה של ${soldier.name}.\nתלונות: ${medCase.description ?? 'אין תיאור'}.\nאשמח להנחיות.';
-                                          if (medCase.imagePath != null && medCase.imagePath!.isNotEmpty) {
-                                            await Share.shareXFiles([XFile(medCase.imagePath!)], text: text);
-                                          } else {
-                                            await Share.share(text);
-                                          }
-                                        },
-                                        icon: const Icon(LucideIcons.stethoscope, size: 18),
-                                        label: const Text('התייעצות רופא'),
-                                        style: TextButton.styleFrom(foregroundColor: AppTheme.primaryGreen),
+                                      Flexible(
+                                        child: TextButton.icon(
+                                          onPressed: () => DoctorConsultHelper.shareMedicalCase(
+                                            context,
+                                            medicalCase: medCase,
+                                            soldier: soldier,
+                                          ),
+                                          icon: const Icon(LucideIcons.stethoscope, size: 16),
+                                          label: const Text('רופא', overflow: TextOverflow.ellipsis),
+                                          style: TextButton.styleFrom(
+                                            foregroundColor: AppTheme.primaryGreen,
+                                            visualDensity: VisualDensity.compact,
+                                          ),
+                                        ),
                                       ),
-                                      TextButton.icon(
-                                        onPressed: () async {
-                                          final phone = soldier.phoneNumber ?? '';
-                                          if (phone.isEmpty) {
-                                            HopalFeedback.showError(context, 'לא מוגדר מספר טלפון לחייל זה');
-                                            return;
-                                          }
-                                          final text = Uri.encodeComponent('היי ${soldier.name}, מה המצב הבוקר?');
-                                          var formattedPhone = phone;
-                                          if (phone.startsWith('0')) formattedPhone = '972${phone.substring(1)}';
-                                          final url = Uri.parse('https://wa.me/$formattedPhone?text=$text');
-                                          if (await canLaunchUrl(url)) {
-                                            await launchUrl(url);
-                                          }
-                                        },
-                                        icon: const Icon(LucideIcons.messageCircle, size: 18),
-                                        label: const Text('שליחת הודעה לחייל'),
-                                        style: TextButton.styleFrom(foregroundColor: AppTheme.textSecondary),
+                                      Flexible(
+                                        child: TextButton.icon(
+                                          onPressed: () async {
+                                            final phone = soldier.phoneNumber ?? '';
+                                            if (phone.isEmpty) {
+                                              HopalFeedback.showError(context, 'לא מוגדר מספר טלפון לחייל זה');
+                                              return;
+                                            }
+                                            final text = Uri.encodeComponent('היי ${soldier.name}, מה המצב הבוקר?');
+                                            var formattedPhone = phone.replaceAll(RegExp(r'\D'), '');
+                                            if (formattedPhone.startsWith('0')) formattedPhone = '972${formattedPhone.substring(1)}';
+                                            final url = Uri.parse('https://wa.me/$formattedPhone?text=$text');
+                                            if (await canLaunchUrl(url)) {
+                                              await launchUrl(url, mode: LaunchMode.externalApplication);
+                                            }
+                                          },
+                                          icon: const Icon(LucideIcons.messageCircle, size: 16),
+                                          label: const Text('הודעה', overflow: TextOverflow.ellipsis),
+                                          style: TextButton.styleFrom(
+                                            foregroundColor: AppTheme.textSecondary,
+                                            visualDensity: VisualDensity.compact,
+                                          ),
+                                        ),
+                                      ),
+                                      Flexible(
+                                        child: TextButton.icon(
+                                          onPressed: () async {
+                                            final done = await _completeMedicalCaseWithSummary(medCase);
+                                            if (done && mounted) {
+                                              ref.read(medicalCasesProvider.notifier).refresh();
+                                              ref.invalidate(dashboardMetricsProvider);
+                                              HopalFeedback.showSuccess(context, 'הטיפול סומן כהושלם');
+                                            }
+                                          },
+                                          icon: const Icon(LucideIcons.checkCircle2, size: 16),
+                                          label: const Text('סיום', overflow: TextOverflow.ellipsis),
+                                          style: TextButton.styleFrom(
+                                            foregroundColor: AppTheme.successGreen,
+                                            visualDensity: VisualDensity.compact,
+                                          ),
+                                        ),
                                       ),
                                     ],
                                   ),
@@ -579,14 +648,24 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
     );
   }
 
-  Widget _buildActionItemRow({required IconData icon, required String title, required String description, required HopalStatusBadgeVariant variant, required Widget targetScreen}) {
+  Widget _buildActionItemRow({
+    required IconData icon,
+    required String title,
+    required String description,
+    required HopalStatusBadgeVariant variant,
+    Widget? targetScreen,
+    VoidCallback? onTap,
+  }) {
     return InkWell(
-      onTap: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(builder: (context) => targetScreen),
-        );
-      },
+      onTap: onTap ??
+          (targetScreen == null
+              ? null
+              : () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => targetScreen),
+                  );
+                }),
       borderRadius: AppTheme.radiusLg,
       child: Padding(
         padding: const EdgeInsets.all(AppTheme.spacing16),
@@ -668,7 +747,12 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
           Row(
             children: [
               Expanded(
-                child: _buildStatusCard('פניות פתוחות', '${metrics.activeMedicalCases}', LucideIcons.activity),
+                child: _buildStatusCard(
+                  'פניות פתוחות',
+                  '${metrics.activeMedicalCases}',
+                  LucideIcons.activity,
+                  onTap: _openCasesTab,
+                ),
               ),
               const SizedBox(width: AppTheme.spacing8),
               Expanded(
@@ -685,12 +769,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
                   'כשירות ציוד',
                   '${metrics.equipmentReadinessPercent}%',
                   LucideIcons.briefcase,
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (context) => const EquipmentListScreen()),
-                    );
-                  },
+                  onTap: _openEquipmentTab,
                 ),
               ),
             ],
@@ -868,7 +947,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
                 FilledButton(
                   style: FilledButton.styleFrom(
                     backgroundColor: AppTheme.primaryGreen,
-                    foregroundColor: Colors.white,
+                    foregroundColor: AppTheme.onPrimaryGreen,
                   ),
                   onPressed: () {
                     final n = nameController.text.trim();
@@ -1274,14 +1353,14 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
               if (isCompanyMedic)
                 ElevatedButton.icon(
                   onPressed: () => _showEditTimelineBottomSheet(context, metrics),
-                  icon: const Icon(LucideIcons.pencil, size: 16, color: Colors.white),
-                  label: const Text(
+                  icon: Icon(LucideIcons.pencil, size: 16, color: AppTheme.onPrimaryGreen),
+                  label: Text(
                     'עריכת לו"ז',
-                    style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+                    style: TextStyle(color: AppTheme.onPrimaryGreen, fontWeight: FontWeight.bold, fontSize: 14),
                   ),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppTheme.primaryGreen,
-                    foregroundColor: Colors.white,
+                    foregroundColor: AppTheme.onPrimaryGreen,
                     elevation: 2,
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
@@ -1425,7 +1504,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
             FilledButton(
               style: FilledButton.styleFrom(
                 backgroundColor: AppTheme.primaryGreen,
-                foregroundColor: Colors.white,
+                foregroundColor: AppTheme.onPrimaryGreen,
               ),
               onPressed: () => Navigator.pop(ctx, true),
               child: Text(

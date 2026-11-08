@@ -260,6 +260,8 @@ class AuthService {
     }
   }
 
+  static String pendingPointsKeyFor(String userId) => 'pending_competence_points_$userId';
+
   void updateCompetencePoints(int additionalPoints) {
     if (_currentUser != null) {
       final newPoints = _currentUser!.competencePoints + additionalPoints;
@@ -277,6 +279,67 @@ class AuthService {
         competencePoints: newPoints,
       );
       _saveLocalProfile(_currentUser!.toMap());
+    }
+  }
+
+  /// Awards [additionalPoints] immediately in local state/cache and syncs to Supabase,
+  /// queuing any unsynced delta safely if the device is currently offline.
+  Future<void> awardCompetencePoints(int additionalPoints) async {
+    if (additionalPoints <= 0) return;
+    final user = _currentUser;
+    if (user == null) return;
+
+    updateCompetencePoints(additionalPoints);
+
+    final prefs = await SharedPreferences.getInstance();
+    final key = pendingPointsKeyFor(user.id);
+    final currentPending = prefs.getInt(key) ?? 0;
+    await prefs.setInt(key, currentPending + additionalPoints);
+
+    await _flushPendingCompetencePointsForUser(user.id);
+  }
+
+  Future<int?> _flushPendingCompetencePointsForUser(String userId) async {
+    final prefs = await SharedPreferences.getInstance();
+    final key = pendingPointsKeyFor(userId);
+    final pending = prefs.getInt(key) ?? 0;
+    if (pending <= 0) return null;
+
+    try {
+      final row = await _supabase
+          .from('users')
+          .select('competence_points')
+          .eq('id', userId)
+          .maybeSingle();
+      if (row == null) return null;
+      final serverPoints = (row['competence_points'] as num?)?.toInt() ?? 0;
+      final mergedTotal = serverPoints + pending;
+
+      await _supabase.from('users').update({
+        'competence_points': mergedTotal,
+      }).eq('id', userId);
+
+      await prefs.remove(key);
+      if (_currentUser?.id == userId) {
+        _currentUser = User(
+          id: _currentUser!.id,
+          name: _currentUser!.name,
+          role: _currentUser!.role,
+          phoneNumber: _currentUser!.phoneNumber,
+          platoon: _currentUser!.platoon,
+          unitId: _currentUser!.unitId,
+          unitName: _currentUser!.unitName,
+          unitJoinCode: _currentUser!.unitJoinCode,
+          activeDeploymentId: _currentUser!.activeDeploymentId,
+          activeDeploymentName: _currentUser!.activeDeploymentName,
+          competencePoints: mergedTotal,
+        );
+        await _saveLocalProfile(_currentUser!.toMap());
+      }
+      return mergedTotal;
+    } catch (_) {
+      // Remain queued offline; will retry next sync/loadProfile.
+      return null;
     }
   }
 
@@ -383,6 +446,11 @@ class AuthService {
         map['active_deployment_name'] = map['deployments']['name'];
       }
       _currentUser = User.fromMap(map);
+
+      final flushedPoints = await _flushPendingCompetencePointsForUser(supaUser.id);
+      if (flushedPoints != null) {
+        map['competence_points'] = flushedPoints;
+      }
 
       // Self-heal if a unit founder's role was previously overwritten to COMBAT_MEDIC
       // leaving the unit without any COMPANY_MEDIC.
@@ -712,6 +780,7 @@ class AuthService {
   Future<void> disableBiometrics() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('use_biometrics', false);
+    await prefs.remove('saved_password');
   }
 
   Future<bool> authenticateWithBiometrics() async {

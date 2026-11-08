@@ -91,7 +91,7 @@ class UpdateService {
                   child: ElevatedButton(
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppTheme.primaryGreen,
-                      foregroundColor: AppTheme.backgroundPrimary,
+                      foregroundColor: AppTheme.onPrimaryGreen,
                       padding: const EdgeInsets.symmetric(vertical: 16),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     ),

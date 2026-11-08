@@ -48,7 +48,7 @@ class _UpdatePasswordScreenState extends State<UpdatePasswordScreen> {
       if (currentEmail != null) {
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString('saved_email', currentEmail);
-        await prefs.setString('saved_password', password);
+        await prefs.remove('saved_password');
       }
 
       if (mounted) {

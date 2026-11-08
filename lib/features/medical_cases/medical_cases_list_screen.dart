@@ -112,7 +112,7 @@ class _MedicalCasesListScreenState extends ConsumerState<MedicalCasesListScreen>
                     child: HopalEmptyState(
                       icon: LucideIcons.checkCircle2,
                       title: 'אין פניות פעילות',
-                      subtitle: 'מצוין. כל המקרים טופלו בהצלחה והלו"ז נקי ☕',
+                      subtitle: 'כל הפניות טופלו בהצלחה והלו"ז נקי.',
                     ),
                   )
                 else
@@ -190,6 +190,7 @@ class _MedicalCasesListScreenState extends ConsumerState<MedicalCasesListScreen>
       },
       selectedColor: AppTheme.primaryGreen.withValues(alpha: 0.2),
       backgroundColor: AppTheme.backgroundSecondary,
+      checkmarkColor: AppTheme.primaryGreen,
       labelStyle: TextStyle(
         color: isSelected ? AppTheme.primaryGreen : AppTheme.textSecondary,
         fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,

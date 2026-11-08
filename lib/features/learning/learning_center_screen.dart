@@ -24,6 +24,12 @@ class _LearningCenterScreenState extends ConsumerState<LearningCenterScreen> {
   String _searchQuery = '';
   String _selectedCategory = 'הכל';
 
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
   Future<void> _launchUrl(String url, String title, String type) async {
     Navigator.push(
       context,
@@ -110,18 +116,24 @@ class _LearningCenterScreenState extends ConsumerState<LearningCenterScreen> {
                                 ),
                                 child: Column(
                                   children: [
-                                    const Icon(LucideIcons.pill, color: Colors.white, size: 32),
+                                    Icon(LucideIcons.pill, color: AppTheme.onPrimaryGreen, size: 32),
                                     const SizedBox(height: AppTheme.spacing8),
-                                    const Text(
-                                      'מדריך תרופות',
-                                      style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 16),
-                                    ),
                                     Text(
-                                      'QXGO',
+                                      'מדריך תרופות',
                                       style: TextStyle(
-                                        fontSize: 14,
-                                        color: Colors.white.withValues(alpha: 0.8),
                                         fontWeight: FontWeight.bold,
+                                        color: AppTheme.onPrimaryGreen,
+                                        fontSize: 16,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      'מינונים והתוויות נגד',
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: AppTheme.onPrimaryGreen.withValues(alpha: 0.85),
+                                        fontWeight: FontWeight.w600,
                                       ),
                                     ),
                                   ],
@@ -154,17 +166,22 @@ class _LearningCenterScreenState extends ConsumerState<LearningCenterScreen> {
                                 ),
                                 child: Column(
                                   children: [
-                                    const Icon(LucideIcons.brainCircuit, color: Colors.white, size: 32),
+                                    Icon(LucideIcons.brainCircuit, color: AppTheme.onWarningAmber, size: 32),
                                     const SizedBox(height: AppTheme.spacing8),
-                                    const Text(
+                                    Text(
                                       'מבחני ריענון',
-                                      style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 16),
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        color: AppTheme.onWarningAmber,
+                                        fontSize: 16,
+                                      ),
                                     ),
+                                    const SizedBox(height: 2),
                                     Text(
                                       'Meditest',
                                       style: TextStyle(
-                                        fontSize: 14,
-                                        color: Colors.white.withValues(alpha: 0.8),
+                                        fontSize: 12,
+                                        color: AppTheme.onWarningAmber.withValues(alpha: 0.82),
                                         fontWeight: FontWeight.bold,
                                       ),
                                     ),
@@ -245,8 +262,15 @@ class _LearningCenterScreenState extends ConsumerState<LearningCenterScreen> {
                         return Padding(
                           padding: const EdgeInsets.only(left: AppTheme.spacing8),
                           child: ChoiceChip(
-                            label: Text(cat, style: TextStyle(color: isSelected ? Colors.white : AppTheme.textSecondary)),
+                            label: Text(
+                              cat,
+                              style: TextStyle(
+                                color: isSelected ? AppTheme.onPrimaryGreen : AppTheme.textSecondary,
+                                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                              ),
+                            ),
                             selected: isSelected,
+                            checkmarkColor: AppTheme.onPrimaryGreen,
                             onSelected: (selected) {
                               if (selected) setState(() => _selectedCategory = cat);
                             },
@@ -335,8 +359,8 @@ class _LearningCenterScreenState extends ConsumerState<LearningCenterScreen> {
                 ],
               ),
             ),
-            Icon(LucideIcons.downloadCloud, color: AppTheme.primaryGreen, size: 20),
-            const SizedBox(width: AppTheme.spacing16),
+            Icon(LucideIcons.bookOpen, color: AppTheme.primaryGreen, size: 20),
+            const SizedBox(width: AppTheme.spacing12),
             Icon(LucideIcons.chevronLeft, color: AppTheme.textSecondary, size: 20),
           ],
         ),

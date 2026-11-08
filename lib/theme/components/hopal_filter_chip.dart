@@ -37,7 +37,7 @@ class HopalFilterChip extends StatelessWidget {
             child: Text(
               label,
               style: TextStyle(
-                color: isSelected ? Colors.white : AppTheme.textSecondary,
+                color: isSelected ? AppTheme.onPrimaryGreen : AppTheme.textSecondary,
                 fontSize: 14,
                 fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
               ),

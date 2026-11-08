@@ -31,6 +31,7 @@ import 'package:chopel_app/core/utils/app_constants.dart';
 import 'package:chopel_app/core/utils/app_error_helper.dart';
 import 'package:chopel_app/core/utils/battalion_medic_helper.dart';
 import 'package:chopel_app/core/utils/web_reload.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:chopel_app/core/services/standby_medics_service.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {
@@ -41,7 +42,9 @@ class ProfileScreen extends ConsumerStatefulWidget {
 }
 
 class _ProfileScreenState extends ConsumerState<ProfileScreen> {
-  final String _syncTime = '15 דקות';
+  String _syncSummarySubtitle = 'בודק מצב חיבור וסנכרון...';
+  bool _hasOfflinePending = false;
+  bool _isNetworkOnline = true;
   bool _biometricsEnabled = false;
   bool _canCheckBiometrics = false;
   String _doctorName = '';
@@ -54,6 +57,38 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     super.initState();
     _loadBiometricSettings();
     _loadDoctorSettings();
+    _loadSyncSummary();
+  }
+
+  Future<void> _loadSyncSummary() async {
+    final metrics = await _getRealSyncMetrics();
+    final isOnline = metrics['isOnline'] as bool;
+    final formattedTime = metrics['formattedTime'] as String;
+    final pendingDrafts = metrics['pendingDrafts'] as int;
+    final pendingQueue = metrics['pendingQueue'] as int;
+    final hasLastSync = metrics['hasLastSync'] as bool;
+    final totalPending = pendingDrafts + pendingQueue;
+
+    String subtitle;
+    if (!isOnline && totalPending > 0) {
+      subtitle = 'מצב לא מקוון • $totalPending פעולות ממתינות לסנכרון';
+    } else if (!isOnline) {
+      subtitle = 'מצב לא מקוון – פעולות נשמרות מקומית במכשיר';
+    } else if (totalPending > 0) {
+      subtitle = 'מקוון • $totalPending פריטים ממתינים לסנכרון לענן';
+    } else if (hasLastSync) {
+      subtitle = 'מחובר לרשת • $formattedTime';
+    } else {
+      subtitle = 'מחובר לרשת (מקוון) • לחץ לפירוט וסנכרון';
+    }
+
+    if (mounted) {
+      setState(() {
+        _syncSummarySubtitle = subtitle;
+        _hasOfflinePending = totalPending > 0;
+        _isNetworkOnline = isOnline;
+      });
+    }
   }
 
   Future<void> _loadDoctorSettings() async {
@@ -192,7 +227,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     if (sheetContext.mounted) {
                       Navigator.pop(sheetContext);
                     }
-                    HopalFeedback.showSuccess(context, 'פרטי הפלוגה והתעסוקה עודכנו בהצלחה');
+                    HopalFeedback.showSuccess(this.context, 'פרטי הפלוגה והתעסוקה עודכנו בהצלחה');
                   } catch (e) {
                     if (sheetContext.mounted) {
                       setSheetState(() => isSaving = false);
@@ -235,7 +270,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           FilledButton(
             style: FilledButton.styleFrom(
               backgroundColor: AppTheme.primaryGreen,
-              foregroundColor: Colors.white,
+              foregroundColor: AppTheme.onPrimaryGreen,
             ),
             onPressed: () async {
               Navigator.pop(dialogContext);
@@ -392,13 +427,22 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       pendingQueue = q.length;
     } catch (_) {}
 
-    final bool isOnline = AuthService().isAuthenticated;
+    bool hasNetwork = true;
+    try {
+      final results = await Connectivity().checkConnectivity();
+      hasNetwork = results.isNotEmpty && !results.every((r) => r == ConnectivityResult.none);
+    } catch (_) {
+      hasNetwork = true;
+    }
+
+    final bool isOnline = hasNetwork && AuthService().isAuthenticated;
 
     return {
       'formattedTime': formattedTime,
       'pendingDrafts': pendingDrafts,
       'pendingQueue': pendingQueue,
       'isOnline': isOnline,
+      'hasLastSync': lastSyncIso != null,
     };
   }
 
@@ -499,6 +543,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                         ref.invalidate(medicalCasesProvider);
                         ref.invalidate(soldiersProvider);
                         ref.invalidate(equipmentProvider);
+                        await _loadSyncSummary();
 
                         if (context.mounted) {
                           Navigator.pop(context);
@@ -942,7 +987,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                             TextButton(
                               style: TextButton.styleFrom(
                                 backgroundColor: AppTheme.warningAmber,
-                                foregroundColor: Colors.black,
+                                foregroundColor: AppTheme.onWarningAmber,
                                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                                 minimumSize: Size.zero,
                                 tapTargetSize: MaterialTapTargetSize.shrinkWrap,
@@ -1059,7 +1104,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                         variant: HopalButtonVariant.secondary,
                         onPressed: () async {
                           final message = 'היי! מוזמן להצטרף לסביבת הפלוגה שלנו באפליקציית HOPAL.\nקוד ההצטרפות שלנו הוא: *${user!.unitJoinCode}*';
-                          await Share.share(message);
+                          await SharePlus.instance.share(ShareParams(text: message));
                         },
                       ),
                     ],
@@ -1195,8 +1240,16 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                           ],
                           HopalListTile(
                             title: const Text('מצב סנכרון'),
-                            subtitle: Text(_syncTime == 'כעת' ? 'סונכרן כעת' : 'מחובר לרשת (מקוון)'),
-                            leadingIcon: LucideIcons.wifi,
+                            subtitle: Text(
+                              _syncSummarySubtitle,
+                              style: TextStyle(
+                                color: (!_isNetworkOnline || _hasOfflinePending)
+                                    ? AppTheme.warningAmber
+                                    : AppTheme.textSecondary,
+                                fontSize: 13,
+                              ),
+                            ),
+                            leadingIcon: _isNetworkOnline ? LucideIcons.wifi : LucideIcons.wifiOff,
                             onTap: () => _showSyncStatus(context),
                           ),
                           HopalListTile(
@@ -1211,6 +1264,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                               }
                               if (context.mounted) HopalFeedback.showSuccess(context, 'מסנכרן טיוטות מול השרת...');
                               final count = await DraftService.syncDrafts();
+                              await _loadSyncSummary();
                               if (context.mounted) {
                                 if (count > 0) {
                                   HopalFeedback.showSuccess(context, '$count טיוטות סונכרנו בהצלחה!');

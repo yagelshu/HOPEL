@@ -15,7 +15,7 @@ class _WalkthroughDialogState extends State<WalkthroughDialog> {
 
   final List<Map<String, dynamic>> _pages = [
     {
-      'title': 'ברוך הבא ל-HOPEL!',
+      'title': 'ברוך הבא ל-HOPAL!',
       'description': 'האפליקציה נועדה לעזור לך לנהל את הפעילות הרפואית בפלוגה בצורה קלה ומהירה. בוא נעשה סיבוב היכרות קצר.',
       'icon': LucideIcons.shieldCheck,
       'color': AppTheme.primaryGreen,
@@ -28,7 +28,7 @@ class _WalkthroughDialogState extends State<WalkthroughDialog> {
     },
     {
       'title': 'מעקב ציוד וכשירות',
-      'description': 'עקוב אחר ציוד חסר בארגז החופ"ל ובערכות החובשים. סרוק ציוד ותעדף השלמות.',
+      'description': 'עקוב אחר ציוד חסר בארגז החופ"ל ובערכות החובשים, עדכן כמויות בלחיצה ושלח דיווח השלמות לחוג"ד.',
       'icon': LucideIcons.briefcase,
       'color': AppTheme.infoBlue,
     },

@@ -894,7 +894,7 @@ class _EquipmentListScreenState extends ConsumerState<EquipmentListScreen> {
                           activeScope: activeScope,
                         ),
                         backgroundColor: AppTheme.primaryGreen,
-                        child: const Icon(LucideIcons.plus, color: Colors.white),
+                        child: Icon(LucideIcons.plus, color: AppTheme.onPrimaryGreen),
                       ),
                     )
                   : null,
@@ -918,11 +918,6 @@ class _EquipmentListScreenState extends ConsumerState<EquipmentListScreen> {
                             tooltip: 'פרטי חוג"ד לדיווחי WhatsApp',
                             onPressed: () => BattalionMedicHelper.showSettingsSheet(context),
                           ),
-                        IconButton(
-                          icon: const Icon(LucideIcons.shieldCheck),
-                          tooltip: 'בדיקת חסם עורקים',
-                          onPressed: _showCatCheckModal,
-                        ),
                       ],
                     ),
                     SliverToBoxAdapter(
@@ -985,11 +980,12 @@ class _EquipmentListScreenState extends ConsumerState<EquipmentListScreen> {
                                   label: Text(
                                     scope.label,
                                     style: TextStyle(
-                                      color: isSelected ? Colors.white : AppTheme.textSecondary,
+                                      color: isSelected ? AppTheme.onPrimaryGreen : AppTheme.textSecondary,
                                       fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
                                     ),
                                   ),
                                   selected: isSelected,
+                                  checkmarkColor: AppTheme.onPrimaryGreen,
                                   onSelected: (selected) {
                                     if (selected) {
                                       setState(() => _selectedScopeKey = scope.key);

@@ -36,7 +36,7 @@ class HopalFeedback {
           FilledButton(
             style: FilledButton.styleFrom(
               backgroundColor: AppTheme.primaryGreen,
-              foregroundColor: AppTheme.textPrimary,
+              foregroundColor: AppTheme.onPrimaryGreen,
               shape: RoundedRectangleBorder(borderRadius: AppTheme.radiusMd),
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
             ),

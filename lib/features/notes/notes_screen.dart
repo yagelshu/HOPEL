@@ -286,7 +286,7 @@ class _NotesScreenState extends State<NotesScreen> with SingleTickerProviderStat
       appBar: AppBar(
         backgroundColor: AppTheme.backgroundPrimary,
         elevation: 0,
-        title: Text(isCompanyMedic ? 'יומן חופ"ל' : 'יומן ופנקס חובש', style: const TextStyle(fontWeight: FontWeight.bold)),
+        title: const Text('יומן והודעות', style: TextStyle(fontWeight: FontWeight.bold)),
         centerTitle: true,
         bottom: TabBar(
           controller: _tabController,
@@ -351,10 +351,10 @@ class _NotesScreenState extends State<NotesScreen> with SingleTickerProviderStat
               child: FloatingActionButton.extended(
                 onPressed: () => _showNoteEditorSheet(),
                 backgroundColor: AppTheme.primaryGreen,
-                icon: Icon(LucideIcons.plus, color: Colors.white, size: 20),
-                label: const Text(
+                icon: Icon(LucideIcons.plus, color: AppTheme.onPrimaryGreen, size: 20),
+                label: Text(
                   'הערה חדשה',
-                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                  style: TextStyle(color: AppTheme.onPrimaryGreen, fontWeight: FontWeight.bold),
                 ),
               ),
             )
