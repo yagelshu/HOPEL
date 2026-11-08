@@ -30,7 +30,12 @@ jobs:
         run: flutter pub get
         
       - name: Build Web
-        run: flutter build web --base-href "/HOPEL/" --pwa-strategy=none
+        run: |
+          flutter build web --base-href "/HOPEL/" --pwa-strategy=none
+          BUILD_NUM=$(grep -o '"build_number":"[^"]*"' build/web/version.json | cut -d'"' -f4)
+          if [ -n "$BUILD_NUM" ]; then
+            sed -i "s/main.dart.js/main.dart.js?v=${BUILD_NUM}/g" build/web/flutter_bootstrap.js
+          fi
         
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3

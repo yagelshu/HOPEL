@@ -237,6 +237,12 @@
                   var keys = await caches.keys();
                   for (var j = 0; j < keys.length; j++) { await caches.delete(keys[j]); }
                 }
+                await Promise.allSettled([
+                  fetch(window.location.pathname, { cache: 'reload' }),
+                  fetch('flutter_bootstrap.js?v=' + remoteBuild, { cache: 'reload' }),
+                  fetch('main.dart.js', { cache: 'reload' }),
+                  fetch('main.dart.js?v=' + remoteBuild, { cache: 'reload' })
+                ]);
               } catch (_) {}
               if (localBuild !== null || hadSw) {
                 var u = new URL(window.location.href);

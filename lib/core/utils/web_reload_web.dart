@@ -18,6 +18,20 @@ class WebReloadImpl {
               const keys = await caches.keys();
               for (const k of keys) { await caches.delete(k); }
             }
+            let remoteBuild = '';
+            try {
+              const vr = await fetch('version.json?t=' + Date.now(), { cache: 'no-store' });
+              if (vr.ok) {
+                const vj = await vr.json();
+                remoteBuild = String(vj.build_number || '');
+              }
+            } catch (_) {}
+            await Promise.allSettled([
+              fetch(window.location.pathname, { cache: 'reload' }),
+              fetch('flutter_bootstrap.js' + (remoteBuild ? '?v=' + remoteBuild : ''), { cache: 'reload' }),
+              fetch('main.dart.js', { cache: 'reload' }),
+              ...(remoteBuild ? [fetch('main.dart.js?v=' + remoteBuild, { cache: 'reload' })] : []),
+            ]);
           } catch (_) {}
           const url = new URL(window.location.href);
           url.searchParams.set('hopal_v', Date.now().toString());
