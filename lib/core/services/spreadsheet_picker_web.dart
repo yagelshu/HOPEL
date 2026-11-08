@@ -24,10 +24,11 @@ void _ensurePickerBridge() {
         if (!allowAny) {
           input.setAttribute(
             'accept',
-            '.xlsx,.xls,.csv,.tsv,' +
+            '.xlsx,.xls,.csv,' +
             'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,' +
             'application/vnd.ms-excel,' +
-            'text/csv,text/comma-separated-values,text/tab-separated-values,text/plain'
+            'text/csv,text/plain,' +
+            'application/octet-stream,application/zip'
           );
         }
         var settled = false;

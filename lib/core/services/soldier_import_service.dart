@@ -24,7 +24,37 @@ extension SoldierFieldLabel on SoldierField {
 class ImportTable {
   final List<String> headers;
   final List<List<String>> rows;
-  ImportTable(this.headers, this.rows);
+  final List<List<String>> allRows;
+  final bool firstRowIsHeader;
+
+  ImportTable(
+    this.headers,
+    this.rows, {
+    List<List<String>>? allRows,
+    this.firstRowIsHeader = true,
+  }) : allRows = allRows ?? [headers, ...rows];
+
+  ImportTable withHeaderMode(bool hasHeader) {
+    if (allRows.isEmpty) return this;
+    if (hasHeader) {
+      return ImportTable(
+        allRows.first,
+        allRows.skip(1).toList(),
+        allRows: allRows,
+        firstRowIsHeader: true,
+      );
+    }
+    final generatedHeaders = List<String>.generate(
+      allRows.first.length,
+      (i) => 'עמודה ${i + 1}',
+    );
+    return ImportTable(
+      generatedHeaders,
+      allRows,
+      allRows: allRows,
+      firstRowIsHeader: false,
+    );
+  }
 }
 
 /// A parsed soldier ready to be saved.
@@ -118,9 +148,40 @@ class SoldierImportService {
     final width = nonEmpty.map((r) => r.length).reduce((a, b) => a > b ? a : b);
     List<String> pad(List<String> r) => [...r, ...List.filled(width - r.length, '')];
 
-    final headers = pad(nonEmpty.first).map((h) => h.trim()).toList();
-    final rows = nonEmpty.skip(1).map(pad).toList();
-    return ImportTable(headers, rows);
+    final paddedAll = nonEmpty.map((r) => pad(r).map((c) => c.trim()).toList()).toList();
+    final hasHeader = looksLikeHeaderRow(paddedAll.first, totalRows: paddedAll.length);
+    return ImportTable(
+      paddedAll.first,
+      paddedAll.skip(1).toList(),
+      allRows: paddedAll,
+      firstRowIsHeader: true,
+    ).withHeaderMode(hasHeader);
+  }
+
+  /// Parses text copied directly from Excel Mobile, Google Sheets, WhatsApp, or Notes.
+  static ImportTable parsePastedText(String rawText) {
+    final cleaned = rawText.trim();
+    if (cleaned.isEmpty) {
+      throw const FormatException('לא הודבקו נתונים. סמן את הטבלה באקסל/שיטס, לחץ "העתק" והדבק כאן.');
+    }
+    return parse(Uint8List.fromList(utf8.encode(cleaned)), 'pasted.tsv');
+  }
+
+  /// Heuristic: returns true when [firstRow] looks like column titles rather than a soldier record.
+  static bool looksLikeHeaderRow(List<String> firstRow, {required int totalRows}) {
+    if (totalRows <= 1) return false;
+    final headerGuess = guessMapping(firstRow);
+    final matchedHeaders = headerGuess.where((f) => f != SoldierField.ignore).length;
+    final hasPhoneValue = firstRow.any((c) {
+      final digits = c.replaceAll(RegExp(r'[\s\-()]'), '');
+      return RegExp(r'^(\+?972|0)5\d{8}$').hasMatch(digits);
+    });
+    final hasPersonalNumberValue = firstRow.any((c) {
+      final digits = c.trim();
+      return RegExp(r'^\d{5,9}$').hasMatch(digits);
+    });
+    if (hasPhoneValue || hasPersonalNumberValue) return false;
+    return matchedHeaders > 0;
   }
 
   static String _decodeTextBytes(Uint8List bytes) {
@@ -177,7 +238,7 @@ class SoldierImportService {
         f = SoldierField.firstName;
       } else if (s.contains('משפחה') || s.contains('last')) {
         f = SoldierField.lastName;
-      } else if (s.contains('שם') || s.contains('name')) {
+      } else if (s.contains('שם') || s.contains('name') || s == 'חייל' || s == 'לוחם') {
         f = SoldierField.fullName;
       }
       if (f == null || used.contains(f)) return SoldierField.ignore;
@@ -186,6 +247,65 @@ class SoldierImportService {
     }
 
     return headers.map(guess).toList();
+  }
+
+  /// Combines header-based guessing with sample-value inspection (ideal for headerless pasted tables).
+  static List<SoldierField> smartGuessMapping(ImportTable table) {
+    final width = table.headers.length;
+    final base = table.firstRowIsHeader
+        ? List<SoldierField>.from(guessMapping(table.headers))
+        : List<SoldierField>.filled(width, SoldierField.ignore);
+
+    final used = base.where((f) => f != SoldierField.ignore).toSet();
+    final sampleRows = table.rows.take(10).toList();
+    if (sampleRows.isEmpty) return base;
+
+    for (var col = 0; col < width; col++) {
+      if (base[col] != SoldierField.ignore) continue;
+      final values = sampleRows
+          .map((r) => col < r.length ? r[col].trim() : '')
+          .where((v) => v.isNotEmpty)
+          .toList();
+      if (values.isEmpty) continue;
+
+      final phoneHits = values.where((v) {
+        final d = v.replaceAll(RegExp(r'[\s\-()]'), '');
+        return RegExp(r'^(\+?972|0)5\d{8}$').hasMatch(d);
+      }).length;
+      if (phoneHits * 2 >= values.length && !used.contains(SoldierField.phone)) {
+        base[col] = SoldierField.phone;
+        used.add(SoldierField.phone);
+        continue;
+      }
+
+      final pnHits = values.where((v) => RegExp(r'^\d{5,9}$').hasMatch(v)).length;
+      if (pnHits * 2 >= values.length && !used.contains(SoldierField.personalNumber)) {
+        base[col] = SoldierField.personalNumber;
+        used.add(SoldierField.personalNumber);
+        continue;
+      }
+
+      final nameHits = values.where((v) {
+        return RegExp(r'[\u0590-\u05FFa-zA-Z]').hasMatch(v) &&
+            !RegExp(r'^\d+$').hasMatch(v) &&
+            (width == 1 || v.contains(' ') || v.length >= 4);
+      }).length;
+      if (nameHits * 2 >= values.length &&
+          !used.contains(SoldierField.fullName) &&
+          !used.contains(SoldierField.firstName)) {
+        base[col] = SoldierField.fullName;
+        used.add(SoldierField.fullName);
+        continue;
+      }
+
+      final platoonHits = values.where((v) => v.length <= 8).length;
+      if (platoonHits == values.length && !used.contains(SoldierField.platoon)) {
+        base[col] = SoldierField.platoon;
+        used.add(SoldierField.platoon);
+      }
+    }
+
+    return base;
   }
 
   /// Applies a mapping to the table. Rows without a name are skipped.
@@ -269,9 +389,19 @@ class SoldierImportService {
     final tabCount = firstLine.split('\t').length;
     final semiCount = firstLine.split(';').length;
     final commaCount = firstLine.split(',').length;
-    final sep = (tabCount >= semiCount && tabCount > commaCount)
-        ? '\t'
-        : (semiCount > commaCount ? ';' : ',');
+    final pipeCount = firstLine.split('|').length;
+    final String sep;
+    if (tabCount > 1 && tabCount >= semiCount && tabCount >= commaCount) {
+      sep = '\t';
+    } else if (semiCount > 1 && semiCount >= commaCount) {
+      sep = ';';
+    } else if (commaCount > 1) {
+      sep = ',';
+    } else if (pipeCount > 1) {
+      sep = '|';
+    } else {
+      sep = '\t';
+    }
     final rows = <List<String>>[];
     var row = <String>[];
     final cell = StringBuffer();

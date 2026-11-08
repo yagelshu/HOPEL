@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:chopel_app/core/auth/auth_service.dart';
@@ -10,7 +11,7 @@ import 'package:chopel_app/theme/components/hopal_button.dart';
 import 'package:chopel_app/theme/components/hopal_feedback.dart';
 import 'package:chopel_app/core/utils/app_error_helper.dart';
 
-/// 3 steps: pick file -> map columns -> preview & save.
+/// 3 steps: pick file (or paste table) -> map columns -> preview & save.
 class SoldiersImportScreen extends ConsumerStatefulWidget {
   const SoldiersImportScreen({super.key});
 
@@ -32,17 +33,21 @@ class _SoldiersImportScreenState extends ConsumerState<SoldiersImportScreen> {
       _mapping.contains(SoldierField.firstName) ||
       _mapping.contains(SoldierField.lastName);
 
+  void _applyLoadedTable(ImportTable table, String sourceLabel) {
+    if (!mounted) return;
+    setState(() {
+      _table = table;
+      _fileName = sourceLabel;
+      _mapping = SoldierImportService.smartGuessMapping(table);
+    });
+  }
+
   Future<void> _pickFile({bool allowAnyFile = false}) async {
     try {
       final file = await SpreadsheetPicker.pick(allowAnyFile: allowAnyFile);
       if (file == null) return;
       final table = SoldierImportService.parse(file.bytes, file.name);
-      if (!mounted) return;
-      setState(() {
-        _table = table;
-        _fileName = file.name;
-        _mapping = SoldierImportService.guessMapping(table.headers);
-      });
+      _applyLoadedTable(table, file.name);
     } on FormatException catch (e) {
       if (mounted) HopalFeedback.showError(context, e.message);
     } catch (e) {
@@ -53,6 +58,148 @@ class _SoldiersImportScreenState extends ConsumerState<SoldiersImportScreen> {
             e,
             fallback: 'לא ניתן לקרוא את הקובץ שנבחר. ודא שמדובר בקובץ Excel (.xlsx) או CSV תקין.',
           ),
+        );
+      }
+    }
+  }
+
+  Future<void> _openPasteSheet() async {
+    final controller = TextEditingController();
+    final resultText = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AppTheme.backgroundSecondary,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetCtx) {
+        return Padding(
+          padding: EdgeInsets.only(
+            left: AppTheme.spacing16,
+            right: AppTheme.spacing16,
+            top: AppTheme.spacing16,
+            bottom: MediaQuery.of(sheetCtx).viewInsets.bottom + AppTheme.spacing24,
+          ),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  children: [
+                    Icon(LucideIcons.clipboard, color: AppTheme.primaryGreen, size: 22),
+                    const SizedBox(width: AppTheme.spacing8),
+                    Expanded(
+                      child: Text(
+                        'הדבקת טבלה מאקסל / Google Sheets',
+                        style: TextStyle(
+                          color: AppTheme.textPrimary,
+                          fontSize: 17,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      icon: Icon(LucideIcons.x, color: AppTheme.textSecondary),
+                      onPressed: () => Navigator.pop(sheetCtx),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: AppTheme.spacing8),
+                Text(
+                  'פתח את קובץ האקסל או Google Sheets בטלפון (גם מתוך וואטסאפ), סמן את התאים של החיילים, לחץ "העתק" והדבק כאן:',
+                  style: TextStyle(color: AppTheme.textSecondary, fontSize: 13, height: 1.45),
+                ),
+                const SizedBox(height: AppTheme.spacing12),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton.icon(
+                    onPressed: () async {
+                      try {
+                        final data = await Clipboard.getData(Clipboard.kTextPlain);
+                        final txt = data?.text?.trim() ?? '';
+                        if (txt.isEmpty) {
+                          if (sheetCtx.mounted) {
+                            HopalFeedback.showError(
+                              sheetCtx,
+                              'הלוח ריק או שהדפדפן חסם קריאה אוטומטית – לחץ לחיצה ארוכה בתיבה למטה ובחר "הדבק".',
+                            );
+                          }
+                          return;
+                        }
+                        controller.text = txt;
+                      } catch (_) {
+                        if (sheetCtx.mounted) {
+                          HopalFeedback.showError(
+                            sheetCtx,
+                            'לחץ לחיצה ארוכה בתוך התיבה למטה ובחר "הדבק".',
+                          );
+                        }
+                      }
+                    },
+                    icon: Icon(LucideIcons.clipboard, size: 16, color: AppTheme.primaryGreen),
+                    label: Text(
+                      'הדבק אוטומטית מהלוח',
+                      style: TextStyle(color: AppTheme.primaryGreen, fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                ),
+                TextField(
+                  controller: controller,
+                  minLines: 5,
+                  maxLines: 9,
+                  style: TextStyle(color: AppTheme.textPrimary, fontSize: 13),
+                  decoration: InputDecoration(
+                    hintText:
+                        'לחץ לחיצה ארוכה כאן ובחר "הדבק"...\n\nדוגמה:\nשם מלא    מספר אישי    טלפון    מחלקה\nישראל ישראלי    8123456    050-1234567    1',
+                    hintStyle: TextStyle(color: AppTheme.textMuted, fontSize: 12, height: 1.4),
+                    filled: true,
+                    fillColor: AppTheme.backgroundPrimary,
+                    border: OutlineInputBorder(
+                      borderRadius: AppTheme.radiusMd,
+                      borderSide: BorderSide(color: AppTheme.borderSubtle),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: AppTheme.radiusMd,
+                      borderSide: BorderSide(color: AppTheme.borderSubtle),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: AppTheme.radiusMd,
+                      borderSide: BorderSide(color: AppTheme.primaryGreen),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: AppTheme.spacing16),
+                HopalButton(
+                  label: 'המשך להתאמת עמודות',
+                  icon: LucideIcons.check,
+                  isExpanded: true,
+                  onPressed: () {
+                    if (controller.text.trim().isEmpty) {
+                      HopalFeedback.showError(sheetCtx, 'יש להדביק תחילה את הטבלה בתיבה');
+                      return;
+                    }
+                    Navigator.pop(sheetCtx, controller.text);
+                  },
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+
+    if (resultText == null || resultText.trim().isEmpty) return;
+    try {
+      final table = SoldierImportService.parsePastedText(resultText);
+      _applyLoadedTable(table, 'טבלה שהודבקה');
+    } on FormatException catch (e) {
+      if (mounted) HopalFeedback.showError(context, e.message);
+    } catch (e) {
+      if (mounted) {
+        HopalFeedback.showError(
+          context,
+          AppErrorHelper.toHebrew(e, fallback: 'לא הצלחנו לפענח את הטקסט שהודבק.'),
         );
       }
     }
@@ -108,38 +255,85 @@ class _SoldiersImportScreenState extends ConsumerState<SoldiersImportScreen> {
 
   Widget _buildPickStep() {
     return Center(
-      child: Padding(
+      child: SingleChildScrollView(
         padding: const EdgeInsets.all(AppTheme.spacing24),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(LucideIcons.fileSpreadsheet, size: 72, color: AppTheme.primaryGreen),
+            Icon(LucideIcons.fileSpreadsheet, size: 64, color: AppTheme.primaryGreen),
             const SizedBox(height: AppTheme.spacing16),
             Text(
-              'העלה קובץ אקסל של הפלוגה',
-              style: TextStyle(color: AppTheme.textPrimary, fontSize: 18, fontWeight: FontWeight.bold),
+              'ייבוא חיילי הפלוגה',
+              style: TextStyle(color: AppTheme.textPrimary, fontSize: 19, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: AppTheme.spacing8),
             Text(
-              'נתמכים קובצי Excel (‎.xlsx, ‎.xls) וקובצי ‎.csv.\nהשורה הראשונה היא כותרות העמודות, ובשלב הבא תוכל להתאים כל עמודה לשדה הרצוי.',
+              'בחר קובץ אקסל מהמכשיר או הדבק ישירות את הטבלה מאקסל / Google Sheets / וואטסאפ.',
               textAlign: TextAlign.center,
               style: TextStyle(color: AppTheme.textSecondary, height: 1.5),
             ),
             const SizedBox(height: AppTheme.spacing24),
             HopalButton(
               key: const Key('import_pick_file'),
-              label: 'בחר קובץ אקסל / CSV',
+              label: 'בחר קובץ אקסל / CSV מהמכשיר',
               icon: LucideIcons.upload,
               onPressed: () => _pickFile(allowAnyFile: false),
               isExpanded: true,
             ),
             const SizedBox(height: AppTheme.spacing12),
+            HopalButton(
+              key: const Key('import_paste_table'),
+              label: 'הדבק טבלה מאקסל / Google Sheets',
+              icon: LucideIcons.clipboard,
+              variant: HopalButtonVariant.secondary,
+              onPressed: _openPasteSheet,
+              isExpanded: true,
+            ),
+            const SizedBox(height: AppTheme.spacing8),
             TextButton.icon(
               onPressed: () => _pickFile(allowAnyFile: true),
               icon: Icon(LucideIcons.folderOpen, size: 16, color: AppTheme.textSecondary),
               label: Text(
-                'הקובץ מופיע באפור בנייד? לחץ לבחירה חופשית מכל הקבצים',
+                'פתיחת סייר קבצים מלא (ללא סינון סיומות)',
                 style: TextStyle(color: AppTheme.textSecondary, fontSize: 12),
+              ),
+            ),
+            const SizedBox(height: AppTheme.spacing16),
+            Container(
+              padding: const EdgeInsets.all(AppTheme.spacing16),
+              decoration: BoxDecoration(
+                color: AppTheme.backgroundSecondary,
+                borderRadius: AppTheme.radiusMd,
+                border: Border.all(color: AppTheme.borderSubtle),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(LucideIcons.info, size: 16, color: AppTheme.primaryGreen),
+                      const SizedBox(width: AppTheme.spacing8),
+                      Text(
+                        'לא רואה קבצים בחלון שנפתח בטלפון?',
+                        style: TextStyle(
+                          color: AppTheme.textPrimary,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: AppTheme.spacing8),
+                  Text(
+                    '• באנדרואיד נפתח כברירת מחדל מסך "אחרונים" שמציג תמונות בלבד – לחץ על תפריט הצד (☰) בפינה העליונה ובחר "הורדות (Downloads)" או "הקבצים שלי".\n'
+                    '• אם האקסל נשלח ב-WhatsApp: פתח אותו בוואטסאפ ⬅ לחץ על ⋮ ⬅ "שמור" כדי שיופיע בהורדות, או פשוט העתק את התאים והשתמש ב"הדבק טבלה" למעלה.',
+                    style: TextStyle(
+                      color: AppTheme.textSecondary,
+                      fontSize: 12,
+                      height: 1.55,
+                    ),
+                  ),
+                ],
               ),
             ),
           ],
@@ -167,10 +361,47 @@ class _SoldiersImportScreenState extends ConsumerState<SoldiersImportScreen> {
                       style: TextStyle(color: AppTheme.textSecondary),
                     ),
                   ),
-                  TextButton(onPressed: () => _pickFile(), child: const Text('קובץ אחר')),
+                  TextButton(
+                    onPressed: () => setState(() {
+                      _table = null;
+                      _fileName = null;
+                      _mapping = [];
+                    }),
+                    child: const Text('שינוי מקור'),
+                  ),
                 ],
               ),
-              const SizedBox(height: AppTheme.spacing8),
+              if (table.allRows.length > 1)
+                Container(
+                  margin: const EdgeInsets.only(bottom: AppTheme.spacing12),
+                  decoration: BoxDecoration(
+                    color: AppTheme.backgroundSecondary,
+                    borderRadius: AppTheme.radiusMd,
+                    border: Border.all(color: AppTheme.borderSubtle),
+                  ),
+                  child: SwitchListTile.adaptive(
+                    dense: true,
+                    activeTrackColor: AppTheme.primaryGreen,
+                    title: Text(
+                      'השורה הראשונה היא כותרות עמודות',
+                      style: TextStyle(color: AppTheme.textPrimary, fontSize: 13, fontWeight: FontWeight.w600),
+                    ),
+                    subtitle: Text(
+                      table.firstRowIsHeader
+                          ? 'כבה אם השורה הראשונה כבר מכילה חייל'
+                          : 'כל השורות יייובאו כחיילים (ללא שורת כותרת)',
+                      style: TextStyle(color: AppTheme.textSecondary, fontSize: 11),
+                    ),
+                    value: table.firstRowIsHeader,
+                    onChanged: (val) {
+                      final updated = table.withHeaderMode(val);
+                      setState(() {
+                        _table = updated;
+                        _mapping = SoldierImportService.smartGuessMapping(updated);
+                      });
+                    },
+                  ),
+                ),
               Text(
                 'התאמת עמודות',
                 style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.bold, fontSize: 16),

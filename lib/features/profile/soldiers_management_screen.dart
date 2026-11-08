@@ -592,7 +592,7 @@ class _SoldiersManagementScreenState extends ConsumerState<SoldiersManagementScr
         const SizedBox(height: AppTheme.spacing8),
         Text(
           isCompanyMedic
-              ? 'ייבא בלחיצה אחת קובץ אקסל (‎.xlsx / ‎.csv) של הפלוגה או הוסף חיילים ידנית. ניתן לערוך כל פרט בכל רגע.'
+              ? 'ייבא בלחיצה אחת קובץ אקסל (‎.xlsx / ‎.csv), הדבק טבלה מאקסל / Google Sheets, או הוסף חיילים ידנית. ניתן לערוך כל פרט בכל רגע.'
               : 'החופ"ל יכול לייבא את מצבת החיילים מקובץ אקסל כדי שיופיעו כאן.',
           textAlign: TextAlign.center,
           style: TextStyle(color: AppTheme.textSecondary, height: 1.45),

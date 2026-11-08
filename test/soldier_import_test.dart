@@ -71,5 +71,41 @@ void main() {
       expect(table.rows[0][1], '7654321');
       expect(table.rows[0][3], 'חפ"ק');
     });
+
+    test('parsePastedText handles tab-separated Excel/Sheets data without headers', () {
+      const pasted = 'ישראל ישראלי\t8123456\t050-1234567\t1\nדוד כהן\t8234567\t052-7654321\t2';
+      final table = SoldierImportService.parsePastedText(pasted);
+
+      expect(table.firstRowIsHeader, isFalse);
+      expect(table.rows.length, 2);
+
+      final mapping = SoldierImportService.smartGuessMapping(table);
+      expect(mapping, [
+        SoldierField.fullName,
+        SoldierField.personalNumber,
+        SoldierField.phone,
+        SoldierField.platoon,
+      ]);
+
+      final soldiers = SoldierImportService.apply(table, mapping);
+      expect(soldiers.length, 2);
+      expect(soldiers[0].name, 'ישראל ישראלי');
+      expect(soldiers[0].personalNumber, '8123456');
+      expect(soldiers[1].name, 'דוד כהן');
+    });
+
+    test('parsePastedText handles single-column list of soldier names', () {
+      const pasted = 'ישראל ישראלי\nדוד כהן\nמשה לוי';
+      final table = SoldierImportService.parsePastedText(pasted);
+
+      expect(table.firstRowIsHeader, isFalse);
+      expect(table.rows.length, 3);
+
+      final mapping = SoldierImportService.smartGuessMapping(table);
+      expect(mapping, [SoldierField.fullName]);
+
+      final soldiers = SoldierImportService.apply(table, mapping);
+      expect(soldiers.map((s) => s.name).toList(), ['ישראל ישראלי', 'דוד כהן', 'משה לוי']);
+    });
   });
 }
