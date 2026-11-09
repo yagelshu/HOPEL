@@ -1,6 +1,6 @@
 class AppConstants {
   static const String version = '1.2.0';
-  static const String buildNumber = '62';
+  static const String buildNumber = '63';
   static const String versionLabel = 'v$version';
   static const String fullVersionLabel = '$version (Build $buildNumber)';
 }

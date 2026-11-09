@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:chopel_app/core/services/xlsx_reader.dart';
 import 'package:chopel_app/core/utils/platoon_helper.dart';
+import 'package:chopel_app/models/soldier.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// Fields a spreadsheet column can be mapped to.
@@ -84,10 +85,41 @@ class ImportedSoldier {
       };
 }
 
+class SoldierMatch {
+  final ImportedSoldier imported;
+  final Soldier existing;
+  const SoldierMatch({required this.imported, required this.existing});
+}
+
+class SoldierReconciliation {
+  final List<ImportedSoldier> newSoldiers;
+  final List<SoldierMatch> toUpdate;
+  final List<Soldier> existingNotInImport;
+
+  const SoldierReconciliation({
+    required this.newSoldiers,
+    required this.toUpdate,
+    required this.existingNotInImport,
+  });
+}
+
 class ImportResult {
-  final int saved;
-  final int skipped;
-  ImportResult(this.saved, this.skipped);
+  final int total;
+  final int updated;
+  final int inserted;
+  final List<String> insertedNames;
+  final List<String> updatedNames;
+
+  const ImportResult({
+    required this.total,
+    required this.updated,
+    required this.inserted,
+    this.insertedNames = const [],
+    this.updatedNames = const [],
+  });
+
+  int get saved => total;
+  int get skipped => 0;
 }
 
 /// Pure business logic for importing a company roster. No UI here.
@@ -340,48 +372,184 @@ class SoldierImportService {
     return result;
   }
 
-  /// Saves to Supabase. Soldiers with a personal number already in the unit are
-  /// updated (not duplicated).
-  static Future<ImportResult> save(List<ImportedSoldier> soldiers, String unitId) async {
-    final client = Supabase.instance.client;
-    final withNumber = soldiers.where((s) => s.personalNumber != null).map((s) => s.toRow(unitId)).toList();
-    final withoutNumber = soldiers.where((s) => s.personalNumber == null).map((s) => s.toRow(unitId)).toList();
+  static String cleanName(String raw) {
+    var s = raw.trim().toLowerCase();
+    s = s.replaceAll(RegExp(r'\(.*?\)'), '');
+    s = s.replaceAll(RegExp(r'[\-_/\\.,]'), ' ');
+    s = s.replaceAll(RegExp(r'\s+'), ' ').trim();
+    return s;
+  }
 
-    const chunk = 200;
-    try {
-      for (var i = 0; i < withNumber.length; i += chunk) {
-        final part = withNumber.sublist(i, (i + chunk).clamp(0, withNumber.length));
-        await client.from('soldiers').upsert(part, onConflict: 'unit_id,personal_number');
-      }
-      for (var i = 0; i < withoutNumber.length; i += chunk) {
-        final part = withoutNumber.sublist(i, (i + chunk).clamp(0, withoutNumber.length));
-        await client.from('soldiers').insert(part);
-      }
-    } on PostgrestException catch (pe) {
-      if (pe.code == 'PGRST204' ||
-          pe.code == '42703' ||
-          pe.message.contains('personal_number') ||
-          pe.message.contains('allergies')) {
-        final fallbackRows = soldiers.map((s) {
-          final pn = s.personalNumber;
-          final displayName = (pn != null && pn.isNotEmpty) ? '${s.name} ($pn)' : s.name;
-          return <String, dynamic>{
-            'name': displayName,
-            'unit_id': unitId,
-            if (s.phone != null) 'phone_number': s.phone,
-            if (s.platoon != null) 'platoon': s.platoon,
-          };
-        }).toList();
+  static String cleanPn(String? raw) {
+    if (raw == null) return '';
+    return raw.replaceAll(RegExp(r'\D'), '');
+  }
 
-        for (var i = 0; i < fallbackRows.length; i += chunk) {
-          final part = fallbackRows.sublist(i, (i + chunk).clamp(0, fallbackRows.length));
-          await client.from('soldiers').insert(part);
+  static String cleanPhone(String? raw) {
+    if (raw == null) return '';
+    var d = raw.replaceAll(RegExp(r'\D'), '');
+    if (d.startsWith('972')) d = '0${d.substring(3)}';
+    return d;
+  }
+
+  /// Compares imported soldiers against existing soldiers in the unit.
+  /// Identifies soldiers to update (by P.N. or Name or Phone) and genuinely new soldiers to add.
+  static SoldierReconciliation reconcile({
+    required List<ImportedSoldier> imported,
+    required List<Soldier> existingInDb,
+  }) {
+    final List<SoldierMatch> toUpdate = [];
+    final List<ImportedSoldier> newSoldiers = [];
+    final Set<String> matchedExistingIds = {};
+
+    for (final imp in imported) {
+      final impPn = cleanPn(imp.personalNumber);
+      final impName = cleanName(imp.name);
+      final impPhone = cleanPhone(imp.phone);
+
+      Soldier? match;
+
+      // 1. Try matching by Personal Number (if both have personal number)
+      if (impPn.isNotEmpty) {
+        for (final e in existingInDb) {
+          if (!matchedExistingIds.contains(e.id) && cleanPn(e.personalNumber) == impPn) {
+            match = e;
+            break;
+          }
         }
+      }
+
+      // 2. Try matching by cleaned Name
+      if (match == null && impName.isNotEmpty) {
+        for (final e in existingInDb) {
+          if (!matchedExistingIds.contains(e.id) && cleanName(e.name) == impName) {
+            match = e;
+            break;
+          }
+        }
+      }
+
+      // 3. Try matching by Phone number (if valid Israeli phone)
+      if (match == null && impPhone.length >= 9) {
+        for (final e in existingInDb) {
+          if (!matchedExistingIds.contains(e.id) && cleanPhone(e.phoneNumber) == impPhone) {
+            match = e;
+            break;
+          }
+        }
+      }
+
+      if (match != null) {
+        matchedExistingIds.add(match.id);
+        toUpdate.add(SoldierMatch(imported: imp, existing: match));
       } else {
-        rethrow;
+        newSoldiers.add(imp);
       }
     }
-    return ImportResult(soldiers.length, 0);
+
+    final existingNotInImport = existingInDb
+        .where((e) => !matchedExistingIds.contains(e.id))
+        .toList();
+
+    return SoldierReconciliation(
+      newSoldiers: newSoldiers,
+      toUpdate: toUpdate,
+      existingNotInImport: existingNotInImport,
+    );
+  }
+
+  /// Saves imported soldiers to Supabase using smart matching.
+  /// Existing soldiers (matched by P.N., name, or phone) are UPDATED by ID.
+  /// Genuinely new soldiers are INSERTED. No duplicates are created.
+  static Future<ImportResult> save(List<ImportedSoldier> soldiers, String unitId) async {
+    final client = Supabase.instance.client;
+
+    List<Map<String, dynamic>> existingRows = [];
+    try {
+      final res = await client.from('soldiers').select().eq('unit_id', unitId);
+      existingRows = List<Map<String, dynamic>>.from(res as List);
+    } catch (_) {}
+
+    final existingSoldiers = existingRows.map((r) => Soldier.fromMap(r)).toList();
+    final recon = reconcile(imported: soldiers, existingInDb: existingSoldiers);
+
+    int updatedCount = 0;
+    int insertedCount = 0;
+    final List<String> updatedNames = [];
+    final List<String> insertedNames = [];
+
+    // 1. Update existing soldiers by their ID
+    for (final match in recon.toUpdate) {
+      final imp = match.imported;
+      final exist = match.existing;
+
+      final updatePayload = <String, dynamic>{
+        'name': imp.name,
+        if (imp.personalNumber != null && imp.personalNumber!.isNotEmpty)
+          'personal_number': imp.personalNumber,
+        if (imp.phone != null && imp.phone!.isNotEmpty)
+          'phone_number': imp.phone,
+        if (imp.platoon != null && imp.platoon!.isNotEmpty)
+          'platoon': PlatoonHelper.normalize(imp.platoon),
+        if (imp.allergies != null && imp.allergies!.isNotEmpty)
+          'allergies': imp.allergies,
+      };
+
+      try {
+        await client.from('soldiers').update(updatePayload).eq('id', exist.id);
+        updatedCount++;
+        updatedNames.add(imp.name);
+      } catch (e) {
+        try {
+          final fallbackPayload = <String, dynamic>{
+            'name': (imp.personalNumber != null && imp.personalNumber!.isNotEmpty)
+                ? '${imp.name} (${imp.personalNumber})'
+                : imp.name,
+            if (imp.phone != null) 'phone_number': imp.phone,
+            if (imp.platoon != null) 'platoon': PlatoonHelper.normalize(imp.platoon),
+          };
+          await client.from('soldiers').update(fallbackPayload).eq('id', exist.id);
+          updatedCount++;
+          updatedNames.add(imp.name);
+        } catch (_) {}
+      }
+    }
+
+    // 2. Insert new soldiers
+    const chunk = 100;
+    final newRows = recon.newSoldiers.map((s) => s.toRow(unitId)).toList();
+    for (var i = 0; i < newRows.length; i += chunk) {
+      final part = newRows.sublist(i, (i + chunk).clamp(0, newRows.length));
+      try {
+        await client.from('soldiers').insert(part);
+        insertedCount += part.length;
+        insertedNames.addAll(recon.newSoldiers.skip(i).take(part.length).map((s) => s.name));
+      } catch (e) {
+        try {
+          final fallbackPart = recon.newSoldiers.skip(i).take(part.length).map((s) {
+            final pn = s.personalNumber;
+            final displayName = (pn != null && pn.isNotEmpty) ? '${s.name} ($pn)' : s.name;
+            return <String, dynamic>{
+              'name': displayName,
+              'unit_id': unitId,
+              if (s.phone != null) 'phone_number': s.phone,
+              if (s.platoon != null) 'platoon': PlatoonHelper.normalize(s.platoon),
+            };
+          }).toList();
+          await client.from('soldiers').insert(fallbackPart);
+          insertedCount += fallbackPart.length;
+          insertedNames.addAll(recon.newSoldiers.skip(i).take(part.length).map((s) => s.name));
+        } catch (_) {}
+      }
+    }
+
+    return ImportResult(
+      total: updatedCount + insertedCount,
+      updated: updatedCount,
+      inserted: insertedCount,
+      updatedNames: updatedNames,
+      insertedNames: insertedNames,
+    );
   }
 
   static List<List<String>> _parseCsv(String text) {

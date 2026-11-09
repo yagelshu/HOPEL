@@ -206,6 +206,60 @@ class _SoldiersImportScreenState extends ConsumerState<SoldiersImportScreen> {
     }
   }
 
+  void _showSoldiersListDialog({
+    required BuildContext context,
+    required String title,
+    required String subtitle,
+    required List<String> items,
+  }) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppTheme.backgroundSecondary,
+        title: Text(
+          title,
+          style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.bold, fontSize: 18),
+        ),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(subtitle, style: TextStyle(color: AppTheme.textSecondary, fontSize: 13)),
+              const SizedBox(height: 12),
+              ConstrainedBox(
+                constraints: BoxConstraints(maxHeight: MediaQuery.of(ctx).size.height * 0.45),
+                child: ListView.separated(
+                  shrinkWrap: true,
+                  itemCount: items.length,
+                  separatorBuilder: (_, __) => Divider(height: 1, color: AppTheme.borderSubtle),
+                  itemBuilder: (_, i) => Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    child: Text(
+                      '${i + 1}. ${items[i]}',
+                      style: TextStyle(color: AppTheme.textPrimary, fontSize: 14, fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: AppTheme.primaryGreen,
+              foregroundColor: AppTheme.onPrimaryGreen,
+            ),
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('סגור'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _save() async {
     final unitId = AuthService().currentUser?.unitId;
     if (unitId == null) {
@@ -216,10 +270,13 @@ class _SoldiersImportScreenState extends ConsumerState<SoldiersImportScreen> {
     if (soldiers.isEmpty) return;
     setState(() => _saving = true);
     try {
-      await SoldierImportService.save(soldiers, unitId);
+      final res = await SoldierImportService.save(soldiers, unitId);
       ref.invalidate(soldiersProvider);
       if (!mounted) return;
-      HopalFeedback.showSuccess(context, '${soldiers.length} חיילים נשמרו בהצלחה');
+      final msg = res.inserted > 0
+          ? 'עודכנו ${res.updated} חיילים ונוספו ${res.inserted} חיילים חדשים בהצלחה!'
+          : '${res.updated} חיילים עודכנו בהצלחה!';
+      HopalFeedback.showSuccess(context, msg);
       Navigator.pop(context);
     } catch (e) {
       if (mounted) {
@@ -346,6 +403,10 @@ class _SoldiersImportScreenState extends ConsumerState<SoldiersImportScreen> {
   Widget _buildMapStep() {
     final table = _table!;
     final preview = _preview;
+    final existingSoldiers = ref.watch(soldiersProvider).asData?.value ?? [];
+    final recon = (_hasName && preview.isNotEmpty && existingSoldiers.isNotEmpty)
+        ? SoldierImportService.reconcile(imported: preview, existingInDb: existingSoldiers)
+        : null;
     return Column(
       children: [
         Expanded(
@@ -409,9 +470,135 @@ class _SoldiersImportScreenState extends ConsumerState<SoldiersImportScreen> {
               ),
               const SizedBox(height: AppTheme.spacing8),
               for (var i = 0; i < table.headers.length; i++) _buildMappingRow(i),
+              if (recon != null) ...[
+                const SizedBox(height: 20),
+                Container(
+                  padding: const EdgeInsets.all(AppTheme.spacing16),
+                  decoration: BoxDecoration(
+                    color: AppTheme.backgroundSecondary,
+                    borderRadius: AppTheme.radiusMd,
+                    border: Border.all(color: AppTheme.primaryGreen.withValues(alpha: 0.35)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(LucideIcons.gitCompare, color: AppTheme.primaryGreen, size: 20),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'השוואה מול המצבת הקיימת (${existingSoldiers.length} חיילים באפליקציה)',
+                              style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.bold, fontSize: 15),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Icon(LucideIcons.userCheck, color: AppTheme.infoBlue, size: 16),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              '${recon.toUpdate.length} חיילים קיימים יעודכנו במספר אישי ובפרטים',
+                              style: TextStyle(color: AppTheme.textPrimary, fontSize: 13, fontWeight: FontWeight.w600),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Icon(LucideIcons.userPlus, color: AppTheme.successGreen, size: 16),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              '${recon.newSoldiers.length} חיילים חדשים שלא היו רשומים יתווספו למצבת',
+                              style: TextStyle(color: AppTheme.successGreen, fontSize: 13, fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                        ],
+                      ),
+                      if (recon.newSoldiers.isNotEmpty) ...[
+                        const SizedBox(height: 10),
+                        OutlinedButton.icon(
+                          style: OutlinedButton.styleFrom(
+                            side: BorderSide(color: AppTheme.successGreen.withValues(alpha: 0.45)),
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                            shape: const RoundedRectangleBorder(borderRadius: AppTheme.radiusSm),
+                          ),
+                          onPressed: () {
+                            _showSoldiersListDialog(
+                              context: context,
+                              title: 'חיילים חדשים שיתווספו (${recon.newSoldiers.length})',
+                              subtitle: 'חיילים אלו מופיעים בקובץ שהעלית אך עדיין לא היו רשומים באפליקציה:',
+                              items: recon.newSoldiers.map((s) {
+                                final sub = [
+                                  if (s.personalNumber != null) 'מ.א ${s.personalNumber}',
+                                  if (s.platoon != null) PlatoonHelper.formatDisplay(s.platoon),
+                                  if (s.phone != null) s.phone!,
+                                ].join(' • ');
+                                return sub.isNotEmpty ? '${s.name} ($sub)' : s.name;
+                              }).toList(),
+                            );
+                          },
+                          icon: Icon(LucideIcons.users, size: 16, color: AppTheme.successGreen),
+                          label: Text(
+                            'הצג מי הם ${recon.newSoldiers.length} החיילים החדשים',
+                            style: TextStyle(color: AppTheme.successGreen, fontSize: 12, fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                      ],
+                      if (recon.existingNotInImport.isNotEmpty) ...[
+                        const SizedBox(height: 10),
+                        Divider(height: 1, color: AppTheme.borderSubtle),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            Icon(LucideIcons.info, color: AppTheme.warningAmber, size: 15),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Text(
+                                '${recon.existingNotInImport.length} חיילים שרשומים באפליקציה לא נמצאו ברשימה זו (יישארו ללא שינוי).',
+                                style: TextStyle(color: AppTheme.textSecondary, fontSize: 11),
+                              ),
+                            ),
+                          ],
+                        ),
+                        TextButton(
+                          style: TextButton.styleFrom(
+                            padding: EdgeInsets.zero,
+                            minimumSize: Size.zero,
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          ),
+                          onPressed: () {
+                            _showSoldiersListDialog(
+                              context: context,
+                              title: 'חיילים באפליקציה שלא נמצאו בקובץ (${recon.existingNotInImport.length})',
+                              subtitle: 'חיילים אלו קיימים כרגע במערכת אך לא הופיעו ברשימה החדשה:',
+                              items: recon.existingNotInImport.map((s) {
+                                final sub = [
+                                  if (s.personalNumber != null) 'מ.א ${s.personalNumber}',
+                                  if (s.platoon != null) PlatoonHelper.formatDisplay(s.platoon),
+                                ].join(' • ');
+                                return sub.isNotEmpty ? '${s.name} ($sub)' : s.name;
+                              }).toList(),
+                            );
+                          },
+                          child: Text(
+                            'הצג את ${recon.existingNotInImport.length} החיילים שלא נמצאו בקובץ',
+                            style: TextStyle(color: AppTheme.infoBlue, fontSize: 11, decoration: TextDecoration.underline),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ],
               const SizedBox(height: AppTheme.spacing24),
               Text(
-                'תצוגה מקדימה (${preview.length} חיילים)',
+                'תצוגה מקדימה (${preview.length} חיילים בקובץ)',
                 style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.bold, fontSize: 16),
               ),
               const SizedBox(height: AppTheme.spacing8),
@@ -447,7 +634,9 @@ class _SoldiersImportScreenState extends ConsumerState<SoldiersImportScreen> {
             padding: const EdgeInsets.all(AppTheme.spacing16),
             child: HopalButton(
               key: const Key('import_save'),
-              label: 'ייבא ${preview.length} חיילים',
+              label: (recon != null && recon.newSoldiers.isNotEmpty)
+                  ? 'שמור שינויים (${recon.toUpdate.length} יעודכנו, ${recon.newSoldiers.length} חדשים)'
+                  : 'שמור וייבא ${preview.length} חיילים',
               icon: LucideIcons.check,
               isLoading: _saving,
               isExpanded: true,

@@ -53,7 +53,7 @@ void main() {
       expect(result[0].name, 'ישראל ישראלי');
       expect(result[0].personalNumber, '8123456');
       expect(result[0].phone, '050-1234567');
-      expect(result[0].platoon, '1');
+      expect(result[0].platoon, 'מחלקה 1');
 
       expect(result[1].name, 'יוסי כהן');
       expect(result[1].personalNumber, '8987654');
