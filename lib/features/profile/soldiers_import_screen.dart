@@ -507,6 +507,60 @@ class _SoldiersImportScreenState extends ConsumerState<SoldiersImportScreen> {
                           ),
                         ],
                       ),
+                      if (recon.toUpdate.isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        OutlinedButton.icon(
+                          style: OutlinedButton.styleFrom(
+                            side: BorderSide(color: AppTheme.infoBlue.withValues(alpha: 0.45)),
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                            shape: const RoundedRectangleBorder(borderRadius: AppTheme.radiusSm),
+                          ),
+                          onPressed: () {
+                            _showSoldiersListDialog(
+                              context: context,
+                              title: 'חיילים שיעודכנו (${recon.toUpdate.length})',
+                              subtitle: 'חיילים אלו זוהו באפליקציה ויעודכנו בפרטים הבאים:',
+                              items: recon.toUpdate.map((m) {
+                                final parts = [
+                                  m.existing.name,
+                                  if (m.imported.personalNumber != null) 'מ.א: ${m.imported.personalNumber}',
+                                  if (m.imported.platoon != null) PlatoonHelper.formatDisplay(m.imported.platoon),
+                                  if (m.imported.phone != null) m.imported.phone!,
+                                ].join(' • ');
+                                return parts;
+                              }).toList(),
+                            );
+                          },
+                          icon: Icon(LucideIcons.userCheck, size: 16, color: AppTheme.infoBlue),
+                          label: Text(
+                            'הצג מי הם ${recon.toUpdate.length} החיילים שיעודכנו',
+                            style: TextStyle(color: AppTheme.infoBlue, fontSize: 12, fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                      ],
+                      if (recon.toUpdate.isEmpty && existingSoldiers.isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        Container(
+                          padding: const EdgeInsets.all(AppTheme.spacing12),
+                          decoration: BoxDecoration(
+                            color: AppTheme.warningAmber.withValues(alpha: 0.12),
+                            borderRadius: AppTheme.radiusSm,
+                            border: Border.all(color: AppTheme.warningAmber.withValues(alpha: 0.3)),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(LucideIcons.alertCircle, color: AppTheme.warningAmber, size: 18),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  'לא זוהתה התאמה לחיילים הקיימים. ודא בהתאמת העמודות למעלה שאחת העמודות מוגדרת כ"שם מלא" (או "שם משפחה" + "שם פרטי") והשנייה כ"מספר אישי".',
+                                  style: TextStyle(color: AppTheme.warningAmber, fontSize: 12),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                       const SizedBox(height: 8),
                       Row(
                         children: [

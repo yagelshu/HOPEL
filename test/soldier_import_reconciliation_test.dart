@@ -101,5 +101,109 @@ void main() {
       expect(recon.existingNotInImport.length, 1);
       expect(recon.existingNotInImport.first.name, 'חייל ב שנשאר באפליקציה אך הושמט מהאקסל');
     });
+
+    test('matches reversed Hebrew names (last-name first vs first-name last)', () {
+      final existing = [
+        Soldier(id: 's1', name: 'יוסי כהן', personalNumber: null),
+        Soldier(id: 's2', name: 'אביאל שבתאי', personalNumber: null),
+        Soldier(id: 's3', name: 'יגל שולמן', personalNumber: null),
+        Soldier(id: 's4', name: 'אהרון מהרט', personalNumber: null),
+      ];
+
+      // Inverted in military roster: Last Name, First Name
+      final imported = [
+        ImportedSoldier(name: 'כהן יוסי', personalNumber: '8111111'),
+        ImportedSoldier(name: 'שבתאי אביאל', personalNumber: '8222222'),
+        ImportedSoldier(name: 'שולמן יגל', personalNumber: '8333333'),
+        ImportedSoldier(name: 'מהרט אהרון', personalNumber: '8444444'),
+      ];
+
+      final recon = SoldierImportService.reconcile(
+        imported: imported,
+        existingInDb: existing,
+      );
+
+      expect(recon.toUpdate.length, 4);
+      expect(recon.newSoldiers.length, 0);
+      expect(recon.toUpdate[0].existing.id, 's1');
+      expect(recon.toUpdate[1].existing.id, 's2');
+      expect(recon.toUpdate[2].existing.id, 's3');
+      expect(recon.toUpdate[3].existing.id, 's4');
+    });
+
+    test('matches with hidden unicode marks, numbering, and military ranks', () {
+      final existing = [
+        Soldier(id: 's1', name: 'יוסי כהן', personalNumber: null),
+        Soldier(id: 's2', name: 'אביאל שבתאי', personalNumber: null),
+        Soldier(id: 's3', name: 'אהרון מהרט', personalNumber: null),
+        Soldier(id: 's4', name: 'אוהד גריבסקי', personalNumber: null),
+      ];
+
+      final imported = [
+        ImportedSoldier(name: '\u200Eכהן יוסי', personalNumber: '8111111'), // LRM + inverted
+        ImportedSoldier(name: '1. אביאל שבתאי', personalNumber: '8222222'), // Numbered
+        ImportedSoldier(name: '02) מהרט אהרון', personalNumber: '8333333'), // Numbered + inverted
+        ImportedSoldier(name: 'סמ"ר אוהד גריבסקי', personalNumber: '8444444'), // Rank
+      ];
+
+      final recon = SoldierImportService.reconcile(
+        imported: imported,
+        existingInDb: existing,
+      );
+
+      expect(recon.toUpdate.length, 4);
+      expect(recon.newSoldiers.length, 0);
+    });
+
+    test('parsePastedText splits single-column lines with name and P.N. into 2 columns', () {
+      const text = '''
+כהן יוסי 8123456
+8234567 - לוי דניאל
+שבתאי אביאל 8345678
+''';
+      final table = SoldierImportService.parsePastedText(text);
+      expect(table.headers.length, 2);
+      final mapping = SoldierImportService.smartGuessMapping(table);
+      final applied = SoldierImportService.apply(table, mapping);
+
+      expect(applied.length, 3);
+      expect(applied[0].name, 'כהן יוסי');
+      expect(applied[0].personalNumber, '8123456');
+
+      expect(applied[1].name, 'לוי דניאל');
+      expect(applied[1].personalNumber, '8234567');
+
+      expect(applied[2].name, 'שבתאי אביאל');
+      expect(applied[2].personalNumber, '8345678');
+    });
+
+    test('apply automatically extracts 5-9 digit P.N. embedded inside single name column', () {
+      final table = ImportTable(
+        ['שם מלא'],
+        [
+          ['יוסי כהן 8123456'],
+          ['8234567 - ישראל ישראלי'],
+          ['דני לוי (מ.א 8345678)'],
+          ['חייל ללא מספר'],
+        ],
+      );
+
+      final mapping = [SoldierField.fullName];
+      final applied = SoldierImportService.apply(table, mapping);
+
+      expect(applied.length, 4);
+      expect(applied[0].name, 'יוסי כהן');
+      expect(applied[0].personalNumber, '8123456');
+
+      expect(applied[1].name, 'ישראל ישראלי');
+      expect(applied[1].personalNumber, '8234567');
+
+      expect(applied[2].name, 'דני לוי');
+      expect(applied[2].personalNumber, '8345678');
+
+      expect(applied[3].name, 'חייל ללא מספר');
+      expect(applied[3].personalNumber, isNull);
+    });
   });
 }
+

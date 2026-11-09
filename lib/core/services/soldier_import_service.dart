@@ -193,10 +193,51 @@ class SoldierImportService {
 
   /// Parses text copied directly from Excel Mobile, Google Sheets, WhatsApp, or Notes.
   static ImportTable parsePastedText(String rawText) {
-    final cleaned = rawText.trim();
+    var cleaned = rawText.trim();
     if (cleaned.isEmpty) {
       throw const FormatException('לא הודבקו נתונים. סמן את הטבלה באקסל/שיטס, לחץ "העתק" והדבק כאן.');
     }
+
+    // If pasted text does not already contain tab, comma, or semicolon separators,
+    // detect space/dash separated lines like "כהן יוסי 8123456" or "8123456 - כהן יוסי"
+    if (!cleaned.contains('\t') && !cleaned.contains(',') && !cleaned.contains(';')) {
+      final lines = cleaned.split('\n');
+      final pnEndPattern = RegExp(r'^(.+?)\s+[\-_–—:,]?\s*(\d{5,9})\s*$');
+      final pnStartPattern = RegExp(r'^\s*(\d{5,9})\s+[\-_–—:,]?\s*(.+)$');
+
+      int endMatches = 0;
+      int startMatches = 0;
+      int nonEmptyLines = 0;
+
+      for (final line in lines) {
+        final t = line.trim();
+        if (t.isEmpty) continue;
+        nonEmptyLines++;
+        if (pnEndPattern.hasMatch(t)) endMatches++;
+        if (pnStartPattern.hasMatch(t)) startMatches++;
+      }
+
+      if (nonEmptyLines > 0 && (endMatches * 2 >= nonEmptyLines || startMatches * 2 >= nonEmptyLines)) {
+        final convertedLines = <String>[];
+        for (final line in lines) {
+          final t = line.trim();
+          if (t.isEmpty) continue;
+          final mEnd = pnEndPattern.firstMatch(t);
+          if (mEnd != null) {
+            convertedLines.add('${mEnd.group(1)!.trim()}\t${mEnd.group(2)!.trim()}');
+            continue;
+          }
+          final mStart = pnStartPattern.firstMatch(t);
+          if (mStart != null) {
+            convertedLines.add('${mStart.group(2)!.trim()}\t${mStart.group(1)!.trim()}');
+            continue;
+          }
+          convertedLines.add(t);
+        }
+        cleaned = convertedLines.join('\n');
+      }
+    }
+
     return parse(Uint8List.fromList(utf8.encode(cleaned)), 'pasted.tsv');
   }
 
@@ -357,7 +398,24 @@ class SoldierImportService {
       }
       if (name.isEmpty) continue;
 
-      final pn = get(SoldierField.personalNumber).replaceAll(RegExp(r'\D'), '');
+      var pn = get(SoldierField.personalNumber).replaceAll(RegExp(r'\D'), '');
+
+      // Fallback: If personalNumber is empty, check if name has 5-9 digits:
+      if (pn.isEmpty) {
+        final pnMatch = RegExp(r'\b(\d{5,9})\b').firstMatch(name);
+        if (pnMatch != null) {
+          pn = pnMatch.group(1)!;
+          name = name.replaceFirst(pnMatch.group(0)!, '');
+          name = name.replaceAll(RegExp(r'[\-_–—:(),]'), ' ');
+          name = name.replaceAll(RegExp(r'(^|\s+)(מ\.?א|מ"?א|מא|מספר\s+אישי)($|\s+)'), ' ');
+          name = name.replaceAll(RegExp(r'\s+'), ' ').trim();
+        }
+      }
+
+      // Remove leading numbering like "1. ", "02) ", "1 - "
+      name = name.replaceFirst(RegExp(r'^\s*\d+[\.\)\-\:\s]+\s*'), '').trim();
+      if (name.isEmpty) continue;
+
       if (pn.isNotEmpty && !seenNumbers.add(pn)) continue; // duplicate in file
 
       String? orNull(String v) => v.isEmpty ? null : v;
@@ -373,11 +431,62 @@ class SoldierImportService {
   }
 
   static String cleanName(String raw) {
-    var s = raw.trim().toLowerCase();
-    s = s.replaceAll(RegExp(r'\(.*?\)'), '');
-    s = s.replaceAll(RegExp(r'[\-_/\\.,]'), ' ');
-    s = s.replaceAll(RegExp(r'\s+'), ' ').trim();
+    var s = raw;
+    // Strip directional and invisible unicode marks (LRM \u200E, RLM \u200F, ZWSP \u200B, NBSP \u00A0, BOM \uFEFF)
+    s = s.replaceAll(RegExp(r'[\u200E\u200F\u200B\u200C\u200D\u202A-\u202E\uFEFF\u00A0]'), ' ');
+    // Remove parenthesized notes like (מחלקה 1), (חובש), (אני)
+    s = s.replaceAll(RegExp(r'\(.*?\)'), ' ');
+    // Remove leading numbering like "1. ", "01. ", "1) ", "1 - "
+    s = s.replaceFirst(RegExp(r'^\s*\d+[\.\)\-\:\s]+\s*'), ' ');
+    // Remove military ranks if at start of name
+    s = s.replaceFirst(
+      RegExp(r'^\s*(טוראי|רב"?ט|סמל|סמ"?ר|סמר|רס"?ל|רסל|רס"?ר|רסר|רס"?ם|רסם|רס"?פ|רספ|סג"?ם|סגם|סגן|סרן|רס"?ן|רסן|לוחם|חייל)\s+'),
+      ' ',
+    );
+    // Remove punctuation, dashes, quotes, slashes
+    s = s.replaceAll(RegExp(r'[\-_/\\.,:;"\x27״׳!?]'), ' ');
+    // Remove standalone digits
+    s = s.replaceAll(RegExp(r'\b\d+\b'), ' ');
+    // Lowercase (for any English letters) and normalize whitespace
+    s = s.toLowerCase().replaceAll(RegExp(r'\s+'), ' ').trim();
     return s;
+  }
+
+  /// Compares two Hebrew names intelligently:
+  /// - Exact match after cleaning
+  /// - Inverted word match ("כהן יוסי" == "יוסי כהן")
+  /// - Set equality of words ({"אביאל", "שבתאי"} == {"שבתאי", "אביאל"})
+  /// - Multi-word subset match (e.g. "אביאל יוסף שבתאי" vs "אביאל שבתאי")
+  static bool namesMatch(String rawA, String rawB) {
+    final a = cleanName(rawA);
+    final b = cleanName(rawB);
+    if (a.isEmpty || b.isEmpty) return false;
+    if (a == b) return true;
+
+    final wordsA = a.split(' ').where((w) => w.isNotEmpty).toList();
+    final wordsB = b.split(' ').where((w) => w.isNotEmpty).toList();
+    if (wordsA.isEmpty || wordsB.isEmpty) return false;
+
+    // Word set match (handles any permutation, e.g. "כהן יוסי" == "יוסי כהן")
+    final setA = wordsA.toSet();
+    final setB = wordsB.toSet();
+    if (setA.length == setB.length && setA.containsAll(setB)) {
+      return true;
+    }
+
+    // Two words inverted
+    if (wordsA.length == 2 && wordsB.length == 2) {
+      if (wordsA[0] == wordsB[1] && wordsA[1] == wordsB[0]) return true;
+    }
+
+    // 2 words vs 3 words (e.g. middle name present in one version)
+    if ((wordsA.length == 2 && wordsB.length == 3) || (wordsA.length == 3 && wordsB.length == 2)) {
+      final shorter = wordsA.length < wordsB.length ? setA : setB;
+      final longer = wordsA.length < wordsB.length ? setB : setA;
+      if (longer.containsAll(shorter)) return true;
+    }
+
+    return false;
   }
 
   static String cleanPn(String? raw) {
@@ -404,7 +513,6 @@ class SoldierImportService {
 
     for (final imp in imported) {
       final impPn = cleanPn(imp.personalNumber);
-      final impName = cleanName(imp.name);
       final impPhone = cleanPhone(imp.phone);
 
       Soldier? match;
@@ -419,10 +527,10 @@ class SoldierImportService {
         }
       }
 
-      // 2. Try matching by cleaned Name
-      if (match == null && impName.isNotEmpty) {
+      // 2. Try matching by Name (handles inverted order, rank, numbering, unicode)
+      if (match == null) {
         for (final e in existingInDb) {
-          if (!matchedExistingIds.contains(e.id) && cleanName(e.name) == impName) {
+          if (!matchedExistingIds.contains(e.id) && namesMatch(imp.name, e.name)) {
             match = e;
             break;
           }
