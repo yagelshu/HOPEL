@@ -15,6 +15,7 @@ import 'package:chopel_app/theme/components/hopal_status_badge.dart';
 import 'package:chopel_app/core/utils/platform_image.dart';
 import 'package:chopel_app/core/utils/image_data_uri_helper.dart';
 import 'package:chopel_app/core/utils/app_error_helper.dart';
+import 'package:chopel_app/core/utils/platoon_helper.dart';
 import 'package:chopel_app/core/auth/auth_service.dart';
 import 'package:chopel_app/features/medical_cases/providers.dart';
 import 'package:chopel_app/features/dashboard/providers.dart';
@@ -309,12 +310,7 @@ class _MedicalCaseCreateScreenState extends ConsumerState<MedicalCaseCreateScree
         String searchQuery = '';
         String selectedPlatoon = 'הכל';
 
-        final platoons = <String>['הכל'];
-        for (final s in soldiers) {
-          if (s.platoon != null && s.platoon!.trim().isNotEmpty && !platoons.contains(s.platoon!.trim())) {
-            platoons.add(s.platoon!.trim());
-          }
-        }
+        final platoons = PlatoonHelper.extractPlatoons(soldiers, (s) => s.platoon);
 
         return StatefulBuilder(
           builder: (context, setModalState) {
@@ -327,7 +323,7 @@ class _MedicalCaseCreateScreenState extends ConsumerState<MedicalCaseCreateScree
                   (cleanPn.isNotEmpty && cleanPn.contains(cleanQ)) ||
                   (s.phoneNumber != null && s.phoneNumber!.contains(cleanQ)) ||
                   (s.platoon != null && s.platoon!.toLowerCase().contains(q));
-              final matchesPlatoon = selectedPlatoon == 'הכל' || s.platoon?.trim() == selectedPlatoon;
+              final matchesPlatoon = selectedPlatoon == 'הכל' || PlatoonHelper.matches(s.platoon, selectedPlatoon);
               return matchesQuery && matchesPlatoon;
             }).toList();
             filtered.sort((a, b) => a.name.compareTo(b.name));
@@ -480,7 +476,7 @@ class _MedicalCaseCreateScreenState extends ConsumerState<MedicalCaseCreateScree
                                 subtitle: Text(
                                   [
                                     if (hasPn) 'מ.א: ${s.personalNumber}',
-                                    if (hasPlatoon) 'מחלקה ${s.platoon}',
+                                    if (hasPlatoon) PlatoonHelper.formatDisplay(s.platoon),
                                     if (s.phoneNumber != null) s.phoneNumber!,
                                   ].join(' • '),
                                   style: TextStyle(color: AppTheme.textSecondary, fontSize: 12),
@@ -792,7 +788,7 @@ class _MedicalCaseCreateScreenState extends ConsumerState<MedicalCaseCreateScree
                                                     color: AppTheme.primaryGreen.withValues(alpha: 0.1),
                                                     borderRadius: BorderRadius.circular(4),
                                                   ),
-                                                  child: Text('מחלקה ${soldier.platoon}',
+                                                  child: Text(PlatoonHelper.formatDisplay(soldier.platoon),
                                                       style: TextStyle(fontSize: 11, color: AppTheme.primaryGreen, fontWeight: FontWeight.bold)),
                                                 ),
                                             ],

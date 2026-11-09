@@ -8,6 +8,7 @@ import 'package:chopel_app/theme/components/hopal_card.dart';
 import 'package:chopel_app/theme/components/hopal_text_field.dart';
 import 'package:chopel_app/theme/components/hopal_feedback.dart';
 import 'package:chopel_app/core/utils/app_error_helper.dart';
+import 'package:chopel_app/core/utils/platoon_helper.dart';
 import 'package:chopel_app/core/auth/auth_service.dart';
 import 'package:chopel_app/models/soldier.dart';
 import 'package:chopel_app/features/medical_cases/medical_case_create_screen.dart';
@@ -41,7 +42,9 @@ class _SoldiersManagementScreenState extends ConsumerState<SoldiersManagementScr
     final nameController = TextEditingController(text: soldier?.name ?? '');
     final pnController = TextEditingController(text: soldier?.personalNumber ?? '');
     final phoneController = TextEditingController(text: soldier?.phoneNumber ?? '');
-    final platoonController = TextEditingController(text: soldier?.platoon ?? '');
+    final platoonController = TextEditingController(
+      text: soldier?.platoon != null ? PlatoonHelper.formatDisplay(soldier!.platoon) : '',
+    );
     final allergiesController = TextEditingController(text: soldier?.allergies ?? '');
     final isEdit = soldier != null;
 
@@ -73,7 +76,11 @@ class _SoldiersManagementScreenState extends ConsumerState<SoldiersManagementScr
                 keyboardType: TextInputType.phone,
               ),
               const SizedBox(height: AppTheme.spacing16),
-              HopalTextField(controller: platoonController, hint: 'מחלקה (אופציונלי)', icon: LucideIcons.users),
+              HopalTextField(
+                controller: platoonController,
+                hint: 'מחלקה (לדוגמה: מחלקה 1 / מפלג)',
+                icon: LucideIcons.users,
+              ),
               const SizedBox(height: AppTheme.spacing16),
               HopalTextField(
                 controller: allergiesController,
@@ -124,11 +131,14 @@ class _SoldiersManagementScreenState extends ConsumerState<SoldiersManagementScr
               final rawName = nameController.text.trim();
               final rawPn = orNull(pnController.text.replaceAll(RegExp(r'\D'), ''));
               final rawAllergies = orNull(allergiesController.text);
+              final rawPlatoon = orNull(platoonController.text);
+              final normalizedPlatoon = rawPlatoon != null ? PlatoonHelper.normalize(rawPlatoon) : null;
+
               final data = <String, dynamic>{
                 'name': rawName,
                 'personal_number': rawPn,
                 'phone_number': orNull(phoneController.text),
-                'platoon': orNull(platoonController.text),
+                'platoon': normalizedPlatoon,
                 'allergies': rawAllergies,
               };
               try {
@@ -144,7 +154,7 @@ class _SoldiersManagementScreenState extends ConsumerState<SoldiersManagementScr
                       final fallbackData = <String, dynamic>{
                         'name': rawPn != null && rawPn.isNotEmpty ? '$rawName ($rawPn)' : rawName,
                         'phone_number': orNull(phoneController.text),
-                        'platoon': orNull(platoonController.text),
+                        'platoon': normalizedPlatoon,
                       };
                       await client.from('soldiers').update(fallbackData).eq('id', soldier.id);
                     } else {
@@ -164,7 +174,7 @@ class _SoldiersManagementScreenState extends ConsumerState<SoldiersManagementScr
                       final fallbackData = <String, dynamic>{
                         'name': rawPn != null && rawPn.isNotEmpty ? '$rawName ($rawPn)' : rawName,
                         'phone_number': orNull(phoneController.text),
-                        'platoon': orNull(platoonController.text),
+                        'platoon': normalizedPlatoon,
                         'unit_id': unitId,
                       };
                       await client.from('soldiers').insert(fallbackData);
@@ -348,12 +358,7 @@ class _SoldiersManagementScreenState extends ConsumerState<SoldiersManagementScr
           ),
           body: soldiersAsync.when(
             data: (all) {
-              final platoons = <String>['הכל'];
-              for (final s in all) {
-                if (s.platoon != null && s.platoon!.trim().isNotEmpty && !platoons.contains(s.platoon!.trim())) {
-                  platoons.add(s.platoon!.trim());
-                }
-              }
+              final platoons = PlatoonHelper.extractPlatoons(all, (s) => s.platoon);
               final hasAnyAllergies = all.any((s) => s.hasAllergies);
 
               final q = _query.trim().toLowerCase();
@@ -367,7 +372,7 @@ class _SoldiersManagementScreenState extends ConsumerState<SoldiersManagementScr
                     (s.platoon != null && s.platoon!.toLowerCase().contains(q)) ||
                     (s.allergies != null && s.allergies!.toLowerCase().contains(q));
 
-                final matchesPlatoon = _selectedPlatoon == 'הכל' || s.platoon?.trim() == _selectedPlatoon;
+                final matchesPlatoon = _selectedPlatoon == 'הכל' || PlatoonHelper.matches(s.platoon, _selectedPlatoon);
                 final matchesAllergy = !_onlyAllergies || s.hasAllergies;
                 return matchesQuery && matchesPlatoon && matchesAllergy;
               }).toList();
@@ -480,7 +485,7 @@ class _SoldiersManagementScreenState extends ConsumerState<SoldiersManagementScr
                                     final hasPhone = soldier.phoneNumber != null && soldier.phoneNumber!.trim().isNotEmpty;
                                     final details = [
                                       if (soldier.personalNumber != null) 'מ.א ${soldier.personalNumber}',
-                                      if (soldier.platoon != null && soldier.platoon!.isNotEmpty) 'מחלקה ${soldier.platoon}',
+                                      if (soldier.platoon != null && soldier.platoon!.trim().isNotEmpty) PlatoonHelper.formatDisplay(soldier.platoon),
                                       if (hasPhone) soldier.phoneNumber!,
                                     ].join(' • ');
 

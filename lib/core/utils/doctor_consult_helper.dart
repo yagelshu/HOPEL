@@ -8,6 +8,7 @@ import 'package:chopel_app/core/utils/image_data_uri_helper.dart';
 import 'package:chopel_app/models/medical_case.dart';
 import 'package:chopel_app/models/soldier.dart';
 import 'package:chopel_app/theme/app_theme.dart';
+import 'package:chopel_app/core/utils/platoon_helper.dart';
 import 'package:chopel_app/theme/components/hopal_feedback.dart';
 import 'package:chopel_app/theme/components/hopal_text_field.dart';
 
@@ -36,8 +37,8 @@ class DoctorConsultHelper {
     final pnPart = (soldier?.personalNumber != null && soldier!.personalNumber!.isNotEmpty)
         ? ' (מ.א ${soldier.personalNumber})'
         : '';
-    final platoonPart = (soldier?.platoon != null && soldier!.platoon!.isNotEmpty)
-        ? ' | מחלקה ${soldier.platoon}'
+    final platoonPart = (soldier?.platoon != null && soldier!.platoon!.trim().isNotEmpty)
+        ? ' | ${PlatoonHelper.formatDisplay(soldier.platoon)}'
         : '';
     final soldierLabel = '$name$pnPart$platoonPart';
 

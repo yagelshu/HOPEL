@@ -10,6 +10,7 @@ class HopalButton extends StatefulWidget {
   final IconData? icon;
   final bool isExpanded;
   final bool isLoading;
+  final EdgeInsetsGeometry? padding;
 
   const HopalButton({
     super.key,
@@ -19,6 +20,7 @@ class HopalButton extends StatefulWidget {
     this.icon,
     this.isExpanded = false,
     this.isLoading = false,
+    this.padding,
   });
 
   @override
@@ -102,38 +104,41 @@ class _HopalButtonState extends State<HopalButton> with SingleTickerProviderStat
       borderColor = AppTheme.borderSubtle;
     }
 
-    Widget content = Row(
-      mainAxisSize: widget.isExpanded ? MainAxisSize.max : MainAxisSize.min,
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        if (widget.isLoading)
-          SizedBox(
-            width: 18,
-            height: 18,
-            child: CircularProgressIndicator(
-              strokeWidth: 2.5,
-              color: foregroundColor,
+    Widget content = FittedBox(
+      fit: BoxFit.scaleDown,
+      child: Row(
+        mainAxisSize: widget.isExpanded ? MainAxisSize.max : MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          if (widget.isLoading)
+            SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(
+                strokeWidth: 2.5,
+                color: foregroundColor,
+              ),
+            )
+          else if (widget.icon != null) ...[
+            Icon(widget.icon, size: 20, color: foregroundColor),
+            const SizedBox(width: AppTheme.spacing8),
+          ],
+          if (!widget.isLoading || widget.isExpanded)
+            Text(
+              widget.label,
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+                color: foregroundColor,
+                letterSpacing: 0.3,
+              ),
             ),
-          )
-        else if (widget.icon != null) ...[
-          Icon(widget.icon, size: 20, color: foregroundColor),
-          const SizedBox(width: AppTheme.spacing8),
         ],
-        if (!widget.isLoading || widget.isExpanded)
-          Text(
-            widget.label,
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
-              color: foregroundColor,
-              letterSpacing: 0.5,
-            ),
-          ),
-      ],
+      ),
     );
 
     Widget button = Container(
-      padding: const EdgeInsets.symmetric(horizontal: AppTheme.spacing24, vertical: 14),
+      padding: widget.padding ?? const EdgeInsets.symmetric(horizontal: AppTheme.spacing16, vertical: 14),
       decoration: BoxDecoration(
         color: backgroundColor,
         borderRadius: AppTheme.radiusMd,

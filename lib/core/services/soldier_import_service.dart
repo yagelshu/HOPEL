@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:chopel_app/core/services/xlsx_reader.dart';
+import 'package:chopel_app/core/utils/platoon_helper.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// Fields a spreadsheet column can be mapped to.
@@ -332,7 +333,7 @@ class SoldierImportService {
         name: name,
         personalNumber: orNull(pn),
         phone: orNull(get(SoldierField.phone)),
-        platoon: orNull(get(SoldierField.platoon)),
+        platoon: orNull(PlatoonHelper.normalize(get(SoldierField.platoon))),
         allergies: orNull(get(SoldierField.allergies)),
       ));
     }

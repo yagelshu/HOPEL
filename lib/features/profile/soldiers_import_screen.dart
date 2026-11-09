@@ -10,6 +10,7 @@ import 'package:chopel_app/theme/app_theme.dart';
 import 'package:chopel_app/theme/components/hopal_button.dart';
 import 'package:chopel_app/theme/components/hopal_feedback.dart';
 import 'package:chopel_app/core/utils/app_error_helper.dart';
+import 'package:chopel_app/core/utils/platoon_helper.dart';
 
 /// 3 steps: pick file (or paste table) -> map columns -> preview & save.
 class SoldiersImportScreen extends ConsumerStatefulWidget {
@@ -429,7 +430,7 @@ class _SoldiersImportScreenState extends ConsumerState<SoldiersImportScreen> {
                         [
                           if (s.personalNumber != null) 'מ.א ${s.personalNumber}',
                           if (s.phone != null) s.phone!,
-                          if (s.platoon != null) 'מחלקה ${s.platoon}',
+                          if (s.platoon != null) PlatoonHelper.formatDisplay(s.platoon),
                           if (s.allergies != null) 'רגישות: ${s.allergies}',
                         ].join(' • '),
                         style: TextStyle(color: AppTheme.textSecondary, fontSize: 12),
