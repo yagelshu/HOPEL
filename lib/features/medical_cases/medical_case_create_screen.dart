@@ -45,7 +45,7 @@ class _MedicalCaseCreateScreenState extends ConsumerState<MedicalCaseCreateScree
   String _selectedSeverity = 'שגרה';
 
   bool _isSaving = false;
-  String? _imagePath;
+  List<CasePhoto> _photos = [];
   final ImagePicker _picker = ImagePicker();
 
   @override
@@ -57,7 +57,7 @@ class _MedicalCaseCreateScreenState extends ConsumerState<MedicalCaseCreateScree
       _selectedOutcome = widget.existingCase!.status;
       _selectedCategory = widget.existingCase!.category ?? 'שגרת מרפאה';
       _selectedSeverity = widget.existingCase!.severity ?? 'שגרה';
-      _imagePath = widget.existingCase!.imagePath;
+      _photos = List<CasePhoto>.from(widget.existingCase!.photos);
     } else {
       if (widget.initialSoldierId != null) {
         _selectedSoldierId = widget.initialSoldierId;
@@ -113,6 +113,167 @@ class _MedicalCaseCreateScreenState extends ConsumerState<MedicalCaseCreateScree
     }
   }
 
+  Future<String?> _askComplaintTag({String? currentTag, String? imageUri}) async {
+    final customController = TextEditingController(text: currentTag ?? '');
+    String? selected = currentTag;
+
+    final tags = <String>{
+      ..._quickTags,
+      if (currentTag != null && currentTag.isNotEmpty) currentTag,
+    }.toList();
+
+    final result = await showModalBottomSheet<String?>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AppTheme.backgroundSecondary,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetContext) {
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            return Padding(
+              padding: EdgeInsets.only(
+                left: AppTheme.spacing16,
+                right: AppTheme.spacing16,
+                top: 20,
+                bottom: MediaQuery.of(sheetContext).viewInsets.bottom + AppTheme.spacing24,
+              ),
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(LucideIcons.tag, color: AppTheme.primaryGreen, size: 22),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'שיוך תמונה לסוג התלונה',
+                            style: TextStyle(
+                              color: AppTheme.textPrimary,
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                        IconButton(
+                          icon: Icon(LucideIcons.x, color: AppTheme.textSecondary),
+                          onPressed: () => Navigator.pop(sheetContext, selected),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'בחר לאיזו תלונה רפואית שייך צילום זה (או הקלד תיאור קצר):',
+                      style: TextStyle(color: AppTheme.textSecondary, fontSize: 13),
+                    ),
+                    const SizedBox(height: AppTheme.spacing16),
+                    if (imageUri != null) ...[
+                      Center(
+                        child: ClipRRect(
+                          borderRadius: AppTheme.radiusMd,
+                          child: Container(
+                            height: 100,
+                            width: 140,
+                            color: AppTheme.backgroundPrimary,
+                            child: Image(
+                              image: resolveLocalOrWebImage(imageUri),
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, __, ___) => Center(
+                                child: Icon(LucideIcons.image, color: AppTheme.textMuted),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: AppTheme.spacing16),
+                    ],
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: tags.map((tag) {
+                        final isSelected = selected == tag;
+                        return InkWell(
+                          onTap: () {
+                            setSheetState(() {
+                              selected = isSelected ? null : tag;
+                              customController.text = selected ?? '';
+                            });
+                          },
+                          borderRadius: BorderRadius.circular(20),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                            decoration: BoxDecoration(
+                              color: isSelected ? AppTheme.primaryGreen : AppTheme.backgroundPrimary,
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(
+                                color: isSelected ? AppTheme.primaryGreen : AppTheme.borderSubtle,
+                              ),
+                            ),
+                            child: Text(
+                              tag,
+                              style: TextStyle(
+                                color: isSelected ? AppTheme.onPrimaryGreen : AppTheme.textPrimary,
+                                fontSize: 13,
+                                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                              ),
+                            ),
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                    const SizedBox(height: AppTheme.spacing16),
+                    HopalTextField(
+                      controller: customController,
+                      hint: 'או הקלד סוג תלונה מותאם אישית...',
+                      icon: LucideIcons.pencil,
+                      onChanged: (val) {
+                        setSheetState(() {
+                          selected = val.trim().isEmpty ? null : val.trim();
+                        });
+                      },
+                    ),
+                    const SizedBox(height: 20),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              side: BorderSide(color: AppTheme.borderSubtle),
+                              shape: const RoundedRectangleBorder(borderRadius: AppTheme.radiusMd),
+                            ),
+                            onPressed: () => Navigator.pop(sheetContext, null),
+                            child: Text('ללא שיוך', style: TextStyle(color: AppTheme.textSecondary)),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          flex: 2,
+                          child: HopalButton(
+                            label: 'אישור שיוך',
+                            icon: LucideIcons.check,
+                            onPressed: () {
+                              final finalTag = customController.text.trim();
+                              Navigator.pop(sheetContext, finalTag.isNotEmpty ? finalTag : selected);
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+    return result;
+  }
+
   Future<void> _pickImage() async {
     final ImageSource? source = await showModalBottomSheet<ImageSource>(
       context: context,
@@ -143,14 +304,28 @@ class _MedicalCaseCreateScreenState extends ConsumerState<MedicalCaseCreateScree
     try {
       final dataUri = await ImageDataUriHelper.pickAsDataUri(_picker, source);
       if (dataUri != null && mounted) {
-        setState(() {
-          _imagePath = dataUri;
-        });
+        final tag = await _askComplaintTag(imageUri: dataUri);
+        if (mounted) {
+          setState(() {
+            _photos.add(CasePhoto(path: dataUri, complaintTag: tag));
+          });
+        }
       }
     } catch (e) {
       if (mounted) {
         HopalFeedback.showError(context, 'שגיאה בטעינת התמונה');
       }
+    }
+  }
+
+  Future<void> _editPhotoTag(int index) async {
+    if (index < 0 || index >= _photos.length) return;
+    final current = _photos[index];
+    final newTag = await _askComplaintTag(currentTag: current.complaintTag, imageUri: current.path);
+    if (mounted) {
+      setState(() {
+        _photos[index] = current.copyWith(complaintTag: newTag, clearTag: newTag == null);
+      });
     }
   }
 
@@ -649,7 +824,7 @@ class _MedicalCaseCreateScreenState extends ConsumerState<MedicalCaseCreateScree
       'category': _selectedCategory,
       'severity': _selectedSeverity,
       'updated_date': DateTime.now().toIso8601String(),
-      'image_path': _imagePath,
+      'image_path': MedicalCase.encodePhotos(_photos),
     };
 
     try {
@@ -947,92 +1122,200 @@ class _MedicalCaseCreateScreenState extends ConsumerState<MedicalCaseCreateScree
                       icon: LucideIcons.fileText,
                     ),
                     const SizedBox(height: AppTheme.spacing16),
-                    InkWell(
-                      onTap: _pickImage,
-                      borderRadius: AppTheme.radiusMd,
-                      child: Container(
-                        height: _imagePath == null ? null : 180,
-                        padding: _imagePath == null ? const EdgeInsets.all(AppTheme.spacing16) : null,
-                        decoration: BoxDecoration(
-                          color: AppTheme.backgroundSecondary,
-                          border: Border.all(
-                            color: _imagePath != null ? AppTheme.primaryGreen : AppTheme.borderSubtle,
-                            width: 1.5,
+                    if (_photos.isEmpty)
+                      InkWell(
+                        onTap: _pickImage,
+                        borderRadius: AppTheme.radiusMd,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 20, horizontal: AppTheme.spacing16),
+                          decoration: BoxDecoration(
+                            color: AppTheme.backgroundSecondary,
+                            border: Border.all(
+                              color: AppTheme.borderSubtle,
+                              width: 1.5,
+                            ),
+                            borderRadius: AppTheme.radiusMd,
                           ),
-                          borderRadius: AppTheme.radiusMd,
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(LucideIcons.camera, color: AppTheme.primaryGreen),
+                              const SizedBox(width: AppTheme.spacing8),
+                              Text('הוסף צילום רפואי ושייך לתלונה (אופציונלי)',
+                                  style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.bold)),
+                            ],
+                          ),
                         ),
-                        child: _imagePath == null
-                            ? Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Icon(LucideIcons.camera, color: AppTheme.textPrimary),
-                                  const SizedBox(width: AppTheme.spacing8),
-                                  Text('הוסף צילום רפואי (אופציונלי)', style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.bold)),
-                                ],
-                              )
-                            : Stack(
-                                fit: StackFit.expand,
-                                children: [
-                                  ClipRRect(
+                      )
+                    else
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(LucideIcons.images, color: AppTheme.primaryGreen, size: 16),
+                              const SizedBox(width: 6),
+                              Text(
+                                'צילומים רפואיים שצורפו (${_photos.length}):',
+                                style: TextStyle(color: AppTheme.textPrimary, fontSize: 13, fontWeight: FontWeight.bold),
+                              ),
+                              const Spacer(),
+                              TextButton.icon(
+                                style: TextButton.styleFrom(
+                                  padding: EdgeInsets.zero,
+                                  minimumSize: Size.zero,
+                                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                ),
+                                onPressed: _pickImage,
+                                icon: Icon(LucideIcons.plus, size: 14, color: AppTheme.primaryGreen),
+                                label: Text(
+                                  'הוסף צילום',
+                                  style: TextStyle(color: AppTheme.primaryGreen, fontSize: 12, fontWeight: FontWeight.bold),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 10),
+                          SizedBox(
+                            height: 175,
+                            child: ListView.separated(
+                              scrollDirection: Axis.horizontal,
+                              itemCount: _photos.length + 1,
+                              separatorBuilder: (_, __) => const SizedBox(width: 10),
+                              itemBuilder: (context, idx) {
+                                if (idx == _photos.length) {
+                                  // Add new photo button card
+                                  return InkWell(
+                                    onTap: _pickImage,
                                     borderRadius: AppTheme.radiusMd,
-                                    child: Image(
-                                      image: resolveLocalOrWebImage(_imagePath!),
-                                      fit: BoxFit.cover,
-                                      errorBuilder: (_, __, ___) => Center(
-                                        child: Icon(LucideIcons.imageOff, color: AppTheme.textMuted, size: 32),
-                                      ),
-                                    ),
-                                  ),
-                                  Positioned(
-                                    top: 8,
-                                    left: 8,
-                                    child: Material(
-                                      color: Colors.black.withValues(alpha: 0.7),
-                                      borderRadius: BorderRadius.circular(20),
-                                      child: InkWell(
-                                        borderRadius: BorderRadius.circular(20),
-                                        onTap: () => setState(() => _imagePath = null),
-                                        child: const Padding(
-                                          padding: EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                                          child: Row(
-                                            mainAxisSize: MainAxisSize.min,
-                                            children: [
-                                              Icon(LucideIcons.trash2, color: Colors.white, size: 14),
-                                              SizedBox(width: 4),
-                                              Text('הסר', style: TextStyle(color: Colors.white, fontSize: 12)),
-                                            ],
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                  Align(
-                                    alignment: Alignment.bottomCenter,
                                     child: Container(
-                                      width: double.infinity,
+                                      width: 120,
                                       decoration: BoxDecoration(
-                                        gradient: LinearGradient(
-                                          begin: Alignment.topCenter,
-                                          end: Alignment.bottomCenter,
-                                          colors: [Colors.transparent, Colors.black.withValues(alpha: 0.72)],
+                                        color: AppTheme.backgroundSecondary,
+                                        borderRadius: AppTheme.radiusMd,
+                                        border: Border.all(
+                                          color: AppTheme.primaryGreen.withValues(alpha: 0.4),
+                                          style: BorderStyle.solid,
+                                          width: 1.5,
                                         ),
-                                        borderRadius: const BorderRadius.vertical(bottom: Radius.circular(11)),
                                       ),
-                                      padding: const EdgeInsets.all(8),
-                                      child: Row(
+                                      child: Column(
                                         mainAxisAlignment: MainAxisAlignment.center,
                                         children: [
-                                          Icon(LucideIcons.checkCircle2, color: AppTheme.successGreen, size: 16),
-                                          const SizedBox(width: 8),
-                                          const Text('תמונה צורפה • לחץ להחלפה', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
+                                          Container(
+                                            padding: const EdgeInsets.all(10),
+                                            decoration: BoxDecoration(
+                                              color: AppTheme.primaryGreen.withValues(alpha: 0.15),
+                                              shape: BoxShape.circle,
+                                            ),
+                                            child: Icon(LucideIcons.camera, color: AppTheme.primaryGreen, size: 22),
+                                          ),
+                                          const SizedBox(height: 8),
+                                          Text(
+                                            'הוסף צילום',
+                                            style: TextStyle(
+                                              color: AppTheme.primaryGreen,
+                                              fontSize: 12,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
                                         ],
                                       ),
                                     ),
+                                  );
+                                }
+
+                                final photo = _photos[idx];
+                                return Container(
+                                  width: 140,
+                                  decoration: BoxDecoration(
+                                    color: AppTheme.backgroundSecondary,
+                                    borderRadius: AppTheme.radiusMd,
+                                    border: Border.all(color: AppTheme.borderSubtle),
                                   ),
-                                ],
-                              ),
+                                  child: Stack(
+                                    fit: StackFit.expand,
+                                    children: [
+                                      ClipRRect(
+                                        borderRadius: AppTheme.radiusMd,
+                                        child: Image(
+                                          image: resolveLocalOrWebImage(photo.path),
+                                          fit: BoxFit.cover,
+                                          errorBuilder: (_, __, ___) => Center(
+                                            child: Icon(LucideIcons.imageOff, color: AppTheme.textMuted, size: 28),
+                                          ),
+                                        ),
+                                      ),
+                                      // Complaint Tag Chip (Clickable to edit tag)
+                                      Positioned(
+                                        top: 6,
+                                        right: 6,
+                                        left: 6,
+                                        child: Material(
+                                          color: Colors.transparent,
+                                          child: InkWell(
+                                            onTap: () => _editPhotoTag(idx),
+                                            borderRadius: BorderRadius.circular(12),
+                                            child: Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                                              decoration: BoxDecoration(
+                                                color: (photo.complaintTag != null && photo.complaintTag!.isNotEmpty)
+                                                    ? AppTheme.primaryGreen.withValues(alpha: 0.9)
+                                                    : Colors.black.withValues(alpha: 0.75),
+                                                borderRadius: BorderRadius.circular(12),
+                                              ),
+                                              child: Row(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  Icon(
+                                                    photo.complaintTag != null ? LucideIcons.tag : LucideIcons.pencil,
+                                                    color: Colors.white,
+                                                    size: 11,
+                                                  ),
+                                                  const SizedBox(width: 4),
+                                                  Expanded(
+                                                    child: Text(
+                                                      photo.complaintTag ?? '+ שייך תלונה',
+                                                      style: const TextStyle(
+                                                        color: Colors.white,
+                                                        fontSize: 11,
+                                                        fontWeight: FontWeight.bold,
+                                                      ),
+                                                      maxLines: 1,
+                                                      overflow: TextOverflow.ellipsis,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                      // Remove button
+                                      Positioned(
+                                        bottom: 6,
+                                        left: 6,
+                                        child: Material(
+                                          color: Colors.black.withValues(alpha: 0.75),
+                                          borderRadius: BorderRadius.circular(16),
+                                          child: InkWell(
+                                            borderRadius: BorderRadius.circular(16),
+                                            onTap: () => setState(() => _photos.removeAt(idx)),
+                                            child: const Padding(
+                                              padding: EdgeInsets.all(5),
+                                              child: Icon(LucideIcons.trash2, color: Colors.white, size: 14),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+                        ],
                       ),
-                    ),
 
                     const SizedBox(height: AppTheme.spacing16),
                     HopalButton(

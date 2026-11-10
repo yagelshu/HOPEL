@@ -13,6 +13,7 @@ class HopalTextField extends StatefulWidget {
   final FocusNode? focusNode;
   final TextInputAction? textInputAction;
   final void Function(String)? onSubmitted;
+  final void Function(String)? onChanged;
   final List<TextInputFormatter>? inputFormatters;
   final int maxLines;
   final bool obscureText;
@@ -28,6 +29,7 @@ class HopalTextField extends StatefulWidget {
     this.focusNode,
     this.textInputAction,
     this.onSubmitted,
+    this.onChanged,
     this.inputFormatters,
     this.maxLines = 1,
     this.obscureText = false,
@@ -86,6 +88,7 @@ class _HopalTextFieldState extends State<HopalTextField> {
         textAlign: _isCredentialField ? TextAlign.right : TextAlign.start,
         textInputAction: widget.textInputAction,
         onSubmitted: widget.onSubmitted,
+        onChanged: widget.onChanged,
         inputFormatters: widget.inputFormatters,
         maxLines: _isSecretField ? 1 : widget.maxLines,
         style: TextStyle(color: AppTheme.textPrimary, fontSize: 16),

@@ -1207,7 +1207,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                         children: [
                           if (isCompanyMedic) ...[
                             HopalListTile(
-                              title: const Text('חוג"ד הגדוד (דיווחי WhatsApp)'),
+                              title: const Text('חוג"ד (דיווחי WhatsApp)'),
                               subtitle: Text(
                                 _hogadPhone.isNotEmpty
                                     ? '${_hogadName.isNotEmpty ? '$_hogadName • ' : ''}$_hogadPhone'

@@ -180,7 +180,7 @@ class _MedicalCaseDetailScreenState extends ConsumerState<MedicalCaseDetailScree
     );
   }
 
-  void _showFullScreenPhoto(String path) {
+  void _showFullScreenPhoto(String path, {String? tag}) {
     showDialog(
       context: context,
       builder: (ctx) => Dialog(
@@ -206,6 +206,33 @@ class _MedicalCaseDetailScreenState extends ConsumerState<MedicalCaseDetailScree
                 onPressed: () => Navigator.pop(ctx),
               ),
             ),
+            if (tag != null && tag.isNotEmpty)
+              Positioned(
+                bottom: 16,
+                left: 16,
+                right: 16,
+                child: Center(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: Colors.black87,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: AppTheme.primaryGreen.withValues(alpha: 0.6)),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(LucideIcons.tag, color: AppTheme.primaryGreen, size: 16),
+                        const SizedBox(width: 8),
+                        Text(
+                          tag,
+                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
           ],
         ),
       ),
@@ -442,43 +469,154 @@ class _MedicalCaseDetailScreenState extends ConsumerState<MedicalCaseDetailScree
                       const SizedBox(height: AppTheme.spacing48),
                     ],
 
-                    // Image Viewer (If exists)
-                    if (widget.medicalCase.imagePath != null && widget.medicalCase.imagePath!.isNotEmpty) ...[
-                      Text('צילום מצורף (לחץ להגדלה):', style: TextStyle(fontSize: 14, color: AppTheme.textSecondary, fontWeight: FontWeight.bold)),
-                      const SizedBox(height: AppTheme.spacing16),
-                      InkWell(
-                        onTap: () => _showFullScreenPhoto(widget.medicalCase.imagePath!),
-                        borderRadius: AppTheme.radiusLg,
-                        child: ClipRRect(
-                          borderRadius: AppTheme.radiusLg,
-                          child: Container(
-                            width: double.infinity,
-                            height: 250,
-                            decoration: BoxDecoration(
-                              color: AppTheme.backgroundSecondary,
-                              border: Border.all(color: AppTheme.borderSubtle),
-                              borderRadius: AppTheme.radiusLg,
+                    // Image Viewer (Supports multiple photos with complaint tags)
+                    if (widget.medicalCase.photos.isNotEmpty) ...[
+                      Builder(builder: (context) {
+                        final photos = widget.medicalCase.photos;
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              photos.length == 1
+                                  ? 'צילום רפואי מצורף (לחץ להגדלה):'
+                                  : 'צילומים רפואיים מצורפים (${photos.length}):',
+                              style: TextStyle(fontSize: 14, color: AppTheme.textSecondary, fontWeight: FontWeight.bold),
                             ),
-                            child: Image(
-                              image: resolveLocalOrWebImage(widget.medicalCase.imagePath!),
-                              fit: BoxFit.cover,
-                              errorBuilder: (_, __, ___) => Center(
-                                child: Column(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Icon(LucideIcons.imageOff, color: AppTheme.textMuted, size: 32),
-                                    const SizedBox(height: 8),
-                                    Text(
-                                      'לא ניתן לטעון תמונה ישנה במכשיר זה',
-                                      style: TextStyle(color: AppTheme.textMuted, fontSize: 13),
+                            const SizedBox(height: AppTheme.spacing16),
+                            if (photos.length == 1)
+                              InkWell(
+                                onTap: () => _showFullScreenPhoto(photos.first.path, tag: photos.first.complaintTag),
+                                borderRadius: AppTheme.radiusLg,
+                                child: ClipRRect(
+                                  borderRadius: AppTheme.radiusLg,
+                                  child: Container(
+                                    width: double.infinity,
+                                    height: 250,
+                                    decoration: BoxDecoration(
+                                      color: AppTheme.backgroundSecondary,
+                                      border: Border.all(color: AppTheme.borderSubtle),
+                                      borderRadius: AppTheme.radiusLg,
                                     ),
-                                  ],
+                                    child: Stack(
+                                      fit: StackFit.expand,
+                                      children: [
+                                        Image(
+                                          image: resolveLocalOrWebImage(photos.first.path),
+                                          fit: BoxFit.cover,
+                                          errorBuilder: (_, __, ___) => Center(
+                                            child: Column(
+                                              mainAxisAlignment: MainAxisAlignment.center,
+                                              children: [
+                                                Icon(LucideIcons.imageOff, color: AppTheme.textMuted, size: 32),
+                                                const SizedBox(height: 8),
+                                                Text(
+                                                  'לא ניתן לטעון תמונה ישנה במכשיר זה',
+                                                  style: TextStyle(color: AppTheme.textMuted, fontSize: 13),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ),
+                                        if (photos.first.complaintTag != null && photos.first.complaintTag!.isNotEmpty)
+                                          Positioned(
+                                            top: 10,
+                                            right: 10,
+                                            child: Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                                              decoration: BoxDecoration(
+                                                color: Colors.black.withValues(alpha: 0.75),
+                                                borderRadius: BorderRadius.circular(16),
+                                                border: Border.all(color: AppTheme.primaryGreen.withValues(alpha: 0.6)),
+                                              ),
+                                              child: Row(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  Icon(LucideIcons.tag, color: AppTheme.primaryGreen, size: 13),
+                                                  const SizedBox(width: 4),
+                                                  Text(
+                                                    photos.first.complaintTag!,
+                                                    style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              )
+                            else
+                              SizedBox(
+                                height: 210,
+                                child: ListView.separated(
+                                  scrollDirection: Axis.horizontal,
+                                  itemCount: photos.length,
+                                  separatorBuilder: (_, __) => const SizedBox(width: 12),
+                                  itemBuilder: (context, idx) {
+                                    final p = photos[idx];
+                                    return InkWell(
+                                      onTap: () => _showFullScreenPhoto(p.path, tag: p.complaintTag),
+                                      borderRadius: AppTheme.radiusMd,
+                                      child: ClipRRect(
+                                        borderRadius: AppTheme.radiusMd,
+                                        child: Container(
+                                          width: 170,
+                                          decoration: BoxDecoration(
+                                            color: AppTheme.backgroundSecondary,
+                                            border: Border.all(color: AppTheme.borderSubtle),
+                                            borderRadius: AppTheme.radiusMd,
+                                          ),
+                                          child: Stack(
+                                            fit: StackFit.expand,
+                                            children: [
+                                              Image(
+                                                image: resolveLocalOrWebImage(p.path),
+                                                fit: BoxFit.cover,
+                                                errorBuilder: (_, __, ___) => Center(
+                                                  child: Icon(LucideIcons.imageOff, color: AppTheme.textMuted, size: 28),
+                                                ),
+                                              ),
+                                              if (p.complaintTag != null && p.complaintTag!.isNotEmpty)
+                                                Positioned(
+                                                  top: 8,
+                                                  right: 8,
+                                                  left: 8,
+                                                  child: Container(
+                                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                                    decoration: BoxDecoration(
+                                                      color: Colors.black.withValues(alpha: 0.78),
+                                                      borderRadius: BorderRadius.circular(12),
+                                                      border: Border.all(color: AppTheme.primaryGreen.withValues(alpha: 0.6)),
+                                                    ),
+                                                    child: Row(
+                                                      mainAxisSize: MainAxisSize.min,
+                                                      children: [
+                                                        Icon(LucideIcons.tag, color: AppTheme.primaryGreen, size: 12),
+                                                        const SizedBox(width: 4),
+                                                        Expanded(
+                                                          child: Text(
+                                                            p.complaintTag!,
+                                                            style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
+                                                            maxLines: 1,
+                                                            overflow: TextOverflow.ellipsis,
+                                                          ),
+                                                        ),
+                                                      ],
+                                                    ),
+                                                  ),
+                                                ),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                    );
+                                  },
                                 ),
                               ),
-                            ),
-                          ),
-                        ),
-                      ),
+                          ],
+                        );
+                      }),
                       const SizedBox(height: AppTheme.spacing48),
                     ],
 

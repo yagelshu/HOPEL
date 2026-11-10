@@ -1,3 +1,28 @@
+import 'dart:convert';
+
+/// Represents a photo attached to a medical case, optionally linked to a specific complaint type.
+class CasePhoto {
+  final String path;
+  final String? complaintTag;
+
+  CasePhoto({required this.path, this.complaintTag});
+
+  Map<String, dynamic> toMap() => {
+        'path': path,
+        if (complaintTag != null && complaintTag!.trim().isNotEmpty) 'complaintTag': complaintTag!.trim(),
+      };
+
+  factory CasePhoto.fromMap(Map<String, dynamic> map) => CasePhoto(
+        path: map['path']?.toString() ?? '',
+        complaintTag: map['complaintTag']?.toString(),
+      );
+
+  CasePhoto copyWith({String? path, String? complaintTag, bool clearTag = false}) => CasePhoto(
+        path: path ?? this.path,
+        complaintTag: clearTag ? null : (complaintTag ?? this.complaintTag),
+      );
+}
+
 class MedicalCase {
   final String id;
   final String soldierId;
@@ -26,6 +51,31 @@ class MedicalCase {
     this.category,
     this.severity,
   });
+
+  /// Returns the list of photos attached to this case.
+  /// Backward compatible: supports JSON arrays of [CasePhoto] as well as single legacy image strings.
+  List<CasePhoto> get photos {
+    if (imagePath == null || imagePath!.trim().isEmpty) return const [];
+    final raw = imagePath!.trim();
+    if (raw.startsWith('[') && raw.endsWith(']')) {
+      try {
+        final list = jsonDecode(raw) as List;
+        return list.map((item) {
+          if (item is Map) {
+            return CasePhoto.fromMap(Map<String, dynamic>.from(item));
+          }
+          return CasePhoto(path: item.toString());
+        }).where((p) => p.path.isNotEmpty).toList();
+      } catch (_) {}
+    }
+    return [CasePhoto(path: raw)];
+  }
+
+  /// Helper to encode a list of [CasePhoto] for storage in the `image_path` column.
+  static String? encodePhotos(List<CasePhoto> list) {
+    if (list.isEmpty) return null;
+    return jsonEncode(list.map((p) => p.toMap()).toList());
+  }
 
   factory MedicalCase.fromMap(Map<String, dynamic> map) {
     return MedicalCase(
