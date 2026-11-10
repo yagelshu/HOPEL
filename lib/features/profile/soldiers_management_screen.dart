@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -14,6 +15,7 @@ import 'package:chopel_app/models/soldier.dart';
 import 'package:chopel_app/features/medical_cases/medical_case_create_screen.dart';
 import 'package:chopel_app/features/medical_cases/providers.dart';
 import 'package:chopel_app/features/profile/soldiers_import_screen.dart';
+import 'package:chopel_app/features/profile/soldier_medical_history_screen.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 class SoldiersManagementScreen extends ConsumerStatefulWidget {
@@ -248,6 +250,18 @@ class _SoldiersManagementScreenState extends ConsumerState<SoldiersManagementScr
 
   void _openImport() {
     Navigator.push(context, MaterialPageRoute(builder: (_) => const SoldiersImportScreen()));
+  }
+
+  void _openMedicalHistory(Soldier soldier) {
+    try {
+      HapticFeedback.lightImpact();
+    } catch (_) {}
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => SoldierMedicalHistoryScreen(soldier: soldier),
+      ),
+    );
   }
 
   void _openMedicalCaseForSoldier(Soldier soldier) {
@@ -494,9 +508,7 @@ class _SoldiersManagementScreenState extends ConsumerState<SoldiersManagementScr
                                       borderColor: soldier.hasAllergies
                                           ? AppTheme.criticalRed.withValues(alpha: 0.45)
                                           : AppTheme.borderSubtle,
-                                      onTap: isCompanyMedic
-                                          ? () => _showSoldierDialog(soldier)
-                                          : () => _openMedicalCaseForSoldier(soldier),
+                                      onTap: () => _openMedicalHistory(soldier),
                                       child: Column(
                                         crossAxisAlignment: CrossAxisAlignment.start,
                                         children: [
@@ -569,9 +581,15 @@ class _SoldiersManagementScreenState extends ConsumerState<SoldiersManagementScr
                                             runSpacing: 6,
                                             children: [
                                               _buildQuickAction(
+                                                icon: LucideIcons.folderHeart,
+                                                label: 'תיק רפואי',
+                                                color: AppTheme.primaryGreen,
+                                                onTap: () => _openMedicalHistory(soldier),
+                                              ),
+                                              _buildQuickAction(
                                                 icon: LucideIcons.filePlus2,
                                                 label: 'פנייה',
-                                                color: AppTheme.primaryGreen,
+                                                color: AppTheme.infoBlue,
                                                 onTap: () => _openMedicalCaseForSoldier(soldier),
                                               ),
                                               if (hasPhone) ...[

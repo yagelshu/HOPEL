@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:chopel_app/theme/app_theme.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 class HopalFeedback {
   static void showSuccess(BuildContext context, String message) {
+    try {
+      HapticFeedback.mediumImpact();
+    } catch (_) {}
     _show(
       context: context,
       message: message,
@@ -13,6 +17,9 @@ class HopalFeedback {
   }
 
   static void showError(BuildContext context, String message) {
+    try {
+      HapticFeedback.heavyImpact();
+    } catch (_) {}
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -49,6 +56,9 @@ class HopalFeedback {
   }
 
   static void showInfo(BuildContext context, String message) {
+    try {
+      HapticFeedback.selectionClick();
+    } catch (_) {}
     _show(
       context: context,
       message: message,

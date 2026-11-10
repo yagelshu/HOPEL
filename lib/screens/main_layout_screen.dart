@@ -1,5 +1,6 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:chopel_app/core/auth/auth_service.dart';
@@ -174,6 +175,9 @@ class _MainLayoutScreenState extends ConsumerState<MainLayoutScreen> {
 
     return GestureDetector(
       onTap: () {
+        try {
+          HapticFeedback.selectionClick();
+        } catch (_) {}
         setState(() => _currentIndex = index);
       },
       behavior: HitTestBehavior.opaque,

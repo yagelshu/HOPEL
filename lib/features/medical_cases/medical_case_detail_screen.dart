@@ -17,6 +17,8 @@ import 'package:chopel_app/theme/components/hopal_text_field.dart';
 import 'package:chopel_app/theme/components/hopal_feedback.dart';
 import 'package:chopel_app/core/auth/auth_service.dart';
 import 'package:chopel_app/features/medical_cases/medical_case_create_screen.dart';
+import 'package:chopel_app/features/profile/soldier_medical_history_screen.dart';
+import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 class MedicalCaseDetailScreen extends ConsumerStatefulWidget {
@@ -338,21 +340,51 @@ class _MedicalCaseDetailScreenState extends ConsumerState<MedicalCaseDetailScree
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Hero(
-                                tag: 'soldier_name_${widget.medicalCase.id}',
-                                child: Material(
-                                  type: MaterialType.transparency,
-                                  child: Text(_soldierName, style: Theme.of(context).textTheme.headlineMedium),
+                          child: InkWell(
+                            onTap: _soldier != null
+                                ? () {
+                                    try {
+                                      HapticFeedback.lightImpact();
+                                    } catch (_) {}
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (_) => SoldierMedicalHistoryScreen(soldier: _soldier!),
+                                      ),
+                                    );
+                                  }
+                                : null,
+                            borderRadius: AppTheme.radiusSm,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Hero(
+                                      tag: 'soldier_name_${widget.medicalCase.id}',
+                                      child: Material(
+                                        type: MaterialType.transparency,
+                                        child: Text(_soldierName, style: Theme.of(context).textTheme.headlineMedium),
+                                      ),
+                                    ),
+                                    if (_soldier != null) ...[
+                                      const SizedBox(width: 8),
+                                      Icon(LucideIcons.folderHeart, size: 20, color: AppTheme.primaryGreen),
+                                    ],
+                                  ],
                                 ),
-                              ),
-                              const SizedBox(height: AppTheme.spacing4),
-                              Text('תיק רפואי', style: TextStyle(fontSize: 16, color: AppTheme.textSecondary, fontWeight: FontWeight.w500)),
-                              const SizedBox(height: AppTheme.spacing4),
-                              Text(_soldierContext, style: TextStyle(fontSize: 14, color: AppTheme.textSecondary)),
-                            ],
+                                const SizedBox(height: AppTheme.spacing4),
+                                Row(
+                                  children: [
+                                    Text('תיק אישי והיסטוריה רפואית', style: TextStyle(fontSize: 13.5, color: AppTheme.primaryGreen, fontWeight: FontWeight.bold)),
+                                    const SizedBox(width: 4),
+                                    Icon(LucideIcons.chevronLeft, size: 14, color: AppTheme.primaryGreen),
+                                  ],
+                                ),
+                                const SizedBox(height: AppTheme.spacing4),
+                                Text(_soldierContext, style: TextStyle(fontSize: 14, color: AppTheme.textSecondary)),
+                              ],
+                            ),
                           ),
                         ),
                         _buildOutcomeBadge(),

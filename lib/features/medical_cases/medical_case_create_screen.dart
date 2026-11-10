@@ -23,6 +23,7 @@ import 'package:chopel_app/core/ai/medical_copilot_service.dart';
 import 'package:chopel_app/models/medical_case.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:chopel_app/core/database/draft_service.dart';
+import 'package:chopel_app/features/learning/medication_guide_screen.dart';
 import 'package:chopel_app/models/soldier.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -275,23 +276,28 @@ class _MedicalCaseCreateScreenState extends ConsumerState<MedicalCaseCreateScree
   }
 
   Future<void> _pickImage() async {
-    final ImageSource? source = await showModalBottomSheet<ImageSource>(
+    final mode = await showModalBottomSheet<String>(
       context: context,
       backgroundColor: AppTheme.backgroundSecondary,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
       builder: (BuildContext context) {
         return SafeArea(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
               ListTile(
-                leading: Icon(LucideIcons.camera, color: AppTheme.textPrimary),
-                title: Text('צלם תמונה', style: TextStyle(color: AppTheme.textPrimary)),
-                onTap: () => Navigator.pop(context, ImageSource.camera),
+                leading: Icon(LucideIcons.camera, color: AppTheme.primaryGreen),
+                title: Text('צלם תמונה במצלמה', style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.bold)),
+                subtitle: Text('דחיסה אוטומטית ואיכות שטח אופטימלית', style: TextStyle(color: AppTheme.textSecondary, fontSize: 12)),
+                onTap: () => Navigator.pop(context, 'camera'),
               ),
               ListTile(
-                leading: Icon(LucideIcons.image, color: AppTheme.textPrimary),
-                title: Text('בחר מהגלריה', style: TextStyle(color: AppTheme.textPrimary)),
-                onTap: () => Navigator.pop(context, ImageSource.gallery),
+                leading: Icon(LucideIcons.images, color: AppTheme.infoBlue),
+                title: Text('בחר תמונות מהגלריה (אפשרות לבחירה מרובה)', style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.bold)),
+                subtitle: Text('העלאת מספר תמונות יחד בדחיסה מהירה', style: TextStyle(color: AppTheme.textSecondary, fontSize: 12)),
+                onTap: () => Navigator.pop(context, 'multi_gallery'),
               ),
             ],
           ),
@@ -299,16 +305,39 @@ class _MedicalCaseCreateScreenState extends ConsumerState<MedicalCaseCreateScree
       },
     );
 
-    if (source == null) return;
+    if (mode == null) return;
 
     try {
-      final dataUri = await ImageDataUriHelper.pickAsDataUri(_picker, source);
-      if (dataUri != null && mounted) {
-        final tag = await _askComplaintTag(imageUri: dataUri);
-        if (mounted) {
-          setState(() {
-            _photos.add(CasePhoto(path: dataUri, complaintTag: tag));
-          });
+      if (mode == 'camera') {
+        final res = await ImageDataUriHelper.pickAsDataUriWithResult(_picker, ImageSource.camera);
+        if (res != null && mounted) {
+          final tag = await _askComplaintTag(imageUri: res.dataUri);
+          if (mounted) {
+            setState(() {
+              _photos.add(CasePhoto(path: res.dataUri, complaintTag: tag));
+            });
+            HopalFeedback.showInfo(context, 'התמונה נדחסה בהצלחה (${res.sizeLabel})');
+          }
+        }
+      } else if (mode == 'multi_gallery') {
+        final list = await ImageDataUriHelper.pickMultipleAsDataUri(_picker);
+        if (list.isNotEmpty && mounted) {
+          int addedCount = 0;
+          int totalKb = 0;
+          for (final res in list) {
+            if (!mounted) break;
+            final tag = await _askComplaintTag(imageUri: res.dataUri);
+            if (mounted) {
+              setState(() {
+                _photos.add(CasePhoto(path: res.dataUri, complaintTag: tag));
+              });
+              addedCount++;
+              totalKb += res.kb;
+            }
+          }
+          if (mounted && addedCount > 0) {
+            HopalFeedback.showInfo(context, '$addedCount תמונות נדחסו ונוספו בהצלחה ($totalKb KB סה"כ)');
+          }
         }
       }
     } catch (e) {
@@ -1323,6 +1352,23 @@ class _MedicalCaseCreateScreenState extends ConsumerState<MedicalCaseCreateScree
                       icon: LucideIcons.stethoscope,
                       onPressed: _runCopilot,
                       isExpanded: true,
+                    ),
+                    const SizedBox(height: AppTheme.spacing12),
+                    OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: AppTheme.primaryGreen,
+                        side: BorderSide(color: AppTheme.primaryGreen.withValues(alpha: 0.5)),
+                        shape: const RoundedRectangleBorder(borderRadius: AppTheme.radiusMd),
+                        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                      ),
+                      icon: const Icon(LucideIcons.pill, size: 18),
+                      label: const Text('מדריך תרופות שטח ומחשבון מינונים', style: TextStyle(fontWeight: FontWeight.bold)),
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (_) => const MedicationGuideScreen()),
+                        );
+                      },
                     ),
                   ],
                 ),

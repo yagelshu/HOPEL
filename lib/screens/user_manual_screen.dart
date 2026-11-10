@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:chopel_app/theme/app_theme.dart';
 import 'package:chopel_app/core/utils/app_constants.dart';
+import 'package:chopel_app/features/learning/medication_guide_screen.dart';
 
 class UserManualScreen extends StatelessWidget {
   const UserManualScreen({super.key});
@@ -44,7 +45,22 @@ class UserManualScreen extends StatelessWidget {
             _buildSection(
               title: 'ידע מקצועי ותרגול',
               icon: LucideIcons.brainCircuit,
-              content: '• מדריך תרופות: מכיל מידע קריטי על התרופות הנפוצות.\n• תרגול יומי: מבחני טריוויה המזכים בנקודות כשירות.\nניתן לעקוב אחר ההתקדמות ונקודות הכשירות במסך הפרופיל.',
+              content: '• מדריך תרופות שטח ומחשבון מינונים: מידע קריטי על תרופות, התוויות נגד ו-G6PD.\n• תרגול יומי: מבחני טריוויה המזכים בנקודות כשירות.\nניתן לעקוב אחר ההתקדמות ונקודות הכשירות במסך הפרופיל.',
+              action: OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: AppTheme.primaryGreen,
+                  side: BorderSide(color: AppTheme.primaryGreen.withValues(alpha: 0.5)),
+                  shape: const RoundedRectangleBorder(borderRadius: AppTheme.radiusMd),
+                ),
+                icon: const Icon(LucideIcons.pill, size: 16),
+                label: const Text('פתח מדריך תרופות שטח ומחשבון'),
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const MedicationGuideScreen()),
+                  );
+                },
+              ),
             ),
             _buildSection(
               title: 'ניהול כוננויות ותעסוקה מבצעית',
@@ -66,7 +82,12 @@ class UserManualScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildSection({required String title, required IconData icon, required String content}) {
+  Widget _buildSection({
+    required String title,
+    required IconData icon,
+    required String content,
+    Widget? action,
+  }) {
     return Padding(
       padding: const EdgeInsets.only(bottom: AppTheme.spacing24),
       child: Column(
@@ -97,6 +118,10 @@ class UserManualScreen extends StatelessWidget {
               height: 1.5,
             ),
           ),
+          if (action != null) ...[
+            const SizedBox(height: AppTheme.spacing12),
+            action,
+          ],
         ],
       ),
     );

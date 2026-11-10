@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:chopel_app/theme/app_theme.dart';
 
 enum HopalButtonVariant { primary, secondary, ghost, destructive }
@@ -52,6 +53,7 @@ class _HopalButtonState extends State<HopalButton> with SingleTickerProviderStat
 
   void _handleTapDown(TapDownDetails details) {
     if (widget.onPressed != null && !widget.isLoading) {
+      HapticFeedback.lightImpact();
       _controller.forward();
     }
   }
