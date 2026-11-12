@@ -23,6 +23,7 @@ import 'package:chopel_app/core/database/database_service.dart';
 import 'package:chopel_app/features/profile/deployment_summary_screen.dart';
 import 'package:chopel_app/screens/user_manual_screen.dart';
 import 'package:chopel_app/features/profile/soldiers_management_screen.dart';
+import 'package:chopel_app/features/profile/p2p_sync_screen.dart';
 import 'package:chopel_app/core/database/draft_service.dart';
 import 'package:chopel_app/features/medical_cases/providers.dart';
 import 'package:chopel_app/features/equipment/providers.dart';
@@ -1273,6 +1274,17 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                                   HopalFeedback.showError(context, 'שגיאה בסנכרון. אנא ודא שיש חיבור אינטרנט תקין.');
                                 }
                               }
+                            },
+                          ),
+                          HopalListTile(
+                            title: const Text('סנכרון שטח ללא קליטה (P2P Mesh)'),
+                            subtitle: const Text('העברת תיקים ישירות בין חובשים ב-Bluetooth/קוד ללא אינטרנט'),
+                            leadingIcon: LucideIcons.radioTower,
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(builder: (_) => const P2pSyncScreen()),
+                              );
                             },
                           ),
                           HopalListTile(

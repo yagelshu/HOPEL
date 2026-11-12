@@ -5,6 +5,7 @@ import 'package:chopel_app/core/auth/auth_service.dart';
 import 'package:chopel_app/core/models/note_model.dart';
 import 'package:chopel_app/core/repositories/notes_repository.dart';
 import 'package:chopel_app/core/utils/app_error_helper.dart';
+import 'package:chopel_app/features/dashboard/shift_handover_screen.dart';
 import 'package:chopel_app/theme/app_theme.dart';
 import 'package:chopel_app/theme/components/hopal_bottom_sheet.dart';
 import 'package:chopel_app/theme/components/hopal_button.dart';
@@ -288,6 +289,18 @@ class _NotesScreenState extends State<NotesScreen> with SingleTickerProviderStat
         elevation: 0,
         title: const Text('יומן והודעות', style: TextStyle(fontWeight: FontWeight.bold)),
         centerTitle: true,
+        actions: [
+          IconButton(
+            icon: const Icon(LucideIcons.fileSpreadsheet),
+            tooltip: 'דוח חפיפת משמרת',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const ShiftHandoverScreen()),
+              );
+            },
+          ),
+        ],
         bottom: TabBar(
           controller: _tabController,
           indicatorColor: AppTheme.primaryGreen,

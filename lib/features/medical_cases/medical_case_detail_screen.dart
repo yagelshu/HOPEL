@@ -17,6 +17,7 @@ import 'package:chopel_app/theme/components/hopal_text_field.dart';
 import 'package:chopel_app/theme/components/hopal_feedback.dart';
 import 'package:chopel_app/core/auth/auth_service.dart';
 import 'package:chopel_app/features/medical_cases/medical_case_create_screen.dart';
+import 'package:chopel_app/features/medical_cases/widgets/case_follow_up_widget.dart';
 import 'package:chopel_app/features/profile/soldier_medical_history_screen.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -677,6 +678,13 @@ class _MedicalCaseDetailScreenState extends ConsumerState<MedicalCaseDetailScree
                             ),
                         ],
                       ),
+                    ),
+
+                    const SizedBox(height: AppTheme.spacing32),
+                    CaseFollowUpWidget(
+                      caseId: widget.medicalCase.id,
+                      soldierId: widget.medicalCase.soldierId,
+                      soldierName: _soldierName,
                     ),
 
                     const SizedBox(height: AppTheme.spacing64),

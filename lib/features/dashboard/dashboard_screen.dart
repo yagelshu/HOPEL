@@ -27,6 +27,11 @@ import 'package:chopel_app/features/medical_cases/medical_case_create_screen.dar
 import 'package:chopel_app/features/equipment/equipment_list_screen.dart';
 import 'package:chopel_app/screens/profile_screen.dart';
 import 'package:chopel_app/features/notes/notes_screen.dart';
+import 'package:chopel_app/features/dashboard/shift_handover_screen.dart';
+import 'package:chopel_app/features/profile/p2p_sync_screen.dart';
+import 'package:chopel_app/core/services/outbreak_radar_service.dart';
+import 'package:chopel_app/features/dashboard/widgets/outbreak_radar_card.dart';
+import 'package:chopel_app/features/dashboard/widgets/dashboard_follow_ups_widget.dart';
 import 'package:chopel_app/features/onboarding/walkthrough_dialog.dart';
 import 'package:chopel_app/core/database/draft_service.dart';
 import 'package:chopel_app/core/services/standby_medics_service.dart';
@@ -140,6 +145,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
       body: SafeArea(
         child: metricsAsync.when(
           data: (metrics) {
+            final cases = ref.watch(medicalCasesProvider).value ?? [];
+            final soldiers = ref.watch(soldiersProvider).value ?? [];
+            final outbreakAlerts = OutbreakRadarService.detectOutbreaks(cases: cases, soldiers: soldiers);
+
             return RefreshIndicator(
               onRefresh: () async {
                 await AuthService().loadProfile();
@@ -169,6 +178,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
                   SliverToBoxAdapter(
                     child: _animateWidget(_buildHero(metrics), _heroFade, _heroSlide),
                   ),
+                  if (outbreakAlerts.isNotEmpty)
+                    SliverToBoxAdapter(
+                      child: OutbreakRadarCard(alerts: outbreakAlerts),
+                    ),
                   SliverToBoxAdapter(
                     child: _animateWidget(_buildPriorityActions(metrics), _cardFades[0]),
                   ),
@@ -177,6 +190,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
                   ),
                   SliverToBoxAdapter(
                     child: _animateWidget(_buildOperationalStatus(metrics), _cardFades[2]),
+                  ),
+                  const SliverToBoxAdapter(
+                    child: DashboardFollowUpsWidget(),
                   ),
                   SliverToBoxAdapter(
                     child: _animateWidget(_buildDailyTimeline(metrics), _timelineFade),
@@ -694,41 +710,85 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
   Widget _buildQuickActions() {
     return Padding(
       padding: const EdgeInsets.fromLTRB(AppTheme.spacing16, AppTheme.spacing32, AppTheme.spacing16, 0),
-      child: Row(
+      child: Column(
         children: [
-          Expanded(
-            child: HopalButton(
-              label: 'פנייה חדשה',
-              icon: LucideIcons.plusCircle,
-              isExpanded: true,
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 14),
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => const MedicalCaseCreateScreen(),
-                  ),
-                );
-              },
-            ),
+          Row(
+            children: [
+              Expanded(
+                child: HopalButton(
+                  label: 'פנייה חדשה',
+                  icon: LucideIcons.plusCircle,
+                  isExpanded: true,
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 14),
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const MedicalCaseCreateScreen(),
+                      ),
+                    );
+                  },
+                ),
+              ),
+              const SizedBox(width: AppTheme.spacing12),
+              Expanded(
+                child: HopalButton(
+                  label: 'יומן והודעות',
+                  icon: LucideIcons.notebookPen,
+                  isExpanded: true,
+                  variant: HopalButtonVariant.secondary,
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 14),
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const NotesScreen(),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
           ),
-          const SizedBox(width: AppTheme.spacing12),
-          Expanded(
-            child: HopalButton(
-              label: 'יומן והודעות',
-              icon: LucideIcons.notebookPen,
-              isExpanded: true,
-              variant: HopalButtonVariant.secondary,
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 14),
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => const NotesScreen(),
-                  ),
-                );
-              },
-            ),
+          const SizedBox(height: AppTheme.spacing12),
+          Row(
+            children: [
+              Expanded(
+                child: HopalButton(
+                  label: 'דוח חפיפה',
+                  icon: LucideIcons.fileSpreadsheet,
+                  isExpanded: true,
+                  variant: HopalButtonVariant.secondary,
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const ShiftHandoverScreen(),
+                      ),
+                    );
+                  },
+                ),
+              ),
+              const SizedBox(width: AppTheme.spacing12),
+              Expanded(
+                child: HopalButton(
+                  label: 'סנכרון שטח P2P',
+                  icon: LucideIcons.radioTower,
+                  isExpanded: true,
+                  variant: HopalButtonVariant.secondary,
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const P2pSyncScreen(),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
           ),
         ],
       ),
