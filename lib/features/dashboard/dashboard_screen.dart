@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/services.dart';
@@ -66,6 +68,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
   late Animation<Offset> _heroSlide;
   late List<Animation<double>> _cardFades;
   late Animation<double> _timelineFade;
+  StreamSubscription<List<ConnectivityResult>>? _connectivitySub;
+  bool _isOffline = false;
+  bool _isSyncingNow = false;
 
   @override
   void initState() {
@@ -95,7 +100,32 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
     }
 
     _checkFirstTimeSetup();
+    _initConnectivityWatch();
     _autoSyncDrafts();
+  }
+
+  void _initConnectivityWatch() {
+    try {
+      Connectivity().checkConnectivity().then((results) {
+        if (!mounted) return;
+        final offline = results.isNotEmpty && results.every((r) => r == ConnectivityResult.none);
+        if (offline != _isOffline) {
+          setState(() => _isOffline = offline);
+        }
+      }).catchError((_) {});
+
+      _connectivitySub = Connectivity().onConnectivityChanged.listen((results) {
+        if (!mounted) return;
+        final offline = results.isNotEmpty && results.every((r) => r == ConnectivityResult.none);
+        final wasOffline = _isOffline;
+        if (offline != _isOffline) {
+          setState(() => _isOffline = offline);
+        }
+        if (wasOffline && !offline) {
+          _autoSyncDrafts();
+        }
+      }, onError: (_) {});
+    } catch (_) {}
   }
 
   Future<void> _autoSyncDrafts() async {
@@ -127,6 +157,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
 
   @override
   void dispose() {
+    _connectivitySub?.cancel();
     _entranceController.dispose();
     super.dispose();
   }
@@ -265,6 +296,78 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
                         subtitle,
                         style: TextStyle(color: AppTheme.textSecondary, fontSize: 14, fontWeight: FontWeight.w500),
                         overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 6),
+                      ValueListenableBuilder<int>(
+                        valueListenable: DraftService.draftsCountNotifier,
+                        builder: (context, pendingDrafts, _) {
+                          final bool isOfflineOrPending = _isOffline || pendingDrafts > 0;
+                          final Color statusColor = isOfflineOrPending
+                              ? AppTheme.warningAmber
+                              : AppTheme.successGreen;
+                          final String statusLabel = _isSyncingNow
+                              ? 'מסנכרן מול הענן...'
+                              : _isOffline
+                                  ? 'מצב שטח / אופליין (נשמר מקומית)'
+                                  : pendingDrafts > 0
+                                      ? 'ממתין לסנכרון ($pendingDrafts)'
+                                      : 'מסונכרן לענן הפלוגתי';
+
+                          return GestureDetector(
+                            onTap: _isSyncingNow
+                                ? null
+                                : () async {
+                                    setState(() => _isSyncingNow = true);
+                                    try {
+                                      await _autoSyncDrafts();
+                                      ref.invalidate(dashboardMetricsProvider);
+                                      await ref.read(medicalCasesProvider.notifier).refresh();
+                                      if (context.mounted) {
+                                        HopalFeedback.showSuccess(
+                                          context,
+                                          _isOffline
+                                              ? 'עובד במצב שטח – כל הנתונים שמורים במכשיר ויסונכרנו בחזרת קליטה'
+                                              : 'הנתונים סונכרנו בהצלחה מול הענן הפלוגתי',
+                                        );
+                                      }
+                                    } catch (_) {}
+                                    if (mounted) setState(() => _isSyncingNow = false);
+                                  },
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                              decoration: BoxDecoration(
+                                color: statusColor.withValues(alpha: 0.12),
+                                borderRadius: AppTheme.radiusPill,
+                                border: Border.all(color: statusColor.withValues(alpha: 0.35)),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Container(
+                                    width: 7,
+                                    height: 7,
+                                    decoration: BoxDecoration(
+                                      color: statusColor,
+                                      shape: BoxShape.circle,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Flexible(
+                                    child: Text(
+                                      statusLabel,
+                                      style: TextStyle(
+                                        color: statusColor,
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
                       ),
                     ],
                   ),

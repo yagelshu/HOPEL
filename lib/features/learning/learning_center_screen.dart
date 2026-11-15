@@ -10,6 +10,7 @@ import 'package:chopel_app/models/learning_content.dart';
 import 'package:chopel_app/features/learning/learning_content_viewer_screen.dart';
 import 'package:chopel_app/features/learning/medication_guide_screen.dart';
 import 'package:chopel_app/features/learning/meditest_screen.dart';
+import 'package:chopel_app/features/learning/red_flags_guide_screen.dart';
 import 'package:chopel_app/features/learning/trivia_screen.dart';
 
 class LearningCenterScreen extends ConsumerStatefulWidget {
@@ -191,6 +192,57 @@ class _LearningCenterScreenState extends ConsumerState<LearningCenterScreen> {
                             ),
                           ),
                         ],
+                      ),
+                      const SizedBox(height: AppTheme.spacing12),
+                      InkWell(
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (context) => const RedFlagsGuideScreen()),
+                          );
+                        },
+                        borderRadius: AppTheme.radiusMd,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: AppTheme.spacing16, vertical: 14),
+                          decoration: BoxDecoration(
+                            color: AppTheme.criticalRed.withValues(alpha: 0.12),
+                            borderRadius: AppTheme.radiusMd,
+                            border: Border.all(color: AppTheme.criticalRed.withValues(alpha: 0.45)),
+                          ),
+                          child: Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(8),
+                                decoration: BoxDecoration(
+                                  color: AppTheme.criticalRed.withValues(alpha: 0.18),
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: Icon(LucideIcons.siren, color: AppTheme.criticalRed, size: 20),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'דגלים אדומים בשטח (Red Flags)',
+                                      style: TextStyle(
+                                        color: AppTheme.textPrimary,
+                                        fontSize: 14.5,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                    Text(
+                                      'מתי תלונה שגרתית מחייבת פינוי או בדיקת מט"ב דחופה',
+                                      style: TextStyle(color: AppTheme.textSecondary, fontSize: 12),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              Icon(LucideIcons.chevronLeft, color: AppTheme.criticalRed, size: 18),
+                            ],
+                          ),
+                        ),
                       ),
                       const SizedBox(height: AppTheme.spacing12),
                       InkWell(

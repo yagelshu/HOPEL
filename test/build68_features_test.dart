@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:chopel_app/core/services/battalion_staff_service.dart';
 import 'package:chopel_app/core/services/csv_export_service.dart';
+import 'package:chopel_app/features/learning/red_flags_guide_screen.dart';
 import 'package:chopel_app/features/medical_cases/widgets/inventory_dispense_sheet.dart';
 import 'package:chopel_app/models/medical_case.dart';
 import 'package:chopel_app/models/soldier.dart';
@@ -234,6 +235,16 @@ void main() {
       expect(casesCsv.startsWith('\uFEFF'), isTrue);
       expect(casesCsv, contains('בטיפול / מעקב'));
       expect(casesCsv, contains('"בדיקת מט""ב"'));
+    });
+
+    test('RedFlagsGuideScreen provides clinical pocket guide topics with red flags and actions', () {
+      expect(RedFlagsGuideScreen.topics.length, greaterThanOrEqualTo(7));
+      for (final topic in RedFlagsGuideScreen.topics) {
+        expect(topic.title, isNotEmpty);
+        expect(topic.redFlags, isNotEmpty);
+        expect(topic.mandatoryChecks, isNotEmpty);
+        expect(topic.immediateAction, isNotEmpty);
+      }
     });
   });
 }

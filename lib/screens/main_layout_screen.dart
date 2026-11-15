@@ -8,6 +8,7 @@ import 'package:chopel_app/theme/app_theme.dart';
 import 'package:chopel_app/features/dashboard/dashboard_screen.dart';
 import 'package:chopel_app/features/dashboard/providers.dart';
 import 'package:chopel_app/features/medical_cases/medical_cases_list_screen.dart';
+import 'package:chopel_app/features/medical_cases/providers.dart';
 import 'package:chopel_app/features/profile/soldiers_management_screen.dart';
 import 'package:chopel_app/features/equipment/equipment_list_screen.dart';
 import 'package:chopel_app/features/learning/learning_center_screen.dart';
@@ -31,133 +32,149 @@ class _MainLayoutScreenState extends ConsumerState<MainLayoutScreen> {
     }
   }
 
-  Widget _buildActiveScreen() {
-    switch (_currentIndex) {
-      case 0:
-        return DashboardScreen(
-          animateEntrance: widget.animateEntrance,
-          onSwitchTab: _switchTab,
-        );
-      case 1:
-        return const MedicalCasesListScreen();
-      case 2:
-        return const SoldiersManagementScreen(isEmbeddedTab: true);
-      case 3:
-        return const EquipmentListScreen();
-      case 4:
-        return const LearningCenterScreen();
-      default:
-        return DashboardScreen(
-          animateEntrance: widget.animateEntrance,
-          onSwitchTab: _switchTab,
-        );
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
+    final metricsAsync = ref.watch(dashboardMetricsProvider);
+    final casesAsync = ref.watch(medicalCasesProvider);
+
+    final int openCasesBadge = casesAsync.maybeWhen(
+      data: (cases) => cases.where((c) => c.status != 'COMPLETED' && c.status != 'CLOSED').length,
+      orElse: () => metricsAsync.value?.activeMedicalCases ?? 0,
+    );
+    final int missingEquipmentBadge = metricsAsync.value?.missingEquipment ?? 0;
+
     return ValueListenableBuilder<int>(
       valueListenable: AuthService().previewRevisionNotifier,
       builder: (context, revision, _) {
         final showPreviewBanner = AuthService().isPreviewingAsCombatMedic;
         final previewName = AuthService().effectiveUserName;
 
-        return Scaffold(
-          extendBody: true, // Allows body to scroll behind the floating nav bar
-          body: Column(
-            children: [
-              if (showPreviewBanner)
-                Container(
-                  width: double.infinity,
-                  color: AppTheme.warningAmber.withValues(alpha: 0.18),
-                  child: SafeArea(
-                    bottom: false,
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: AppTheme.spacing16, vertical: 8),
-                      child: Row(
-                        children: [
-                          Icon(LucideIcons.eye, size: 18, color: AppTheme.warningAmber),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: GestureDetector(
-                              onTap: () {
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(builder: (_) => const ProfileScreen()),
-                                );
-                              },
-                              child: Text(
-                                'תצוגת חובש: $previewName',
-                                style: TextStyle(
-                                  color: AppTheme.textPrimary,
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.bold,
+        return PopScope(
+          canPop: _currentIndex == 0,
+          onPopInvokedWithResult: (didPop, _) {
+            if (!didPop && _currentIndex != 0) {
+              setState(() => _currentIndex = 0);
+            }
+          },
+          child: Scaffold(
+            extendBody: true, // Allows body to scroll behind the floating nav bar
+            body: Column(
+              children: [
+                if (showPreviewBanner)
+                  Container(
+                    width: double.infinity,
+                    color: AppTheme.warningAmber.withValues(alpha: 0.18),
+                    child: SafeArea(
+                      bottom: false,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: AppTheme.spacing16, vertical: 8),
+                        child: Row(
+                          children: [
+                            Icon(LucideIcons.eye, size: 18, color: AppTheme.warningAmber),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: GestureDetector(
+                                onTap: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(builder: (_) => const ProfileScreen()),
+                                  );
+                                },
+                                child: Text(
+                                  'תצוגת חובש: $previewName',
+                                  style: TextStyle(
+                                    color: AppTheme.textPrimary,
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
                                 ),
-                                overflow: TextOverflow.ellipsis,
                               ),
                             ),
-                          ),
-                          const SizedBox(width: 8),
-                          TextButton(
-                            style: TextButton.styleFrom(
-                              backgroundColor: AppTheme.warningAmber,
-                              foregroundColor: Colors.black,
-                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                              minimumSize: Size.zero,
-                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            const SizedBox(width: 8),
+                            TextButton(
+                              style: TextButton.styleFrom(
+                                backgroundColor: AppTheme.warningAmber,
+                                foregroundColor: Colors.black,
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                minimumSize: Size.zero,
+                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              ),
+                              onPressed: () {
+                                AuthService().setCombatMedicPreview(false);
+                                ref.invalidate(dashboardMetricsProvider);
+                              },
+                              child: const Text(
+                                'חזרה לחופ"ל',
+                                style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                              ),
                             ),
-                            onPressed: () {
-                              AuthService().setCombatMedicPreview(false);
-                              ref.invalidate(dashboardMetricsProvider);
-                            },
-                            child: const Text(
-                              'חזרה לחופ"ל',
-                              style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
-                            ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     ),
                   ),
+                Expanded(
+                  child: IndexedStack(
+                    key: ValueKey('tabs_${showPreviewBanner}_$revision'),
+                    index: _currentIndex,
+                    children: [
+                      DashboardScreen(
+                        animateEntrance: widget.animateEntrance,
+                        onSwitchTab: _switchTab,
+                      ),
+                      const MedicalCasesListScreen(),
+                      const SoldiersManagementScreen(isEmbeddedTab: true),
+                      const EquipmentListScreen(),
+                      const LearningCenterScreen(),
+                    ],
+                  ),
                 ),
-              Expanded(
-                child: KeyedSubtree(
-                  key: ValueKey('tab_${_currentIndex}_${showPreviewBanner}_$revision'),
-                  child: _buildActiveScreen(),
-                ),
-              ),
-            ],
-          ),
-          bottomNavigationBar: SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.all(AppTheme.spacing16),
-              child: ClipRRect(
-                borderRadius: AppTheme.radiusPill,
-                child: BackdropFilter(
-                  filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-                  child: Container(
-                    height: 64,
-                    decoration: BoxDecoration(
-                      color: AppTheme.backgroundSecondary.withValues(alpha: 0.85),
-                      borderRadius: AppTheme.radiusPill,
-                      border: Border.all(color: AppTheme.borderSubtle),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.4),
-                          blurRadius: 20,
-                          offset: const Offset(0, 8),
-                        ),
-                      ],
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                      children: [
-                        _buildNavItem(0, LucideIcons.layoutDashboard, 'בית'),
-                        _buildNavItem(1, LucideIcons.activity, 'פניות'),
-                        _buildNavItem(2, LucideIcons.users, 'חיילים'),
-                        _buildNavItem(3, LucideIcons.briefcase, 'ציוד'),
-                        _buildNavItem(4, LucideIcons.bookOpen, 'ידע'),
-                      ],
+              ],
+            ),
+            bottomNavigationBar: SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.all(AppTheme.spacing16),
+                child: ClipRRect(
+                  borderRadius: AppTheme.radiusPill,
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+                    child: Container(
+                      height: 64,
+                      decoration: BoxDecoration(
+                        color: AppTheme.backgroundSecondary.withValues(alpha: 0.85),
+                        borderRadius: AppTheme.radiusPill,
+                        border: Border.all(color: AppTheme.borderSubtle),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.4),
+                            blurRadius: 20,
+                            offset: const Offset(0, 8),
+                          ),
+                        ],
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                        children: [
+                          _buildNavItem(0, LucideIcons.layoutDashboard, 'בית'),
+                          _buildNavItem(
+                            1,
+                            LucideIcons.activity,
+                            'פניות',
+                            badgeCount: openCasesBadge,
+                            badgeColor: AppTheme.warningAmber,
+                          ),
+                          _buildNavItem(2, LucideIcons.users, 'חיילים'),
+                          _buildNavItem(
+                            3,
+                            LucideIcons.briefcase,
+                            'ציוד',
+                            badgeCount: missingEquipmentBadge,
+                            badgeColor: AppTheme.criticalRed,
+                          ),
+                          _buildNavItem(4, LucideIcons.bookOpen, 'ידע'),
+                        ],
+                      ),
                     ),
                   ),
                 ),
@@ -169,7 +186,13 @@ class _MainLayoutScreenState extends ConsumerState<MainLayoutScreen> {
     );
   }
 
-  Widget _buildNavItem(int index, IconData icon, String label) {
+  Widget _buildNavItem(
+    int index,
+    IconData icon,
+    String label, {
+    int badgeCount = 0,
+    Color? badgeColor,
+  }) {
     final isSelected = _currentIndex == index;
     final color = isSelected ? AppTheme.textPrimary : AppTheme.militaryOlive;
 
@@ -195,7 +218,37 @@ class _MainLayoutScreenState extends ConsumerState<MainLayoutScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(icon, color: color, size: 24),
+              Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Icon(icon, color: color, size: 24),
+                  if (badgeCount > 0)
+                    Positioned(
+                      top: -5,
+                      left: -8,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                        constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+                        decoration: BoxDecoration(
+                          color: badgeColor ?? AppTheme.primaryGreen,
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: AppTheme.backgroundSecondary, width: 1.5),
+                        ),
+                        child: Center(
+                          child: Text(
+                            badgeCount > 99 ? '99+' : '$badgeCount',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 9,
+                              fontWeight: FontWeight.bold,
+                              height: 1.1,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
               const SizedBox(height: 2),
               Text(
                 label,

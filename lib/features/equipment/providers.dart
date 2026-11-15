@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:uuid/uuid.dart';
 import 'package:chopel_app/core/auth/auth_service.dart';
 import 'package:chopel_app/core/database/database_service.dart';
 import 'package:chopel_app/core/network/unit_service.dart';
@@ -289,6 +290,118 @@ class EquipmentNotifier extends AsyncNotifier<List<Equipment>> {
       final db = await DatabaseService().database;
       await db.update('equipment', {'quantity': newQty, 'status': newStatus}, where: 'id = ?', whereArgs: [id]);
     } catch (_) {}
+  }
+
+  /// Restocks all specified [itemIds] up to their `minimumRequired` standard in one 0ms operation.
+  Future<int> restockItemsToMinimum(List<String> itemIds) async {
+    if (itemIds.isEmpty) return 0;
+    final idSet = itemIds.toSet();
+    final currentList = state.value ?? [];
+    final updatedList = List<Equipment>.from(currentList);
+    final changedItems = <Equipment>[];
+
+    for (int i = 0; i < updatedList.length; i++) {
+      final item = updatedList[i];
+      if (idSet.contains(item.id) && item.quantity < item.minimumRequired) {
+        final restocked = item.copyWith(
+          quantity: item.minimumRequired,
+          status: item.status == 'EXPIRING_SOON' ? 'EXPIRING_SOON' : 'IN_STOCK',
+        );
+        updatedList[i] = restocked;
+        changedItems.add(restocked);
+      }
+    }
+
+    if (changedItems.isEmpty) return 0;
+
+    state = AsyncValue.data(updatedList);
+    final user = AuthService().currentUser;
+    if (user?.unitId != null) {
+      await _persistLocalCache(user!.unitId!, updatedList);
+    }
+    ref.invalidate(dashboardMetricsProvider);
+
+    try {
+      await Supabase.instance.client
+          .from('equipment')
+          .upsert(changedItems.map((e) => e.toSupabaseMap()).toList());
+    } catch (_) {}
+
+    return changedItems.length;
+  }
+
+  /// Transfers [transferQty] units from [sourceItemId] (e.g., Company Box) into [targetCategory] (e.g., Medic Vest).
+  Future<bool> transferBetweenCategories({
+    required String sourceItemId,
+    required String targetCategory,
+    required int transferQty,
+  }) async {
+    if (transferQty <= 0) return false;
+    final currentList = state.value ?? [];
+    final sourceIdx = currentList.indexWhere((e) => e.id == sourceItemId);
+    if (sourceIdx == -1) return false;
+
+    final sourceItem = currentList[sourceIdx];
+    if (sourceItem.quantity < transferQty) return false;
+
+    final updatedList = List<Equipment>.from(currentList);
+    final newSourceQty = sourceItem.quantity - transferQty;
+    final newSourceStatus = newSourceQty < sourceItem.minimumRequired
+        ? 'MISSING'
+        : (sourceItem.status == 'EXPIRING_SOON' ? 'EXPIRING_SOON' : 'IN_STOCK');
+
+    final updatedSource = sourceItem.copyWith(
+      quantity: newSourceQty,
+      status: newSourceStatus,
+    );
+    updatedList[sourceIdx] = updatedSource;
+
+    final targetIdx = updatedList.indexWhere(
+      (e) => e.category == targetCategory && e.name.trim() == sourceItem.name.trim(),
+    );
+
+    Equipment updatedTarget;
+    if (targetIdx != -1) {
+      final existingTarget = updatedList[targetIdx];
+      final newTargetQty = existingTarget.quantity + transferQty;
+      final newTargetStatus = newTargetQty < existingTarget.minimumRequired
+          ? 'MISSING'
+          : (existingTarget.status == 'EXPIRING_SOON' ? 'EXPIRING_SOON' : 'IN_STOCK');
+      updatedTarget = existingTarget.copyWith(
+        quantity: newTargetQty,
+        status: newTargetStatus,
+      );
+      updatedList[targetIdx] = updatedTarget;
+    } else {
+      updatedTarget = Equipment(
+        id: const Uuid().v4(),
+        unitId: sourceItem.unitId ?? AuthService().currentUser?.unitId,
+        name: sourceItem.name,
+        category: targetCategory,
+        quantity: transferQty,
+        minimumRequired: sourceItem.minimumRequired,
+        status: 'IN_STOCK',
+        itemType: sourceItem.itemType,
+      );
+      updatedList.add(updatedTarget);
+      updatedList.sort((a, b) => a.name.compareTo(b.name));
+    }
+
+    state = AsyncValue.data(updatedList);
+    final user = AuthService().currentUser;
+    if (user?.unitId != null) {
+      await _persistLocalCache(user!.unitId!, updatedList);
+    }
+    ref.invalidate(dashboardMetricsProvider);
+
+    try {
+      await Supabase.instance.client.from('equipment').upsert([
+        updatedSource.toSupabaseMap(),
+        updatedTarget.toSupabaseMap(),
+      ]);
+    } catch (_) {}
+
+    return true;
   }
 }
 

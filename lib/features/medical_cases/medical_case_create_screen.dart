@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
@@ -51,8 +52,11 @@ class _MedicalCaseCreateScreenState extends ConsumerState<MedicalCaseCreateScree
   List<DispensedItem> _dispensedItems = [];
 
   bool _isSaving = false;
+  bool _hasRestoredDraft = false;
   List<CasePhoto> _photos = [];
   final ImagePicker _picker = ImagePicker();
+
+  static const String _fullDraftKey = 'medical_case_full_draft_v1';
 
   @override
   void initState() {
@@ -77,16 +81,83 @@ class _MedicalCaseCreateScreenState extends ConsumerState<MedicalCaseCreateScree
 
   Future<void> _loadDraft() async {
     final prefs = await SharedPreferences.getInstance();
+    final fullRaw = prefs.getString(_fullDraftKey);
+    if (fullRaw != null && fullRaw.isNotEmpty) {
+      try {
+        final map = jsonDecode(fullRaw) as Map<String, dynamic>;
+        final savedDesc = map['description']?.toString() ?? '';
+        final savedSoldierId = map['soldier_id']?.toString();
+        if (savedDesc.trim().isNotEmpty || (savedSoldierId != null && savedSoldierId.isNotEmpty)) {
+          if (!mounted) return;
+          setState(() {
+            if (widget.initialSoldierId == null && savedSoldierId != null && savedSoldierId.isNotEmpty) {
+              _selectedSoldierId = savedSoldierId;
+            }
+            if (savedDesc.isNotEmpty) {
+              _descController.text = savedDesc;
+            }
+            _selectedOutcome = map['outcome']?.toString() ?? _selectedOutcome;
+            _selectedCategory = map['category']?.toString() ?? _selectedCategory;
+            _selectedSeverity = map['severity']?.toString() ?? _selectedSeverity;
+            _addToMatabQueue = map['add_to_matab_queue'] == true;
+            _hasRestoredDraft = true;
+          });
+          return;
+        }
+      } catch (_) {}
+    }
+
     final draft = prefs.getString('medical_case_draft');
     if (draft != null && draft.isNotEmpty && mounted) {
-      setState(() => _descController.text = draft);
+      setState(() {
+        _descController.text = draft;
+        _hasRestoredDraft = true;
+      });
     }
   }
 
   Future<void> _saveDraft() async {
     if (widget.existingCase == null) {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('medical_case_draft', _descController.text);
+      final text = _descController.text;
+      await prefs.setString('medical_case_draft', text);
+      if (text.trim().isEmpty && _selectedSoldierId == null) {
+        await prefs.remove(_fullDraftKey);
+      } else {
+        await prefs.setString(
+          _fullDraftKey,
+          jsonEncode({
+            'soldier_id': _selectedSoldierId,
+            'description': text,
+            'outcome': _selectedOutcome,
+            'category': _selectedCategory,
+            'severity': _selectedSeverity,
+            'add_to_matab_queue': _addToMatabQueue,
+            'updated_at': DateTime.now().toIso8601String(),
+          }),
+        );
+      }
+    }
+  }
+
+  Future<void> _clearDraftState() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('medical_case_draft');
+    await prefs.remove(_fullDraftKey);
+    if (mounted) {
+      setState(() {
+        if (widget.initialSoldierId == null) {
+          _selectedSoldierId = null;
+        }
+        _descController.clear();
+        _selectedOutcome = 'COMPLETED';
+        _selectedCategory = 'שגרת מרפאה';
+        _selectedSeverity = 'שגרה';
+        _addToMatabQueue = false;
+        _dispensedItems = [];
+        _photos = [];
+        _hasRestoredDraft = false;
+      });
     }
   }
 
@@ -111,6 +182,45 @@ class _MedicalCaseCreateScreenState extends ConsumerState<MedicalCaseCreateScree
     'הוצאת גימלים',
   ];
 
+  final List<Map<String, String>> _clinicalPresets = const [
+    {
+      'title': 'כאב גרון / צינון',
+      'text': 'מתלונן על כאב גרון וגודש באף. בבדיקה: ללא קושי בבליעת רוק או פתיחת פה, ללא קוצר נשימה. הונחה לשתייה מרובה ומנוחה.',
+    },
+    {
+      'title': 'גסטרו / שלשולים',
+      'text': 'מתלונן על שלשולים וכאבי בטן. בבדיקה: ללא דם בצואה, ללא הקאות בלתי פוסקות, בטן רכה ללא גירוי צפקי, ריריות לחות. הונחה לשתייה מרובה.',
+    },
+    {
+      'title': 'כאב גב / שרירים',
+      'text': 'מתלונן על כאב גב/שרירים לאחר מאמץ. בבדיקה: ללא חבלה ישירה, ללא הקרנה לגפיים או חסר נוירולוגי, תנועה שמורה.',
+    },
+    {
+      'title': 'שפשפת / גירוי עורי',
+      'text': 'גירוי עורי ואודם מקומי באזור המפשעה/ירכיים. ללא סימני זיהום משני או הפרשה מוגלתית. הונחה להיגיינה מקומית ומריחת משחה.',
+    },
+    {
+      'title': 'כאב ראש / עייפות',
+      'text': 'מתלונן על כאב ראש כללי. בבדיקה: בהכרה מלאה, ללא קשיון עורף, ללא הפרעות ראייה או הקאות, שלל חבלת ראש. הונחה לשתייה ומנוחה.',
+    },
+    {
+      'title': 'חבלה קלה / שפשוף',
+      'text': 'פציעה שטחית בגפה. בוצעה שטיפה וחיטוי מקומי, חבישה נקייה. טטנוס בתוקף, תחושה ותנועה שמורות.',
+    },
+  ];
+
+  void _applyClinicalPreset(Map<String, String> preset) {
+    final text = preset['text'] ?? '';
+    if (text.isEmpty) return;
+    final current = _descController.text.trim();
+    if (current.isEmpty) {
+      _descController.text = text;
+    } else if (!current.contains(text)) {
+      _descController.text = '$current\n$text';
+    }
+    _saveDraft();
+  }
+
   void _addTag(String tag) {
     final current = _descController.text;
     if (current.isEmpty) {
@@ -126,6 +236,7 @@ class _MedicalCaseCreateScreenState extends ConsumerState<MedicalCaseCreateScree
         _selectedCategory = BattalionStaffService.matabCategory;
       });
     }
+    _saveDraft();
   }
 
   Future<String?> _askComplaintTag({String? currentTag, String? imageUri}) async {
@@ -701,6 +812,7 @@ class _MedicalCaseCreateScreenState extends ConsumerState<MedicalCaseCreateScree
                                 ),
                                 onTap: () {
                                   setState(() => _selectedSoldierId = s.id);
+                                  _saveDraft();
                                   Navigator.pop(context);
                                 },
                               );
@@ -934,6 +1046,9 @@ class _MedicalCaseCreateScreenState extends ConsumerState<MedicalCaseCreateScree
         }
         await DraftService.saveDraft(payload);
         await _deductDispensedItems();
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.remove('medical_case_draft');
+        await prefs.remove(_fullDraftKey);
         if (mounted) {
           HopalFeedback.showSuccess(context, 'אין קליטה - התיק והמלאי עודכנו בטלפון ויסונכרנו בהמשך');
           Navigator.pop(context);
@@ -952,6 +1067,7 @@ class _MedicalCaseCreateScreenState extends ConsumerState<MedicalCaseCreateScree
     if (widget.existingCase == null) {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove('medical_case_draft');
+      await prefs.remove(_fullDraftKey);
       if (!mounted) return;
     }
 
@@ -996,6 +1112,41 @@ class _MedicalCaseCreateScreenState extends ConsumerState<MedicalCaseCreateScree
             padding: const EdgeInsets.symmetric(horizontal: AppTheme.spacing16, vertical: AppTheme.spacing24),
             sliver: SliverList(
               delegate: SliverChildListDelegate([
+                if (_hasRestoredDraft && widget.existingCase == null) ...[
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: AppTheme.infoBlue.withValues(alpha: 0.14),
+                      borderRadius: AppTheme.radiusMd,
+                      border: Border.all(color: AppTheme.infoBlue.withValues(alpha: 0.45)),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(LucideIcons.history, size: 18, color: AppTheme.infoBlue),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'שוחזרה טיוטה שנשמרה אוטומטית מהפנייה הקודמת',
+                            style: TextStyle(
+                              color: AppTheme.textPrimary,
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                        TextButton(
+                          style: TextButton.styleFrom(
+                            visualDensity: VisualDensity.compact,
+                            foregroundColor: AppTheme.criticalRed,
+                          ),
+                          onPressed: _clearDraftState,
+                          child: const Text('נקה טיוטה', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: AppTheme.spacing16),
+                ],
                 HopalFormSection(
                   title: 'חייל מטופל',
                   children: [
@@ -1204,6 +1355,46 @@ class _MedicalCaseCreateScreenState extends ConsumerState<MedicalCaseCreateScree
                       }).toList(),
                     ),
                     const SizedBox(height: AppTheme.spacing16),
+                    Row(
+                      children: [
+                        Icon(LucideIcons.wandSparkles, size: 15, color: AppTheme.infoBlue),
+                        const SizedBox(width: 6),
+                        Text(
+                          'מילוי אנמנזה מהיר (לפי תלונה נפוצה):',
+                          style: TextStyle(
+                            color: AppTheme.textSecondary,
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        children: _clinicalPresets.map((preset) {
+                          return Padding(
+                            padding: const EdgeInsets.only(left: 8),
+                            child: ActionChip(
+                              avatar: Icon(LucideIcons.clipboardCheck, size: 14, color: AppTheme.infoBlue),
+                              label: Text(
+                                preset['title']!,
+                                style: TextStyle(
+                                  color: AppTheme.textPrimary,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              backgroundColor: AppTheme.backgroundSecondary,
+                              side: BorderSide(color: AppTheme.infoBlue.withValues(alpha: 0.4)),
+                              onPressed: () => _applyClinicalPreset(preset),
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                    ),
+                    const SizedBox(height: AppTheme.spacing12),
                     HopalTextField(
                       controller: _descController,
                       hint: 'תיאור מילולי חופשי (אופציונלי)...',

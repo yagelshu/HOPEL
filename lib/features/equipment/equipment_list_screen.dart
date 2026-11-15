@@ -542,6 +542,287 @@ class _EquipmentListScreenState extends ConsumerState<EquipmentListScreen> {
     return '$header\n\n$lines';
   }
 
+  void _showRestockShipmentSheet(
+    BuildContext context, {
+    required List<Equipment> scopeItems,
+    required String scopeLabel,
+  }) {
+    final missingItems = scopeItems.where((e) => e.quantity < e.minimumRequired).toList();
+    if (missingItems.isEmpty) {
+      HopalFeedback.showInfo(context, 'כל הפריטים ב-$scopeLabel מלאים לתקן!');
+      return;
+    }
+
+    final selectedIds = <String>{for (final e in missingItems) e.id};
+    bool isSubmitting = false;
+
+    HopalBottomSheet.show(
+      context: context,
+      title: 'השלמת חוסרים ממשלוח ($scopeLabel)',
+      child: StatefulBuilder(
+        builder: (sheetCtx, setModalState) {
+          return Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                'סמן את הפריטים שהגיעו במשלוח מהחוג"ד כדי להשלים את הכמות שלהם לתקן בלחיצה אחת:',
+                style: TextStyle(color: AppTheme.textSecondary, fontSize: 13),
+              ),
+              const SizedBox(height: 12),
+              ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxHeight: MediaQuery.of(sheetCtx).size.height * 0.45,
+                ),
+                child: ListView.separated(
+                  shrinkWrap: true,
+                  itemCount: missingItems.length,
+                  separatorBuilder: (_, __) => Divider(color: AppTheme.borderSubtle, height: 1),
+                  itemBuilder: (ctx, i) {
+                    final item = missingItems[i];
+                    final isChecked = selectedIds.contains(item.id);
+                    final deficit = item.minimumRequired - item.quantity;
+                    return CheckboxListTile(
+                      value: isChecked,
+                      activeColor: AppTheme.primaryGreen,
+                      checkColor: AppTheme.onPrimaryGreen,
+                      contentPadding: EdgeInsets.zero,
+                      title: Text(
+                        item.name,
+                        style: TextStyle(
+                          color: AppTheme.textPrimary,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                        ),
+                      ),
+                      subtitle: Text(
+                        'במלאי: ${item.quantity} מתוך ${item.minimumRequired} (הוספת +$deficit יח\')',
+                        style: TextStyle(color: AppTheme.warningAmber, fontSize: 12),
+                      ),
+                      onChanged: (val) {
+                        setModalState(() {
+                          if (val == true) {
+                            selectedIds.add(item.id);
+                          } else {
+                            selectedIds.remove(item.id);
+                          }
+                        });
+                      },
+                    );
+                  },
+                ),
+              ),
+              const SizedBox(height: 16),
+              HopalButton(
+                label: 'השלם ${selectedIds.length} פריטים לתקן מלא',
+                icon: LucideIcons.packageCheck,
+                isLoading: isSubmitting,
+                onPressed: selectedIds.isEmpty
+                    ? null
+                    : () async {
+                        setModalState(() => isSubmitting = true);
+                        final count = await ref
+                            .read(equipmentProvider.notifier)
+                            .restockItemsToMinimum(selectedIds.toList());
+                        if (sheetCtx.mounted) Navigator.pop(sheetCtx);
+                        if (context.mounted) {
+                          HopalFeedback.showSuccess(
+                            context,
+                            '$count פריטים הושלמו לתקן מלא ב-$scopeLabel!',
+                          );
+                        }
+                      },
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  void _showTransferFromBoxSheet(
+    BuildContext context, {
+    required List<Equipment> eqList,
+    required List<_KitScope> scopes,
+    required _KitScope activeScope,
+  }) {
+    final boxItems = eqList.where((e) => e.isCompanyBox && e.quantity > 0).toList()
+      ..sort((a, b) => a.name.compareTo(b.name));
+    final vestScopes = scopes.where((s) => s.key != 'box').toList();
+
+    if (boxItems.isEmpty) {
+      HopalFeedback.showError(context, 'אין פריטים עם מלאי זמין בארגז החופ"ל להעברה');
+      return;
+    }
+    if (vestScopes.isEmpty) {
+      HopalFeedback.showError(context, 'לא נמצא וסט יעד להעברה');
+      return;
+    }
+
+    _KitScope selectedTargetVest =
+        vestScopes.where((s) => s.key == activeScope.key).firstOrNull ?? vestScopes.first;
+    Equipment selectedSourceItem = boxItems.first;
+    int transferQty = 1;
+    bool isTransferring = false;
+
+    HopalBottomSheet.show(
+      context: context,
+      title: 'העברת ציוד מארגז חופ"ל לווסט',
+      child: StatefulBuilder(
+        builder: (sheetCtx, setModalState) {
+          final maxQty = selectedSourceItem.quantity.clamp(1, 999);
+          if (transferQty > maxQty) transferQty = maxQty;
+
+          return Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                'העבר ציוד מארגז החופ"ל הפלוגתי ישירות לווסט חובש (מפחית מהארגז ומוסיף לווסט בפעולה אחת):',
+                style: TextStyle(color: AppTheme.textSecondary, fontSize: 13),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                '1. בחר פריט מתוך ארגז חופ"ל:',
+                style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.bold, fontSize: 13),
+              ),
+              const SizedBox(height: 6),
+              DropdownButtonFormField<String>(
+                initialValue: selectedSourceItem.id,
+                dropdownColor: AppTheme.backgroundSecondary,
+                decoration: InputDecoration(
+                  filled: true,
+                  fillColor: AppTheme.backgroundPrimary,
+                  border: const OutlineInputBorder(borderRadius: AppTheme.radiusMd),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                ),
+                items: boxItems.map((item) {
+                  return DropdownMenuItem<String>(
+                    value: item.id,
+                    child: Text(
+                      '${item.name} (זמין בארגז: ${item.quantity})',
+                      style: TextStyle(color: AppTheme.textPrimary, fontSize: 13.5),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  );
+                }).toList(),
+                onChanged: (val) {
+                  if (val == null) return;
+                  final found = boxItems.where((e) => e.id == val).firstOrNull;
+                  if (found != null) {
+                    setModalState(() {
+                      selectedSourceItem = found;
+                      transferQty = 1;
+                    });
+                  }
+                },
+              ),
+              const SizedBox(height: 14),
+              Text(
+                '2. בחר וסט יעד:',
+                style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.bold, fontSize: 13),
+              ),
+              const SizedBox(height: 6),
+              DropdownButtonFormField<String>(
+                initialValue: selectedTargetVest.key,
+                dropdownColor: AppTheme.backgroundSecondary,
+                decoration: InputDecoration(
+                  filled: true,
+                  fillColor: AppTheme.backgroundPrimary,
+                  border: const OutlineInputBorder(borderRadius: AppTheme.radiusMd),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                ),
+                items: vestScopes.map((scope) {
+                  return DropdownMenuItem<String>(
+                    value: scope.key,
+                    child: Text(
+                      scope.label,
+                      style: TextStyle(color: AppTheme.textPrimary, fontSize: 13.5),
+                    ),
+                  );
+                }).toList(),
+                onChanged: (val) {
+                  if (val == null) return;
+                  final found = vestScopes.where((s) => s.key == val).firstOrNull;
+                  if (found != null) {
+                    setModalState(() => selectedTargetVest = found);
+                  }
+                },
+              ),
+              const SizedBox(height: 14),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                decoration: BoxDecoration(
+                  color: AppTheme.backgroundPrimary,
+                  borderRadius: AppTheme.radiusMd,
+                  border: Border.all(color: AppTheme.borderSubtle),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'כמות להעברה:',
+                      style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.bold),
+                    ),
+                    Row(
+                      children: [
+                        IconButton(
+                          icon: Icon(LucideIcons.minusCircle, color: AppTheme.textSecondary),
+                          onPressed: transferQty > 1
+                              ? () => setModalState(() => transferQty--)
+                              : null,
+                        ),
+                        Text(
+                          '$transferQty',
+                          style: TextStyle(
+                            color: AppTheme.primaryGreen,
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        IconButton(
+                          icon: Icon(LucideIcons.plusCircle, color: AppTheme.primaryGreen),
+                          onPressed: transferQty < maxQty
+                              ? () => setModalState(() => transferQty++)
+                              : null,
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 18),
+              HopalButton(
+                label: 'העבר $transferQty יח\' ל-${selectedTargetVest.label}',
+                icon: LucideIcons.arrowLeftRight,
+                isLoading: isTransferring,
+                onPressed: () async {
+                  setModalState(() => isTransferring = true);
+                  final ok = await ref.read(equipmentProvider.notifier).transferBetweenCategories(
+                        sourceItemId: selectedSourceItem.id,
+                        targetCategory: selectedTargetVest.targetCategory,
+                        transferQty: transferQty,
+                      );
+                  if (sheetCtx.mounted) Navigator.pop(sheetCtx);
+                  if (context.mounted) {
+                    if (ok) {
+                      HopalFeedback.showSuccess(
+                        context,
+                        'הועברו $transferQty יח\' של ${selectedSourceItem.name} ל-${selectedTargetVest.label}',
+                      );
+                    } else {
+                      HopalFeedback.showError(context, 'לא ניתן לבצע את ההעברה');
+                    }
+                  }
+                },
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
   void _showCatCheckModal() {
     final lotController = TextEditingController();
     bool isOpenOnVest = true;
@@ -934,29 +1215,87 @@ class _EquipmentListScreenState extends ConsumerState<EquipmentListScreen> {
                           horizontal: AppTheme.spacing16,
                           vertical: AppTheme.spacing8,
                         ),
-                        child: Row(
+                        child: Column(
                           children: [
-                            Expanded(
-                              flex: 5,
-                              child: HopalButton(
-                                label: 'בדיקת חסם עורקים',
-                                icon: LucideIcons.shieldCheck,
-                                variant: HopalButtonVariant.secondary,
-                                onPressed: _showCatCheckModal,
-                              ),
-                            ),
-                            if (isCompanyMedic && unitHasMissing) ...[
-                              const SizedBox(width: AppTheme.spacing8),
-                              Expanded(
-                                flex: 5,
-                                child: HopalButton(
-                                  label: 'שלח חוסרים לחוג"ד',
-                                  icon: LucideIcons.messageCircle,
-                                  onPressed: () => BattalionMedicHelper.sendReportToHogad(
-                                    context,
-                                    _buildHogadMissingReport(eqList),
+                            Row(
+                              children: [
+                                Expanded(
+                                  flex: 5,
+                                  child: HopalButton(
+                                    label: 'בדיקת חסם עורקים',
+                                    icon: LucideIcons.shieldCheck,
+                                    variant: HopalButtonVariant.secondary,
+                                    onPressed: _showCatCheckModal,
                                   ),
                                 ),
+                                if (isCompanyMedic && unitHasMissing) ...[
+                                  const SizedBox(width: AppTheme.spacing8),
+                                  Expanded(
+                                    flex: 5,
+                                    child: HopalButton(
+                                      label: 'שלח חוסרים לחוג"ד',
+                                      icon: LucideIcons.messageCircle,
+                                      onPressed: () => BattalionMedicHelper.sendReportToHogad(
+                                        context,
+                                        _buildHogadMissingReport(eqList),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                            if (missingInScopeCount > 0 || isCompanyMedic) ...[
+                              const SizedBox(height: 8),
+                              Row(
+                                children: [
+                                  if (missingInScopeCount > 0)
+                                    Expanded(
+                                      child: OutlinedButton.icon(
+                                        style: OutlinedButton.styleFrom(
+                                          foregroundColor: AppTheme.primaryGreen,
+                                          side: BorderSide(color: AppTheme.primaryGreen.withValues(alpha: 0.5)),
+                                          padding: const EdgeInsets.symmetric(vertical: 11, horizontal: 10),
+                                          shape: const RoundedRectangleBorder(borderRadius: AppTheme.radiusMd),
+                                        ),
+                                        icon: const Icon(LucideIcons.packageCheck, size: 16),
+                                        label: Text(
+                                          'השלמת חוסרים ($missingInScopeCount)',
+                                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12.5),
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                        onPressed: () => _showRestockShipmentSheet(
+                                          context,
+                                          scopeItems: items,
+                                          scopeLabel: activeScope.label,
+                                        ),
+                                      ),
+                                    ),
+                                  if (missingInScopeCount > 0 && isCompanyMedic)
+                                    const SizedBox(width: 8),
+                                  if (isCompanyMedic)
+                                    Expanded(
+                                      child: OutlinedButton.icon(
+                                        style: OutlinedButton.styleFrom(
+                                          foregroundColor: AppTheme.infoBlue,
+                                          side: BorderSide(color: AppTheme.infoBlue.withValues(alpha: 0.5)),
+                                          padding: const EdgeInsets.symmetric(vertical: 11, horizontal: 10),
+                                          shape: const RoundedRectangleBorder(borderRadius: AppTheme.radiusMd),
+                                        ),
+                                        icon: const Icon(LucideIcons.arrowLeftRight, size: 16),
+                                        label: const Text(
+                                          'העברה מארגז לווסט',
+                                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12.5),
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                        onPressed: () => _showTransferFromBoxSheet(
+                                          context,
+                                          eqList: eqList,
+                                          scopes: scopes,
+                                          activeScope: activeScope,
+                                        ),
+                                      ),
+                                    ),
+                                ],
                               ),
                             ],
                           ],

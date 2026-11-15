@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:chopel_app/core/utils/platoon_helper.dart';
 import 'package:chopel_app/features/learning/medication_guide_screen.dart';
+import 'package:chopel_app/features/learning/red_flags_guide_screen.dart';
 import 'package:chopel_app/features/medical_cases/medical_case_detail_screen.dart';
 import 'package:chopel_app/features/profile/soldier_medical_history_screen.dart';
 import 'package:chopel_app/models/equipment.dart';
@@ -69,10 +70,19 @@ class CommandSearchSheet {
                     return eq.name.toLowerCase().contains(q) || eq.category.toLowerCase().contains(q);
                   }).take(6).toList();
 
+            final matchedRedFlags = q.isEmpty
+                ? <RedFlagTopic>[]
+                : RedFlagsGuideScreen.topics.where((t) {
+                    return t.title.toLowerCase().contains(q) ||
+                        t.subtitle.toLowerCase().contains(q) ||
+                        t.redFlags.any((f) => f.toLowerCase().contains(q));
+                  }).take(4).toList();
+
             final hasAnyResults = matchedSoldiers.isNotEmpty ||
                 matchedCases.isNotEmpty ||
                 matchedMeds.isNotEmpty ||
-                matchedEquipment.isNotEmpty;
+                matchedEquipment.isNotEmpty ||
+                matchedRedFlags.isNotEmpty;
 
             return Container(
               height: MediaQuery.of(sheetCtx).size.height * 0.82,
@@ -279,6 +289,40 @@ class CommandSearchSheet {
                                             context,
                                             MaterialPageRoute(
                                               builder: (_) => MedicationGuideScreen(initialMedicationId: med.id),
+                                            ),
+                                          );
+                                        },
+                                      );
+                                    }),
+                                    const SizedBox(height: 10),
+                                  ],
+                                  if (matchedRedFlags.isNotEmpty) ...[
+                                    _buildSectionHeader('דגלים אדומים בשטח (${matchedRedFlags.length})', LucideIcons.siren),
+                                    ...matchedRedFlags.map((topic) {
+                                      return ListTile(
+                                        dense: true,
+                                        leading: CircleAvatar(
+                                          radius: 17,
+                                          backgroundColor: AppTheme.criticalRed.withValues(alpha: 0.15),
+                                          child: Icon(LucideIcons.siren, size: 15, color: AppTheme.criticalRed),
+                                        ),
+                                        title: Text(
+                                          topic.title,
+                                          style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.bold),
+                                        ),
+                                        subtitle: Text(
+                                          topic.subtitle,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: TextStyle(color: AppTheme.textSecondary, fontSize: 12),
+                                        ),
+                                        trailing: Icon(LucideIcons.chevronLeft, size: 16, color: AppTheme.textSecondary),
+                                        onTap: () {
+                                          Navigator.pop(sheetCtx);
+                                          Navigator.push(
+                                            context,
+                                            MaterialPageRoute(
+                                              builder: (_) => RedFlagsGuideScreen(initialTopicId: topic.id),
                                             ),
                                           );
                                         },
