@@ -19,6 +19,9 @@ import 'package:chopel_app/core/utils/platoon_helper.dart';
 import 'package:chopel_app/core/auth/auth_service.dart';
 import 'package:chopel_app/features/medical_cases/providers.dart';
 import 'package:chopel_app/features/dashboard/providers.dart';
+import 'package:chopel_app/features/equipment/providers.dart';
+import 'package:chopel_app/core/services/battalion_staff_service.dart';
+import 'package:chopel_app/features/medical_cases/widgets/inventory_dispense_sheet.dart';
 import 'package:chopel_app/core/ai/medical_copilot_service.dart';
 import 'package:chopel_app/models/medical_case.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -44,6 +47,8 @@ class _MedicalCaseCreateScreenState extends ConsumerState<MedicalCaseCreateScree
   String _selectedOutcome = 'COMPLETED';
   String _selectedCategory = 'שגרת מרפאה';
   String _selectedSeverity = 'שגרה';
+  bool _addToMatabQueue = false;
+  List<DispensedItem> _dispensedItems = [];
 
   bool _isSaving = false;
   List<CasePhoto> _photos = [];
@@ -58,6 +63,7 @@ class _MedicalCaseCreateScreenState extends ConsumerState<MedicalCaseCreateScree
       _selectedOutcome = widget.existingCase!.status;
       _selectedCategory = widget.existingCase!.category ?? 'שגרת מרפאה';
       _selectedSeverity = widget.existingCase!.severity ?? 'שגרה';
+      _addToMatabQueue = BattalionStaffService.isCaseInMatabQueue(widget.existingCase!);
       _photos = List<CasePhoto>.from(widget.existingCase!.photos);
     } else {
       if (widget.initialSoldierId != null) {
@@ -111,6 +117,14 @@ class _MedicalCaseCreateScreenState extends ConsumerState<MedicalCaseCreateScree
       _descController.text = tag;
     } else {
       _descController.text = '$current, $tag';
+    }
+    if (tag == 'בקשת תור לרופא') {
+      setState(() {
+        _selectedOutcome = 'REQUIRES_ATTENTION';
+        _selectedSeverity = 'דחוף';
+        _addToMatabQueue = true;
+        _selectedCategory = BattalionStaffService.matabCategory;
+      });
     }
   }
 
@@ -833,6 +847,30 @@ class _MedicalCaseCreateScreenState extends ConsumerState<MedicalCaseCreateScree
     );
   }
 
+  Future<void> _openDispensePicker() async {
+    final allEquipment = ref.read(equipmentProvider).value ?? [];
+    final picked = await InventoryDispenseHelper.showPickerSheet(
+      context,
+      allEquipment: allEquipment,
+      initialSelection: _dispensedItems,
+    );
+    if (picked != null && mounted) {
+      setState(() {
+        _dispensedItems = picked;
+      });
+    }
+  }
+
+  Future<void> _deductDispensedItems() async {
+    if (_dispensedItems.isEmpty) return;
+    final notifier = ref.read(equipmentProvider.notifier);
+    for (final item in _dispensedItems) {
+      if (item.quantity > 0) {
+        await notifier.adjustQuantity(item.equipmentId, -item.quantity);
+      }
+    }
+  }
+
   Future<void> _handleCreate() async {
     if (_selectedSoldierId == null) {
       HopalFeedback.showError(context, 'יש לבחור חייל');
@@ -846,11 +884,23 @@ class _MedicalCaseCreateScreenState extends ConsumerState<MedicalCaseCreateScree
 
     setState(() => _isSaving = true);
 
+    String finalDescription = _descController.text.trim();
+    final dispensedLine = InventoryDispenseHelper.formatDispensedSummary(_dispensedItems);
+    if (dispensedLine.isNotEmpty && !finalDescription.contains(dispensedLine)) {
+      finalDescription = '$finalDescription\n$dispensedLine';
+    }
+
+    final effectiveCategory = (_selectedOutcome != 'COMPLETED' && _addToMatabQueue)
+        ? BattalionStaffService.matabCategory
+        : (_selectedCategory == BattalionStaffService.matabCategory && !_addToMatabQueue
+            ? 'שגרת מרפאה'
+            : _selectedCategory);
+
     final payload = {
       'soldier_id': _selectedSoldierId,
       'status': _selectedOutcome,
-      'description': _descController.text.trim(),
-      'category': _selectedCategory,
+      'description': finalDescription,
+      'category': effectiveCategory,
       'severity': _selectedSeverity,
       'updated_date': DateTime.now().toIso8601String(),
       'image_path': MedicalCase.encodePhotos(_photos),
@@ -883,8 +933,9 @@ class _MedicalCaseCreateScreenState extends ConsumerState<MedicalCaseCreateScree
           return;
         }
         await DraftService.saveDraft(payload);
+        await _deductDispensedItems();
         if (mounted) {
-          HopalFeedback.showSuccess(context, 'אין קליטה - התיק נשמר בטלפון ויסונכרן אוטומטית בהמשך');
+          HopalFeedback.showSuccess(context, 'אין קליטה - התיק והמלאי עודכנו בטלפון ויסונכרנו בהמשך');
           Navigator.pop(context);
         }
         return;
@@ -893,6 +944,8 @@ class _MedicalCaseCreateScreenState extends ConsumerState<MedicalCaseCreateScree
       setState(() => _isSaving = false);
       return;
     }
+
+    await _deductDispensedItems();
 
     if (!mounted) return;
 
@@ -906,13 +959,19 @@ class _MedicalCaseCreateScreenState extends ConsumerState<MedicalCaseCreateScree
     ref.read(medicalCasesProvider.notifier).refresh();
     ref.invalidate(dashboardMetricsProvider);
 
-    HopalFeedback.showSuccess(context, widget.existingCase == null ? 'הפנייה הרפואית נפתחה בהצלחה' : 'הפנייה הרפואית עודכנה בהצלחה');
+    HopalFeedback.showSuccess(
+      context,
+      _dispensedItems.isNotEmpty
+          ? 'הפנייה נשמרה והציוד שנופק הופחת אוטומטית מהמלאי'
+          : (widget.existingCase == null ? 'הפנייה הרפואית נפתחה בהצלחה' : 'הפנייה הרפואית עודכנה בהצלחה'),
+    );
     Navigator.pop(context);
   }
 
   @override
   Widget build(BuildContext context) {
     final soldiersAsync = ref.watch(soldiersProvider);
+    ref.watch(equipmentProvider);
 
     return Scaffold(
       backgroundColor: AppTheme.backgroundPrimary,
@@ -1377,6 +1436,78 @@ class _MedicalCaseCreateScreenState extends ConsumerState<MedicalCaseCreateScree
                 HopalCard(
                   padding: const EdgeInsets.all(AppTheme.spacing16),
                   child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(LucideIcons.packageMinus, color: AppTheme.primaryGreen, size: 18),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'ניפוק תרופה / ציוד מהמלאי (הורדה אוטומטית)',
+                              style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: AppTheme.textPrimary),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        'בחר תרופות או ציוד שניתנו לחייל כדי להפחיתם אוטומטית מהארגז או מהווסט ולתעדם בתיק:',
+                        style: TextStyle(fontSize: 12.5, color: AppTheme.textSecondary),
+                      ),
+                      const SizedBox(height: 12),
+                      if (_dispensedItems.isNotEmpty) ...[
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: _dispensedItems.map((item) {
+                            return Chip(
+                              backgroundColor: AppTheme.primaryGreen.withValues(alpha: 0.15),
+                              side: BorderSide(color: AppTheme.primaryGreen.withValues(alpha: 0.5)),
+                              label: Text(
+                                '${item.name} (x${item.quantity}) • ${item.sourceLabel}',
+                                style: TextStyle(
+                                  color: AppTheme.textPrimary,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              deleteIcon: Icon(LucideIcons.x, size: 14, color: AppTheme.textSecondary),
+                              onDeleted: () {
+                                setState(() {
+                                  _dispensedItems.removeWhere((e) => e.equipmentId == item.equipmentId);
+                                });
+                              },
+                            );
+                          }).toList(),
+                        ),
+                        const SizedBox(height: 10),
+                      ],
+                      OutlinedButton.icon(
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: AppTheme.primaryGreen,
+                          side: BorderSide(color: AppTheme.primaryGreen.withValues(alpha: 0.5)),
+                          shape: const RoundedRectangleBorder(borderRadius: AppTheme.radiusMd),
+                          padding: const EdgeInsets.symmetric(vertical: 11, horizontal: 14),
+                        ),
+                        icon: const Icon(LucideIcons.plusCircle, size: 17),
+                        label: Text(
+                          _dispensedItems.isEmpty
+                              ? 'בחר תרופה / ציוד לניפוק מהמלאי'
+                              : 'ערוך פריטים שנופקו (${_dispensedItems.length})',
+                          style: const TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                        onPressed: _openDispensePicker,
+                      ),
+                    ],
+                  ),
+                ),
+
+                const SizedBox(height: AppTheme.spacing20),
+
+                HopalCard(
+                  padding: const EdgeInsets.all(AppTheme.spacing16),
+                  child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Row(
@@ -1384,7 +1515,7 @@ class _MedicalCaseCreateScreenState extends ConsumerState<MedicalCaseCreateScree
                         children: [
                           Text('סטטוס הפנייה', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppTheme.textPrimary)),
                           HopalStatusBadge(
-                            label: _selectedOutcome == 'COMPLETED' ? 'הטיפול הושלם' : 'דורש המשך טיפול / רופא',
+                            label: _selectedOutcome == 'COMPLETED' ? 'הטיפול הושלם' : 'דורש המשך טיפול / מט"ב',
                             variant: _selectedOutcome == 'COMPLETED' ? HopalStatusBadgeVariant.neutral : HopalStatusBadgeVariant.warning,
                             icon: _selectedOutcome == 'COMPLETED' ? LucideIcons.checkCircle : LucideIcons.alertTriangle,
                           ),
@@ -1392,15 +1523,64 @@ class _MedicalCaseCreateScreenState extends ConsumerState<MedicalCaseCreateScree
                       ),
                       const SizedBox(height: AppTheme.spacing12),
                       HopalSegmentedControl(
-                        segments: const ['הטיפול הושלם במקום', 'נדרש המשך מעקב / רופא'],
+                        segments: const ['הטיפול הושלם במקום', 'נדרש המשך מעקב / מט"ב'],
                         selectedIndex: _selectedOutcome == 'COMPLETED' ? 0 : 1,
                         onValueChanged: (index) {
                           setState(() {
                             _selectedOutcome = index == 0 ? 'COMPLETED' : 'REQUIRES_ATTENTION';
                             _selectedSeverity = index == 0 ? 'שגרה' : 'דחוף';
+                            if (index == 0) {
+                              _addToMatabQueue = false;
+                            }
                           });
                         },
                       ),
+                      if (_selectedOutcome != 'COMPLETED') ...[
+                        const SizedBox(height: 12),
+                        Container(
+                          decoration: BoxDecoration(
+                            color: _addToMatabQueue
+                                ? AppTheme.primaryGreen.withValues(alpha: 0.14)
+                                : AppTheme.backgroundPrimary,
+                            borderRadius: AppTheme.radiusMd,
+                            border: Border.all(
+                              color: _addToMatabQueue ? AppTheme.primaryGreen : AppTheme.borderSubtle,
+                            ),
+                          ),
+                          child: SwitchListTile(
+                            dense: true,
+                            activeTrackColor: AppTheme.primaryGreen,
+                            secondary: Icon(
+                              LucideIcons.stethoscope,
+                              color: _addToMatabQueue ? AppTheme.primaryGreen : AppTheme.textSecondary,
+                              size: 20,
+                            ),
+                            title: Text(
+                              'שבץ למסדר מט"ב (לבדיקת רופא / פראמדיק היום)',
+                              style: TextStyle(
+                                color: AppTheme.textPrimary,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 13,
+                              ),
+                            ),
+                            subtitle: Text(
+                              'החייל יופיע ברשימת החיילים הממתינים לבדיקת מט"ב',
+                              style: TextStyle(color: AppTheme.textSecondary, fontSize: 11.5),
+                            ),
+                            value: _addToMatabQueue,
+                            onChanged: (val) {
+                              setState(() {
+                                _addToMatabQueue = val;
+                                if (val) {
+                                  _selectedCategory = BattalionStaffService.matabCategory;
+                                } else if (_selectedCategory == BattalionStaffService.matabCategory) {
+                                  _selectedCategory = 'שגרת מרפאה';
+                                }
+                              });
+                            },
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 ),

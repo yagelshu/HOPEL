@@ -25,12 +25,15 @@ import 'package:chopel_app/features/medical_cases/medical_cases_list_screen.dart
 import 'package:chopel_app/features/medical_cases/providers.dart';
 import 'package:chopel_app/features/medical_cases/medical_case_create_screen.dart';
 import 'package:chopel_app/features/equipment/equipment_list_screen.dart';
+import 'package:chopel_app/features/equipment/providers.dart';
 import 'package:chopel_app/screens/profile_screen.dart';
 import 'package:chopel_app/features/notes/notes_screen.dart';
 import 'package:chopel_app/features/dashboard/shift_handover_screen.dart';
 import 'package:chopel_app/features/profile/p2p_sync_screen.dart';
 import 'package:chopel_app/core/services/outbreak_radar_service.dart';
 import 'package:chopel_app/features/dashboard/widgets/outbreak_radar_card.dart';
+import 'package:chopel_app/features/dashboard/widgets/matab_queue_card.dart';
+import 'package:chopel_app/features/dashboard/widgets/command_search_sheet.dart';
 import 'package:chopel_app/features/dashboard/widgets/dashboard_follow_ups_widget.dart';
 import 'package:chopel_app/features/onboarding/walkthrough_dialog.dart';
 import 'package:chopel_app/core/database/draft_service.dart';
@@ -183,6 +186,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
                       child: OutbreakRadarCard(alerts: outbreakAlerts),
                     ),
                   SliverToBoxAdapter(
+                    child: MatabQueueCard(allCases: cases, soldiers: soldiers),
+                  ),
+                  SliverToBoxAdapter(
                     child: _animateWidget(_buildPriorityActions(metrics), _cardFades[0]),
                   ),
                   SliverToBoxAdapter(
@@ -264,6 +270,34 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
                   ),
                 ),
               ],
+            ),
+          ),
+          const SizedBox(width: AppTheme.spacing8),
+          GestureDetector(
+            onTap: () {
+              final soldiers = ref.read(soldiersProvider).value ?? [];
+              final cases = ref.read(medicalCasesProvider).value ?? [];
+              final equipment = ref.read(equipmentProvider).value ?? [];
+              CommandSearchSheet.show(
+                context,
+                soldiers: soldiers,
+                cases: cases,
+                equipment: equipment,
+              );
+            },
+            child: Tooltip(
+              message: 'חיפוש-על גלובלי (חיילים, פניות, תרופות, ציוד)',
+              child: Container(
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(color: AppTheme.borderSubtle, width: 2),
+                ),
+                child: CircleAvatar(
+                  radius: 22,
+                  backgroundColor: AppTheme.backgroundSecondary,
+                  child: Icon(LucideIcons.search, size: 20, color: AppTheme.primaryGreen),
+                ),
+              ),
             ),
           ),
           const SizedBox(width: AppTheme.spacing8),
@@ -759,7 +793,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
                   icon: LucideIcons.fileSpreadsheet,
                   isExpanded: true,
                   variant: HopalButtonVariant.secondary,
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
                   onPressed: () {
                     Navigator.push(
                       context,
@@ -770,14 +804,33 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
                   },
                 ),
               ),
-              const SizedBox(width: AppTheme.spacing12),
+              const SizedBox(width: 8),
               Expanded(
                 child: HopalButton(
-                  label: 'סנכרון שטח P2P',
+                  label: 'מסדר מט"ב',
+                  icon: LucideIcons.stethoscope,
+                  isExpanded: true,
+                  variant: HopalButtonVariant.secondary,
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+                  onPressed: () {
+                    final cases = ref.read(medicalCasesProvider).value ?? [];
+                    final soldiers = ref.read(soldiersProvider).value ?? [];
+                    MatabQueueCard.showQueueSheet(
+                      context,
+                      allCases: cases,
+                      soldiers: soldiers,
+                    );
+                  },
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: HopalButton(
+                  label: 'סנכרון P2P',
                   icon: LucideIcons.radioTower,
                   isExpanded: true,
                   variant: HopalButtonVariant.secondary,
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
                   onPressed: () {
                     Navigator.push(
                       context,

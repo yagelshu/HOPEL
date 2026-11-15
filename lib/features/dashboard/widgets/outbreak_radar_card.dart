@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:chopel_app/core/services/outbreak_radar_service.dart';
 import 'package:chopel_app/core/utils/battalion_medic_helper.dart';
+import 'package:chopel_app/core/utils/doctor_consult_helper.dart';
 import 'package:chopel_app/theme/app_theme.dart';
 import 'package:chopel_app/theme/components/hopal_bottom_sheet.dart';
 import 'package:chopel_app/theme/components/hopal_button.dart';
@@ -85,8 +86,19 @@ class OutbreakRadarCard extends StatelessWidget {
           const SizedBox(height: AppTheme.spacing24),
 
           HopalButton(
-            label: 'שלח דיווח מודיעין רפואי לחוג"ד / רופא',
+            label: 'שלח התרעה למט"ב התורן (רופא / פראמדיק)',
+            icon: LucideIcons.stethoscope,
+            onPressed: () async {
+              Navigator.pop(context);
+              final report = OutbreakRadarService.formatReportForDoctor(alert);
+              await DoctorConsultHelper.sendMessageToMatab(context, report);
+            },
+          ),
+          const SizedBox(height: 8),
+          HopalButton(
+            label: 'שלח התרעה לחוג"ד / מחליף',
             icon: LucideIcons.send,
+            variant: HopalButtonVariant.secondary,
             onPressed: () async {
               Navigator.pop(context);
               final report = OutbreakRadarService.formatReportForDoctor(alert);

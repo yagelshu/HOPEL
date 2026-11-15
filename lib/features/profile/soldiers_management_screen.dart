@@ -10,6 +10,7 @@ import 'package:chopel_app/theme/components/hopal_text_field.dart';
 import 'package:chopel_app/theme/components/hopal_feedback.dart';
 import 'package:chopel_app/core/utils/app_error_helper.dart';
 import 'package:chopel_app/core/utils/platoon_helper.dart';
+import 'package:chopel_app/core/services/csv_export_service.dart';
 import 'package:chopel_app/core/auth/auth_service.dart';
 import 'package:chopel_app/models/soldier.dart';
 import 'package:chopel_app/features/medical_cases/medical_case_create_screen.dart';
@@ -343,6 +344,23 @@ class _SoldiersManagementScreenState extends ConsumerState<SoldiersManagementScr
                     onPressed: () => Navigator.pop(context),
                   ),
             actions: [
+              IconButton(
+                tooltip: 'ייצוא מצבת חיילים לאקסל (CSV)',
+                icon: Icon(LucideIcons.download, color: AppTheme.primaryGreen, size: 20),
+                onPressed: () async {
+                  final list = soldiersAsync.value ?? [];
+                  if (list.isEmpty) {
+                    HopalFeedback.showError(context, 'אין חיילים במצבת לייצוא');
+                    return;
+                  }
+                  final csv = CsvExportService.generateSoldiersCsv(list);
+                  await CsvExportService.shareCsv(
+                    csvContent: csv,
+                    fileName: 'soldiers_roster.csv',
+                    title: 'מצבת חיילי הפלוגה (${list.length} חיילים)',
+                  );
+                },
+              ),
               if (isCompanyMedic)
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: AppTheme.spacing12, vertical: 8),

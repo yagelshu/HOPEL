@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:chopel_app/core/models/note_model.dart';
+import 'package:chopel_app/core/services/battalion_staff_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -25,7 +26,16 @@ class NotesRepository {
           .eq('unit_id', unitId)
           .order('created_at', ascending: false);
 
+      for (final map in response) {
+        final rawContent = map['content']?.toString() ?? '';
+        if (rawContent.startsWith(BattalionStaffService.cloudConfigPrefix)) {
+          await BattalionStaffService.applyCloudConfigContent(rawContent);
+        }
+      }
+
       final filtered = response.where((map) {
+        final rawContent = map['content']?.toString() ?? '';
+        if (rawContent.startsWith(BattalionStaffService.cloudConfigPrefix)) return false;
         final isPrivate = map['is_private'] == true || map['is_private'] == 1;
         return !isPrivate || map['user_id'] == currentUserId;
       }).toList();

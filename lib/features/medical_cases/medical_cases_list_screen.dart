@@ -15,6 +15,9 @@ import 'package:chopel_app/features/medical_cases/medical_case_create_screen.dar
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:chopel_app/theme/components/hopal_shimmer.dart';
 import 'package:chopel_app/core/utils/date_formatter.dart';
+import 'package:chopel_app/core/services/battalion_staff_service.dart';
+import 'package:chopel_app/core/services/csv_export_service.dart';
+import 'package:chopel_app/features/dashboard/widgets/matab_queue_card.dart';
 
 class MedicalCasesListScreen extends ConsumerStatefulWidget {
   const MedicalCasesListScreen({super.key});
@@ -39,9 +42,13 @@ class _MedicalCasesListScreenState extends ConsumerState<MedicalCasesListScreen>
           final soldiersAsync = ref.watch(soldiersProvider);
           final soldiers = soldiersAsync.value ?? [];
           
+          final matabQueueCount = cases.where(BattalionStaffService.isCaseInMatabQueue).length;
+
           List<MedicalCase> filteredCases = cases;
           if (_filter == 'REQUIRES_ATTENTION') {
             filteredCases = cases.where((c) => c.status == 'REQUIRES_ATTENTION').toList();
+          } else if (_filter == 'MATAB_QUEUE') {
+            filteredCases = cases.where(BattalionStaffService.isCaseInMatabQueue).toList();
           } else if (_filter == 'COMPLETED') {
             filteredCases = cases.where((c) => c.status == 'COMPLETED').toList();
           } else {
@@ -89,6 +96,29 @@ class _MedicalCasesListScreenState extends ConsumerState<MedicalCasesListScreen>
                   title: const Text('פניות רפואיות פעילות', style: TextStyle(fontWeight: FontWeight.bold)),
                   floating: true,
                   pinned: true,
+                  actions: [
+                    IconButton(
+                      icon: Icon(LucideIcons.stethoscope, color: AppTheme.primaryGreen),
+                      tooltip: 'מסדר מט"ב להיום',
+                      onPressed: () => MatabQueueCard.showQueueSheet(
+                        context,
+                        allCases: cases,
+                        soldiers: soldiers,
+                      ),
+                    ),
+                    IconButton(
+                      icon: Icon(LucideIcons.download, color: AppTheme.textSecondary),
+                      tooltip: 'ייצוא פניות לאקסל (CSV)',
+                      onPressed: () {
+                        final csv = CsvExportService.generateMedicalCasesCsv(filteredCases, soldiers);
+                        CsvExportService.shareCsv(
+                          csvContent: csv,
+                          fileName: 'hopel_cases_${DateTime.now().toIso8601String().split('T').first}.csv',
+                          title: 'דוח פניות רפואיות - חופ"ל',
+                        );
+                      },
+                    ),
+                  ],
                   bottom: PreferredSize(
                     preferredSize: const Size.fromHeight(120),
                     child: Column(
@@ -101,7 +131,7 @@ class _MedicalCasesListScreenState extends ConsumerState<MedicalCasesListScreen>
                             onChanged: (val) => setState(() => _searchQuery = val.toLowerCase()),
                           ),
                         ),
-                        _buildFilterChips(),
+                        _buildFilterChips(matabQueueCount),
                       ],
                     ),
                   ),
@@ -166,13 +196,18 @@ class _MedicalCasesListScreenState extends ConsumerState<MedicalCasesListScreen>
     return 50; 
   }
 
-  Widget _buildFilterChips() {
+  Widget _buildFilterChips(int matabQueueCount) {
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       padding: const EdgeInsets.symmetric(horizontal: AppTheme.spacing16, vertical: AppTheme.spacing8),
       child: Row(
         children: [
           _buildChip('פניות פתוחות', 'ALL'),
+          const SizedBox(width: AppTheme.spacing8),
+          _buildChip(
+            matabQueueCount > 0 ? 'מסדר מט"ב ($matabQueueCount)' : 'מסדר מט"ב',
+            'MATAB_QUEUE',
+          ),
           const SizedBox(width: AppTheme.spacing8),
           _buildChip('היסטוריה', 'COMPLETED'),
         ],
@@ -312,6 +347,31 @@ class _MedicalCasesListScreenState extends ConsumerState<MedicalCasesListScreen>
                 Icon(LucideIcons.calendar, size: 14, color: AppTheme.militaryOlive),
                 const SizedBox(width: AppTheme.spacing4),
                 Text('נפתח: $formattedDate', style: TextStyle(color: AppTheme.militaryOlive, fontSize: 12)),
+                const Spacer(),
+                if (BattalionStaffService.isCaseInMatabQueue(mCase))
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: AppTheme.primaryGreen.withValues(alpha: 0.14),
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: AppTheme.primaryGreen.withValues(alpha: 0.35)),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(LucideIcons.stethoscope, size: 12, color: AppTheme.primaryGreen),
+                        const SizedBox(width: 4),
+                        Text(
+                          'במסדר מט"ב',
+                          style: TextStyle(
+                            color: AppTheme.primaryGreen,
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
               ],
             ),
           ],

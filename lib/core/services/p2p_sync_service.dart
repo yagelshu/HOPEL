@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:chopel_app/core/auth/auth_service.dart';
+import 'package:chopel_app/core/services/battalion_staff_service.dart';
+import 'package:chopel_app/core/services/follow_up_reminder_service.dart';
 import 'package:chopel_app/models/medical_case.dart';
 import 'package:chopel_app/models/soldier.dart';
 
@@ -8,6 +10,8 @@ class P2pSyncResult {
   final bool success;
   final int casesMerged;
   final int casesSkipped;
+  final int staffContactsMerged;
+  final int remindersMerged;
   final String sourceMedic;
   final DateTime? exportedAt;
   final String? errorMessage;
@@ -16,6 +20,8 @@ class P2pSyncResult {
     required this.success,
     this.casesMerged = 0,
     this.casesSkipped = 0,
+    this.staffContactsMerged = 0,
+    this.remindersMerged = 0,
     this.sourceMedic = 'לא ידוע',
     this.exportedAt,
     this.errorMessage,
@@ -31,6 +37,8 @@ class P2pSyncService {
     required List<Soldier> soldiers,
   }) async {
     final user = AuthService().currentUser;
+    final staffContacts = await BattalionStaffService.loadAll();
+    final reminders = await FollowUpReminderService.getReminders();
 
     final packet = {
       'header': packageHeader,
@@ -39,6 +47,8 @@ class P2pSyncService {
       'source_medic': AuthService().effectiveUserName,
       'cases': cases.map((c) => c.toMap()).toList(),
       'soldiers_count': soldiers.length,
+      'staff_contacts': staffContacts.map((s) => s.toMap()).toList(),
+      'follow_up_reminders': reminders.map((r) => r.toMap()).toList(),
     };
 
     final rawJson = jsonEncode(packet);
@@ -118,10 +128,18 @@ class P2pSyncService {
       final updatedList = mergedMap.values.map((c) => c.toMap()).toList();
       await prefs.setString(cacheKey, jsonEncode(updatedList));
 
+      final rawStaff = data['staff_contacts'] as List<dynamic>? ?? const [];
+      final staffMerged = await BattalionStaffService.mergeContacts(rawStaff);
+
+      final rawReminders = data['follow_up_reminders'] as List<dynamic>? ?? const [];
+      final remindersMerged = await FollowUpReminderService.mergeReminders(rawReminders);
+
       return P2pSyncResult(
         success: true,
         casesMerged: mergedCount,
         casesSkipped: skippedCount,
+        staffContactsMerged: staffMerged,
+        remindersMerged: remindersMerged,
         sourceMedic: sourceMedic,
         exportedAt: exportedAt,
       );

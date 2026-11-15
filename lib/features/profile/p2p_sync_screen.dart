@@ -90,6 +90,10 @@ class _P2pSyncScreenState extends ConsumerState<P2pSyncScreen> {
                 const SizedBox(height: 12),
                 Text('• מקור הנתונים: ${result.sourceMedic}', style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.w600)),
                 Text('• פניות שעודכנו/נוספו: ${result.casesMerged}', style: TextStyle(color: AppTheme.primaryGreen, fontWeight: FontWeight.bold)),
+                if (result.staffContactsMerged > 0)
+                  Text('• אנשי סגל מט"ב/חוג"ד שסונכרנו: ${result.staffContactsMerged}', style: TextStyle(color: AppTheme.infoBlue, fontWeight: FontWeight.w600)),
+                if (result.remindersMerged > 0)
+                  Text('• תזכורות מעקב שסונכרנו: ${result.remindersMerged}', style: TextStyle(color: AppTheme.infoBlue, fontWeight: FontWeight.w600)),
                 if (result.casesSkipped > 0)
                   Text('• פניות שכבר היו מעודכנות: ${result.casesSkipped}', style: TextStyle(color: AppTheme.textSecondary)),
               ],

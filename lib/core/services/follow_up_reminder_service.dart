@@ -141,5 +141,30 @@ class FollowUpReminderService {
     final all = await getReminders();
     return all.where((r) => r.soldierId == soldierId).toList();
   }
+
+  /// Merges incoming reminders from P2P or Cloud Config.
+  static Future<int> mergeReminders(List<dynamic> rawList) async {
+    if (rawList.isEmpty) return 0;
+    final current = await getReminders();
+    final mapById = {for (final r in current) r.id: r};
+
+    int mergedCount = 0;
+    for (final raw in rawList) {
+      if (raw is! Map) continue;
+      final incoming = FollowUpReminder.fromMap(Map<String, dynamic>.from(raw));
+      if (incoming.id.isEmpty) continue;
+
+      final existing = mapById[incoming.id];
+      if (existing == null || (!existing.isCompleted && incoming.isCompleted)) {
+        mapById[incoming.id] = incoming;
+        mergedCount++;
+      }
+    }
+
+    if (mergedCount > 0) {
+      await _saveReminders(mapById.values.toList());
+    }
+    return mergedCount;
+  }
 }
 

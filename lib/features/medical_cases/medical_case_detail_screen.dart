@@ -17,6 +17,11 @@ import 'package:chopel_app/theme/components/hopal_text_field.dart';
 import 'package:chopel_app/theme/components/hopal_feedback.dart';
 import 'package:chopel_app/core/auth/auth_service.dart';
 import 'package:chopel_app/features/medical_cases/medical_case_create_screen.dart';
+import 'package:chopel_app/features/medical_cases/providers.dart';
+import 'package:chopel_app/features/dashboard/providers.dart';
+import 'package:chopel_app/features/equipment/providers.dart';
+import 'package:chopel_app/core/services/battalion_staff_service.dart';
+import 'package:chopel_app/features/medical_cases/widgets/inventory_dispense_sheet.dart';
 import 'package:chopel_app/features/medical_cases/widgets/case_follow_up_widget.dart';
 import 'package:chopel_app/features/profile/soldier_medical_history_screen.dart';
 import 'package:flutter/services.dart';
@@ -34,6 +39,7 @@ class MedicalCaseDetailScreen extends ConsumerStatefulWidget {
 class _MedicalCaseDetailScreenState extends ConsumerState<MedicalCaseDetailScreen> {
   late String _currentStatus;
   late String _currentDescription;
+  late String _currentCategory;
   bool _isUpdating = false;
 
   String _soldierName = 'טוען...';
@@ -46,6 +52,7 @@ class _MedicalCaseDetailScreenState extends ConsumerState<MedicalCaseDetailScree
     super.initState();
     _currentStatus = widget.medicalCase.status;
     _currentDescription = widget.medicalCase.description ?? 'ללא תיאור מפורט';
+    _currentCategory = widget.medicalCase.category ?? 'שגרת מרפאה';
     _loadSoldierDetails();
   }
 
@@ -183,6 +190,72 @@ class _MedicalCaseDetailScreenState extends ConsumerState<MedicalCaseDetailScree
     );
   }
 
+  Future<void> _dispenseEquipmentForCase() async {
+    final allEquipment = ref.read(equipmentProvider).value ?? [];
+    final picked = await InventoryDispenseHelper.showPickerSheet(
+      context,
+      allEquipment: allEquipment,
+    );
+    if (picked == null || picked.isEmpty || !mounted) return;
+
+    final summaryLine = InventoryDispenseHelper.formatDispensedSummary(picked);
+    final newDesc = '$_currentDescription\n$summaryLine';
+
+    final notifier = ref.read(equipmentProvider.notifier);
+    for (final item in picked) {
+      if (item.quantity > 0) {
+        await notifier.adjustQuantity(item.equipmentId, -item.quantity);
+      }
+    }
+
+    try {
+      await Supabase.instance.client.from('medical_cases').update({
+        'description': newDesc,
+        'updated_date': DateTime.now().toIso8601String(),
+      }).eq('id', widget.medicalCase.id);
+    } catch (_) {}
+
+    if (mounted) {
+      setState(() {
+        _currentDescription = newDesc;
+      });
+      ref.read(medicalCasesProvider.notifier).refresh();
+      ref.invalidate(dashboardMetricsProvider);
+      HopalFeedback.showSuccess(context, 'הציוד שנופק הופחת אוטומטית מהמלאי ותועד בתיק');
+    }
+  }
+
+  Future<void> _toggleMatabQueue() async {
+    final isCurrentlyInQueue = _currentCategory == BattalionStaffService.matabCategory;
+    final nextCategory = isCurrentlyInQueue ? 'שגרת מרפאה' : BattalionStaffService.matabCategory;
+    final nextStatus = (!isCurrentlyInQueue && _currentStatus == 'COMPLETED')
+        ? 'REQUIRES_ATTENTION'
+        : _currentStatus;
+
+    try {
+      await Supabase.instance.client.from('medical_cases').update({
+        'category': nextCategory,
+        'status': nextStatus,
+        'updated_date': DateTime.now().toIso8601String(),
+      }).eq('id', widget.medicalCase.id);
+    } catch (_) {}
+
+    if (mounted) {
+      setState(() {
+        _currentCategory = nextCategory;
+        _currentStatus = nextStatus;
+      });
+      ref.read(medicalCasesProvider.notifier).refresh();
+      ref.invalidate(dashboardMetricsProvider);
+      HopalFeedback.showSuccess(
+        context,
+        !isCurrentlyInQueue
+            ? 'החייל שובץ למסדר מט"ב להיום 🩺'
+            : 'החייל הוסר ממסדר מט"ב',
+      );
+    }
+  }
+
   void _showFullScreenPhoto(String path, {String? tag}) {
     showDialog(
       context: context,
@@ -244,6 +317,7 @@ class _MedicalCaseDetailScreenState extends ConsumerState<MedicalCaseDetailScree
 
   @override
   Widget build(BuildContext context) {
+    ref.watch(equipmentProvider);
     return ValueListenableBuilder<bool>(
       valueListenable: AuthService().previewAsCombatMedicNotifier,
       builder: (context, _, __) {
@@ -487,9 +561,9 @@ class _MedicalCaseDetailScreenState extends ConsumerState<MedicalCaseDetailScree
 
                     const SizedBox(height: AppTheme.spacing40),
 
-                    // Inline Status Update (Pills)
+                    // Inline Status Update (Pills) & Quick Actions
                     if (isCompanyMedic) ...[
-                      Text('החלטת חופ"ל:', style: TextStyle(fontSize: 14, color: AppTheme.textSecondary, fontWeight: FontWeight.bold)),
+                      Text('החלטת חופ"ל ופעולות מהירות:', style: TextStyle(fontSize: 14, color: AppTheme.textSecondary, fontWeight: FontWeight.bold)),
                       const SizedBox(height: AppTheme.spacing16),
                       Wrap(
                         spacing: AppTheme.spacing8,
@@ -497,6 +571,50 @@ class _MedicalCaseDetailScreenState extends ConsumerState<MedicalCaseDetailScree
                         children: [
                           _buildStatusPill('טיפול הושלם', 'COMPLETED', AppTheme.successGreen),
                           _buildStatusPill('נדרש המשך טיפול', 'REQUIRES_ATTENTION', AppTheme.warningAmber),
+                        ],
+                      ),
+                      const SizedBox(height: AppTheme.spacing12),
+                      Wrap(
+                        spacing: AppTheme.spacing8,
+                        runSpacing: AppTheme.spacing8,
+                        children: [
+                          OutlinedButton.icon(
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: AppTheme.primaryGreen,
+                              side: BorderSide(color: AppTheme.primaryGreen.withValues(alpha: 0.5)),
+                              shape: const RoundedRectangleBorder(borderRadius: AppTheme.radiusPill),
+                            ),
+                            icon: const Icon(LucideIcons.packageMinus, size: 16),
+                            label: const Text('נפק תרופה / ציוד מהמלאי', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                            onPressed: _dispenseEquipmentForCase,
+                          ),
+                          OutlinedButton.icon(
+                            style: OutlinedButton.styleFrom(
+                              backgroundColor: _currentCategory == BattalionStaffService.matabCategory
+                                  ? AppTheme.infoBlue.withValues(alpha: 0.15)
+                                  : Colors.transparent,
+                              foregroundColor: AppTheme.infoBlue,
+                              side: BorderSide(
+                                color: _currentCategory == BattalionStaffService.matabCategory
+                                    ? AppTheme.infoBlue
+                                    : AppTheme.infoBlue.withValues(alpha: 0.5),
+                              ),
+                              shape: const RoundedRectangleBorder(borderRadius: AppTheme.radiusPill),
+                            ),
+                            icon: Icon(
+                              _currentCategory == BattalionStaffService.matabCategory
+                                  ? LucideIcons.checkCircle2
+                                  : LucideIcons.stethoscope,
+                              size: 16,
+                            ),
+                            label: Text(
+                              _currentCategory == BattalionStaffService.matabCategory
+                                  ? 'משובץ למסדר מט"ב (לחץ להסרה)'
+                                  : 'שבץ למסדר מט"ב היום',
+                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                            ),
+                            onPressed: _toggleMatabQueue,
+                          ),
                         ],
                       ),
                       const SizedBox(height: AppTheme.spacing48),

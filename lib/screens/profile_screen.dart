@@ -31,6 +31,8 @@ import 'package:chopel_app/theme/components/hopal_text_field.dart';
 import 'package:chopel_app/core/utils/app_constants.dart';
 import 'package:chopel_app/core/utils/app_error_helper.dart';
 import 'package:chopel_app/core/utils/battalion_medic_helper.dart';
+import 'package:chopel_app/core/utils/doctor_consult_helper.dart';
+import 'package:chopel_app/core/services/battalion_staff_service.dart';
 import 'package:chopel_app/core/utils/web_reload.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:chopel_app/core/services/standby_medics_service.dart';
@@ -50,8 +52,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   bool _canCheckBiometrics = false;
   String _doctorName = '';
   String _doctorPhone = '';
+  String _doctorRole = 'רופא';
+  int _matabCount = 0;
   String _hogadName = '';
   String _hogadPhone = '';
+  String _hogadRole = 'חוג"ד';
+  int _hogadCount = 0;
 
   @override
   void initState() {
@@ -93,14 +99,21 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   }
 
   Future<void> _loadDoctorSettings() async {
-    final prefs = await SharedPreferences.getInstance();
-    final (hogadName, hogadPhone) = await BattalionMedicHelper.loadSaved();
+    final matabList = await BattalionStaffService.loadGroup(BattalionStaffService.groupMatab);
+    final hogadList = await BattalionStaffService.loadGroup(BattalionStaffService.groupHogad);
+    final activeMatab = matabList.where((c) => c.isOnDuty).firstOrNull ?? matabList.firstOrNull;
+    final activeHogad = hogadList.where((c) => c.isOnDuty).firstOrNull ?? hogadList.firstOrNull;
+
     if (mounted) {
       setState(() {
-        _doctorName = prefs.getString('doctor_name') ?? '';
-        _doctorPhone = prefs.getString('doctor_phone_number') ?? '';
-        _hogadName = hogadName;
-        _hogadPhone = hogadPhone;
+        _doctorName = activeMatab?.name ?? '';
+        _doctorPhone = activeMatab?.phone ?? '';
+        _doctorRole = activeMatab?.role ?? 'רופא';
+        _matabCount = matabList.length;
+        _hogadName = activeHogad?.name ?? '';
+        _hogadPhone = activeHogad?.phone ?? '';
+        _hogadRole = activeHogad?.role ?? 'חוג"ד';
+        _hogadCount = hogadList.length;
       });
     }
   }
@@ -343,56 +356,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   }
 
   void _showDoctorSettingsDialog(BuildContext context) {
-    final nameController = TextEditingController(text: _doctorName);
-    final phoneController = TextEditingController(text: _doctorPhone);
-
-    HopalBottomSheet.show(
-      context: context,
-      title: 'הגדרת רופא גדודי (WhatsApp)',
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            'הגדר את מספר הטלפון של רופא הגדוד. בלחיצה על "התייעצות רופא" בתיק רפואי, האפליקציה תפתח ישירות שיחת WhatsApp עם תמצית המקרה הרפואי.',
-            style: TextStyle(color: AppTheme.textSecondary, fontSize: 13, height: 1.4),
-          ),
-          const SizedBox(height: AppTheme.spacing16),
-          HopalTextField(
-            controller: nameController,
-            hint: 'שם הרופא (לדוגמה: ד"ר כהן)',
-            icon: LucideIcons.user,
-          ),
-          const SizedBox(height: AppTheme.spacing12),
-          HopalTextField(
-            controller: phoneController,
-            hint: 'מספר טלפון ל-WhatsApp (למשל: 0501234567)',
-            icon: LucideIcons.phone,
-            keyboardType: TextInputType.phone,
-          ),
-          const SizedBox(height: AppTheme.spacing24),
-          HopalButton(
-            label: 'שמור פרטי רופא',
-            icon: LucideIcons.check,
-            onPressed: () async {
-              final prefs = await SharedPreferences.getInstance();
-              final newName = nameController.text.trim();
-              final newPhone = phoneController.text.trim();
-              await prefs.setString('doctor_name', newName);
-              await prefs.setString('doctor_phone_number', newPhone);
-              if (context.mounted) {
-                setState(() {
-                  _doctorName = newName;
-                  _doctorPhone = newPhone;
-                });
-                Navigator.pop(context);
-                HopalFeedback.showSuccess(context, 'פרטי רופא הגדוד נשמרו בהצלחה');
-              }
-            },
-          ),
-          const SizedBox(height: AppTheme.spacing16),
-        ],
-      ),
+    DoctorConsultHelper.showMatabSettingsSheet(
+      context,
+      onSaved: _loadDoctorSettings,
     );
   }
 
@@ -1206,39 +1172,37 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                       padding: EdgeInsets.zero,
                       child: Column(
                         children: [
-                          if (isCompanyMedic) ...[
-                            HopalListTile(
-                              title: const Text('חוג"ד (דיווחי WhatsApp)'),
-                              subtitle: Text(
-                                _hogadPhone.isNotEmpty
-                                    ? '${_hogadName.isNotEmpty ? '$_hogadName • ' : ''}$_hogadPhone'
-                                    : 'טרם הוגדר מספר (לחץ להגדרה מהירה)',
-                                style: TextStyle(
-                                  color: _hogadPhone.isNotEmpty ? AppTheme.primaryGreen : AppTheme.warningAmber,
-                                  fontSize: 13,
-                                ),
-                              ),
-                              leadingIcon: LucideIcons.messageCircle,
-                              onTap: () => BattalionMedicHelper.showSettingsSheet(
-                                context,
-                                onSaved: _loadDoctorSettings,
+                          HopalListTile(
+                            title: const Text('חוג"ד ומחליפים (דיווחי WhatsApp)'),
+                            subtitle: Text(
+                              _hogadPhone.isNotEmpty
+                                  ? 'בתורנות: ${_hogadName.isNotEmpty ? '$_hogadName ($_hogadRole)' : _hogadRole} • $_hogadPhone${_hogadCount > 1 ? ' (+${_hogadCount - 1} מחליפים)' : ''}'
+                                  : 'טרם הוגדר חוג"ד או מחליף (לחץ להגדרה)',
+                              style: TextStyle(
+                                color: _hogadPhone.isNotEmpty ? AppTheme.primaryGreen : AppTheme.warningAmber,
+                                fontSize: 13,
                               ),
                             ),
-                            HopalListTile(
-                              title: const Text('רופא הגדוד (התייעצות WhatsApp)'),
-                              subtitle: Text(
-                                _doctorPhone.isNotEmpty
-                                    ? '${_doctorName.isNotEmpty ? '$_doctorName • ' : ''}$_doctorPhone'
-                                    : 'טרם הוגדר מספר (לחץ להגדרה מהירה)',
-                                style: TextStyle(
-                                  color: _doctorPhone.isNotEmpty ? AppTheme.primaryGreen : AppTheme.warningAmber,
-                                  fontSize: 13,
-                                ),
-                              ),
-                              leadingIcon: LucideIcons.stethoscope,
-                              onTap: () => _showDoctorSettingsDialog(context),
+                            leadingIcon: LucideIcons.messageCircle,
+                            onTap: () => BattalionMedicHelper.showSettingsSheet(
+                              context,
+                              onSaved: _loadDoctorSettings,
                             ),
-                          ],
+                          ),
+                          HopalListTile(
+                            title: const Text('סגל מט"ב – רופאים ופראמדיקים (WhatsApp)'),
+                            subtitle: Text(
+                              _doctorPhone.isNotEmpty
+                                  ? 'בתורנות: ${_doctorName.isNotEmpty ? '$_doctorName ($_doctorRole)' : _doctorRole} • $_doctorPhone${_matabCount > 1 ? ' (סה"כ $_matabCount בתורנות)' : ''}'
+                                  : 'טרם הוגדר רופא / פראמדיק (לחץ להגדרה)',
+                              style: TextStyle(
+                                color: _doctorPhone.isNotEmpty ? AppTheme.primaryGreen : AppTheme.warningAmber,
+                                fontSize: 13,
+                              ),
+                            ),
+                            leadingIcon: LucideIcons.stethoscope,
+                            onTap: () => _showDoctorSettingsDialog(context),
+                          ),
                           HopalListTile(
                             title: const Text('מצב סנכרון'),
                             subtitle: Text(
