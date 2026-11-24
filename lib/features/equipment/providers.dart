@@ -9,6 +9,7 @@ import 'package:chopel_app/core/auth/auth_service.dart';
 import 'package:chopel_app/core/database/database_service.dart';
 import 'package:chopel_app/core/network/unit_service.dart';
 import 'package:chopel_app/core/utils/default_equipment_catalog.dart';
+import 'package:chopel_app/core/utils/equipment_photo_catalog.dart';
 import 'package:chopel_app/features/dashboard/providers.dart';
 import 'package:chopel_app/models/equipment.dart';
 
@@ -28,7 +29,7 @@ class EquipmentNotifier extends AsyncNotifier<List<Equipment>> {
         if (cachedStr != null && cachedStr.isNotEmpty) {
           final decoded = jsonDecode(cachedStr) as List;
           final cachedItems = decoded
-              .map((m) => Equipment.fromMap(Map<String, dynamic>.from(m as Map)))
+              .map((m) => _attachBuiltInPhotoIfNeeded(Equipment.fromMap(Map<String, dynamic>.from(m as Map))))
               .toList();
           if (cachedItems.isNotEmpty) {
             unawaited(_refreshEquipmentInBackground());
@@ -47,6 +48,15 @@ class EquipmentNotifier extends AsyncNotifier<List<Equipment>> {
         state = AsyncValue.data(fresh);
       }
     } catch (_) {}
+  }
+
+  Equipment _attachBuiltInPhotoIfNeeded(Equipment eq) {
+    if (eq.imagePath != null && eq.imagePath!.isNotEmpty) return eq;
+    final builtIn = EquipmentPhotoCatalog.resolveBuiltInPhoto(eq.name);
+    if (builtIn != null) {
+      return eq.copyWith(imagePath: builtIn);
+    }
+    return eq;
   }
 
   Future<void> _persistLocalCache(String unitId, List<Equipment> items) async {
@@ -118,18 +128,61 @@ class EquipmentNotifier extends AsyncNotifier<List<Equipment>> {
         return eq;
       }).toList();
 
-      // Propagate any real photo by item ID or by item name across all vests & company box
+      // Propagate any real photo by item ID, by item name, or from built-in real photo catalog
       items = items.map((eq) {
         if (eq.imagePath == null || eq.imagePath!.isEmpty) {
           final byId = cachedImages[eq.id];
           final byName = cachedImages['name::${eq.name.trim()}'];
-          final resolvedPhoto = byId ?? byName;
+          final builtIn = EquipmentPhotoCatalog.resolveBuiltInPhoto(eq.name);
+          final resolvedPhoto = byId ?? byName ?? builtIn;
           if (resolvedPhoto != null && resolvedPhoto.isNotEmpty) {
             return eq.copyWith(imagePath: resolvedPhoto);
           }
         }
         return eq;
       }).toList();
+
+      // Ensure the 3 newly added standard items ('גזה דחוסה לספיגה ועצירת דימומים', 'שמיכת מילוט', 'אגד גזה')
+      // exist in existing units so medics see the full updated catalog!
+      if (items.isNotEmpty && !(prefs.getBool('equipment_supplement_v72_$unitId') ?? false)) {
+        final newRowsToInsert = <Map<String, dynamic>>[];
+        const requiredNewItems = [
+          {'name': 'גזה דחוסה לספיגה ועצירת דימומים', 'category': 'וסט חובש', 'item_type': 'מתכלה', 'minimum_required': 2},
+          {'name': 'שמיכת מילוט', 'category': 'וסט חובש', 'item_type': 'מתכלה', 'minimum_required': 1},
+          {'name': 'אגד גזה', 'category': 'וסט חובש', 'item_type': 'מתכלה', 'minimum_required': 4},
+          {'name': 'גזה דחוסה לספיגה ועצירת דימומים', 'category': 'ארגז חופל', 'item_type': 'מתכלה', 'minimum_required': 4},
+          {'name': 'אגד גזה', 'category': 'ארגז חופל', 'item_type': 'מתכלה', 'minimum_required': 10},
+        ];
+        for (final req in requiredNewItems) {
+          final reqName = req['name'] as String;
+          final reqCat = req['category'] as String;
+          final exists = items.any((e) =>
+              e.name.trim() == reqName &&
+              (reqCat == 'ארגז חופל' ? e.isCompanyBox : !e.isCompanyBox));
+          if (!exists) {
+            final minReq = req['minimum_required'] as int;
+            final row = <String, dynamic>{
+              'id': const Uuid().v4(),
+              'name': reqName,
+              'quantity': minReq,
+              'minimum_required': minReq,
+              'status': 'IN_STOCK',
+              'category': reqCat,
+              'item_type': req['item_type'],
+              'unit_id': unitId,
+            };
+            newRowsToInsert.add(row);
+            items.add(_attachBuiltInPhotoIfNeeded(Equipment.fromMap(row)));
+          }
+        }
+        if (newRowsToInsert.isNotEmpty) {
+          items.sort((a, b) => a.name.compareTo(b.name));
+          try {
+            await Supabase.instance.client.from('equipment').insert(newRowsToInsert);
+          } catch (_) {}
+        }
+        await prefs.setBool('equipment_supplement_v72_$unitId', true);
+      }
 
       // Auto-seed standard IDF equipment once for units that have 0 items yet
       if (items.isEmpty && !(prefs.getBool(seededKey) ?? false)) {

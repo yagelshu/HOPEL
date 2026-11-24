@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:chopel_app/core/services/battalion_staff_service.dart';
 import 'package:chopel_app/core/services/csv_export_service.dart';
 import 'package:chopel_app/core/utils/default_equipment_catalog.dart';
+import 'package:chopel_app/core/utils/equipment_photo_catalog.dart';
 import 'package:chopel_app/core/utils/equipment_visual_helper.dart';
 import 'package:chopel_app/core/utils/platoon_helper.dart';
 import 'package:chopel_app/features/dashboard/providers.dart';
@@ -309,6 +310,73 @@ void main() {
       expect(restored.totalEquipment, 49);
       expect(restored.timelineEvents.first['title'], 'מסדר בוקר');
       expect(restored.activeMedics.first['name'], 'יגל');
+    });
+
+    test('EquipmentPhotoCatalog maps all 15 real uploaded equipment photos accurately', () {
+      expect(
+        EquipmentPhotoCatalog.resolveBuiltInPhoto('קומבאט גז (Combat Gauze) לעצירת דימומים'),
+        'assets/images/eq_combat_gauze.jpg',
+      );
+      expect(
+        EquipmentPhotoCatalog.resolveBuiltInPhoto('תחבושת מיוחדת שעוצרת דימומים'),
+        'assets/images/eq_combat_gauze.jpg',
+      );
+      expect(
+        EquipmentPhotoCatalog.resolveBuiltInPhoto('גזה דחוסה לספיגה ועצירת דימומים'),
+        'assets/images/eq_compressed_gauze.jpg',
+      );
+      expect(
+        EquipmentPhotoCatalog.resolveBuiltInPhoto('תחבושת אישית First Care'),
+        'assets/images/eq_first_care_bandage.jpg',
+      );
+      expect(
+        EquipmentPhotoCatalog.resolveBuiltInPhoto('פלסטר מיקרופור (Micropore)'),
+        'assets/images/eq_micropore.png',
+      );
+      expect(
+        EquipmentPhotoCatalog.resolveBuiltInPhoto('משולשי בד לחבישה וקיבוע'),
+        'assets/images/eq_triangular_bandage.png',
+      );
+      expect(
+        EquipmentPhotoCatalog.resolveBuiltInPhoto('פדים סטריליים מבד גזה'),
+        'assets/images/eq_gauze_pad.png',
+      );
+      expect(
+        EquipmentPhotoCatalog.resolveBuiltInPhoto('פלסטרים קטנים לפצעים'),
+        'assets/images/eq_plasters_box.png',
+      );
+      expect(
+        EquipmentPhotoCatalog.resolveBuiltInPhoto('שמיכת מילוט'),
+        'assets/images/eq_thermal_blanket.png',
+      );
+      expect(
+        EquipmentPhotoCatalog.resolveBuiltInPhoto('תחבושת אלסטית 4 אינץ'),
+        'assets/images/eq_elastic_bandage.png',
+      );
+      expect(
+        EquipmentPhotoCatalog.resolveBuiltInPhoto('אגד גזה'),
+        'assets/images/eq_gauze_roll.png',
+      );
+      expect(
+        EquipmentPhotoCatalog.resolveBuiltInPhoto('כפפות רפואיות חד פעמיות'),
+        'assets/images/eq_gloves.png',
+      );
+      expect(
+        EquipmentPhotoCatalog.resolveBuiltInPhoto('מדחום למדידת חום'),
+        'assets/images/eq_thermometer.png',
+      );
+      expect(
+        EquipmentPhotoCatalog.resolveBuiltInPhoto('מד לחץ דם ידני עם סטטוסקופ'),
+        'assets/images/eq_bp_cuff_stethoscope.png',
+      );
+      expect(
+        EquipmentPhotoCatalog.resolveBuiltInPhoto('מכשיר לחמצן בדם (מד סטורציה)'),
+        'assets/images/eq_pulse_oximeter.png',
+      );
+      expect(
+        EquipmentPhotoCatalog.resolveBuiltInPhoto('צמרוני אוזניים / מקלוני צמר גפן'),
+        'assets/images/eq_cotton_swabs.png',
+      );
     });
   });
 }

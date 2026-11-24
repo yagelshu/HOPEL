@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:chopel_app/core/utils/battalion_medic_helper.dart';
+import 'package:chopel_app/core/utils/equipment_photo_catalog.dart';
 import 'package:chopel_app/core/utils/platform_image.dart';
 import 'package:chopel_app/core/utils/app_error_helper.dart';
 import 'package:flutter/material.dart';
@@ -144,7 +145,7 @@ class _EquipmentListScreenState extends ConsumerState<EquipmentListScreen> {
     }
 
     String itemType = item?.itemType ?? 'מתכלה';
-    String? imagePath = item?.imagePath;
+    String? imagePath = item?.imagePath ?? (item != null ? EquipmentPhotoCatalog.resolveBuiltInPhoto(item.name) : null);
     bool isSaving = false;
 
     HopalBottomSheet.show(
@@ -1587,6 +1588,7 @@ class _EquipmentListScreenState extends ConsumerState<EquipmentListScreen> {
         delegate: SliverChildBuilderDelegate(
           (context, index) {
             final item = items[index];
+            final effectivePhoto = item.imagePath ?? EquipmentPhotoCatalog.resolveBuiltInPhoto(item.name);
             final isMissing = item.status == 'MISSING' || item.quantity < item.minimumRequired;
             final isExpiring = item.status == 'EXPIRING_SOON';
 
@@ -1625,20 +1627,23 @@ class _EquipmentListScreenState extends ConsumerState<EquipmentListScreen> {
                           Container(
                             width: 50,
                             height: 50,
+                            padding: effectivePhoto != null ? const EdgeInsets.all(3) : EdgeInsets.zero,
                             decoration: BoxDecoration(
-                              color: AppTheme.backgroundSecondary,
+                              color: effectivePhoto != null ? Colors.white : AppTheme.backgroundSecondary,
                               borderRadius: AppTheme.radiusSm,
                               border: Border.all(
-                                color: item.imagePath != null ? AppTheme.primaryGreen.withValues(alpha: 0.5) : AppTheme.borderSubtle,
+                                color: effectivePhoto != null
+                                    ? AppTheme.primaryGreen.withValues(alpha: 0.5)
+                                    : AppTheme.borderSubtle,
                               ),
                             ),
-                            child: item.imagePath != null
+                            child: effectivePhoto != null
                                 ? ClipRRect(
                                     borderRadius: AppTheme.radiusSm,
                                     child: Image(
-                                      key: ValueKey('${item.id}_${item.imagePath!.length}'),
-                                      image: resolveLocalOrWebImage(item.imagePath!),
-                                      fit: BoxFit.cover,
+                                      key: ValueKey('${item.id}_${effectivePhoto.length}'),
+                                      image: resolveLocalOrWebImage(effectivePhoto),
+                                      fit: BoxFit.contain,
                                       errorBuilder: (_, __, ___) => Icon(
                                         item.itemType == 'מתכלה' ? LucideIcons.pill : LucideIcons.briefcase,
                                         color: AppTheme.textSecondary,
@@ -1652,7 +1657,7 @@ class _EquipmentListScreenState extends ConsumerState<EquipmentListScreen> {
                                     size: 24,
                                   ),
                           ),
-                          if (isCompanyMedic && item.imagePath == null)
+                          if (isCompanyMedic && effectivePhoto == null)
                             Positioned(
                               bottom: -3,
                               left: -3,
