@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'package:chopel_app/core/utils/battalion_medic_helper.dart';
-import 'package:chopel_app/core/utils/equipment_visual_helper.dart';
 import 'package:chopel_app/core/utils/platform_image.dart';
 import 'package:chopel_app/core/utils/app_error_helper.dart';
 import 'package:flutter/material.dart';
@@ -233,17 +232,11 @@ class _EquipmentListScreenState extends ConsumerState<EquipmentListScreen> {
                       : Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            EquipmentVisualHelper.buildIllustration(
-                              itemName: nameController.text.isNotEmpty
-                                  ? nameController.text
-                                  : (item?.name ?? 'ציוד רפואי'),
-                              itemType: itemType,
-                              size: 68,
-                            ),
-                            const SizedBox(height: 8),
+                            Icon(LucideIcons.camera, color: AppTheme.textSecondary, size: 30),
+                            const SizedBox(height: 6),
                             Text(
-                              'איור תקן מובנה (ניתן גם לצלם תמונה מותאמת)',
-                              style: TextStyle(color: AppTheme.textSecondary, fontSize: 12),
+                              'הוסף תמונה אמיתית לפריט (תסונכרן לכל הווסטים)',
+                              style: TextStyle(color: AppTheme.textSecondary, fontSize: 13),
                             ),
                           ],
                         ),
@@ -1504,6 +1497,84 @@ class _EquipmentListScreenState extends ConsumerState<EquipmentListScreen> {
     );
   }
 
+  Future<void> _quickPickAndSavePhoto(BuildContext context, Equipment item) async {
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      backgroundColor: AppTheme.backgroundSecondary,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (sheetCtx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
+              child: Text(
+                'תמונה עבור: ${item.name}',
+                style: TextStyle(
+                  color: AppTheme.textPrimary,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 15,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Text(
+                'התמונה תישמר ותתעדכן אוטומטית עבור פריט זה בארגז החופ"ל ובכל הווסטים בפלוגה',
+                style: TextStyle(color: AppTheme.textSecondary, fontSize: 12),
+                textAlign: TextAlign.center,
+              ),
+            ),
+            const SizedBox(height: 8),
+            ListTile(
+              leading: Icon(LucideIcons.camera, color: AppTheme.primaryGreen),
+              title: Text('צלם תמונה עכשיו', style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.bold)),
+              onTap: () => Navigator.pop(sheetCtx, ImageSource.camera),
+            ),
+            ListTile(
+              leading: Icon(LucideIcons.image, color: AppTheme.infoBlue),
+              title: Text('בחר תמונה מהגלריה', style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.bold)),
+              onTap: () => Navigator.pop(sheetCtx, ImageSource.gallery),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+
+    if (source == null) return;
+    try {
+      final picker = ImagePicker();
+      final pickedFile = await picker.pickImage(
+        source: source,
+        maxWidth: 420,
+        maxHeight: 420,
+        imageQuality: 65,
+      );
+      if (pickedFile == null) return;
+      final bytes = await pickedFile.readAsBytes();
+      final ext = pickedFile.name.toLowerCase().endsWith('.png') ? 'png' : 'jpeg';
+      final dataUri = 'data:image/$ext;base64,${base64Encode(bytes)}';
+
+      await ref.read(equipmentProvider.notifier).upsertItem(
+            item.copyWith(imagePath: dataUri),
+          );
+      if (context.mounted) {
+        HopalFeedback.showSuccess(
+          context,
+          'התמונה של "${item.name}" נשמרה וסונכרנה לכל הווסטים!',
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        HopalFeedback.showError(context, 'שגיאה בשמירת התמונה');
+      }
+    }
+  }
+
   Widget _buildEquipmentList(
     List<Equipment> items, {
     required List<_KitScope> scopes,
@@ -1546,36 +1617,57 @@ class _EquipmentListScreenState extends ConsumerState<EquipmentListScreen> {
                     : null,
                 child: Row(
                   children: [
-                    Container(
-                      width: 50,
-                      height: 50,
-                      decoration: BoxDecoration(
-                        color: AppTheme.backgroundSecondary,
-                        borderRadius: AppTheme.radiusSm,
-                        border: Border.all(color: AppTheme.borderSubtle),
-                      ),
-                      child: item.imagePath != null
-                          ? ClipRRect(
+                    GestureDetector(
+                      onTap: isCompanyMedic ? () => _quickPickAndSavePhoto(context, item) : null,
+                      child: Stack(
+                        clipBehavior: Clip.none,
+                        children: [
+                          Container(
+                            width: 50,
+                            height: 50,
+                            decoration: BoxDecoration(
+                              color: AppTheme.backgroundSecondary,
                               borderRadius: AppTheme.radiusSm,
-                              child: Image(
-                                key: ValueKey('${item.id}_${item.imagePath!.length}'),
-                                image: resolveLocalOrWebImage(item.imagePath!),
-                                fit: BoxFit.cover,
-                                errorBuilder: (_, __, ___) => EquipmentVisualHelper.buildIllustration(
-                                  itemName: item.name,
-                                  itemType: item.itemType,
-                                  size: 50,
-                                ),
-                              ),
-                            )
-                          : ClipRRect(
-                              borderRadius: AppTheme.radiusSm,
-                              child: EquipmentVisualHelper.buildIllustration(
-                                itemName: item.name,
-                                itemType: item.itemType,
-                                size: 50,
+                              border: Border.all(
+                                color: item.imagePath != null ? AppTheme.primaryGreen.withValues(alpha: 0.5) : AppTheme.borderSubtle,
                               ),
                             ),
+                            child: item.imagePath != null
+                                ? ClipRRect(
+                                    borderRadius: AppTheme.radiusSm,
+                                    child: Image(
+                                      key: ValueKey('${item.id}_${item.imagePath!.length}'),
+                                      image: resolveLocalOrWebImage(item.imagePath!),
+                                      fit: BoxFit.cover,
+                                      errorBuilder: (_, __, ___) => Icon(
+                                        item.itemType == 'מתכלה' ? LucideIcons.pill : LucideIcons.briefcase,
+                                        color: AppTheme.textSecondary,
+                                        size: 24,
+                                      ),
+                                    ),
+                                  )
+                                : Icon(
+                                    item.itemType == 'מתכלה' ? LucideIcons.pill : LucideIcons.briefcase,
+                                    color: AppTheme.textSecondary,
+                                    size: 24,
+                                  ),
+                          ),
+                          if (isCompanyMedic && item.imagePath == null)
+                            Positioned(
+                              bottom: -3,
+                              left: -3,
+                              child: Container(
+                                padding: const EdgeInsets.all(3),
+                                decoration: BoxDecoration(
+                                  color: AppTheme.primaryGreen,
+                                  shape: BoxShape.circle,
+                                  border: Border.all(color: AppTheme.backgroundPrimary, width: 1.5),
+                                ),
+                                child: Icon(LucideIcons.camera, size: 10, color: AppTheme.onPrimaryGreen),
+                              ),
+                            ),
+                        ],
+                      ),
                     ),
                     const SizedBox(width: AppTheme.spacing16),
                     Expanded(

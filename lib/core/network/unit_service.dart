@@ -97,50 +97,90 @@ class UnitService {
     }
   }
 
-  Future<bool> joinUnit(String code) async {
+  Future<bool> joinUnit(
+    String code, {
+    String? platoon,
+    String? phoneNumber,
+  }) async {
     final user = AuthService().currentUser;
     if (user == null) return false;
 
     try {
+      final cleanCode = code.trim().replaceAll(RegExp(r'\s+'), '').toUpperCase();
       final response = await _supabase
           .from('units')
           .select()
-          .eq('join_code', code.toUpperCase())
+          .eq('join_code', cleanCode)
           .maybeSingle();
 
       if (response == null) {
         return false; // Code not found
       }
 
-      final unitId = response['id'];
+      final unitId = response['id'] as String;
 
       // Get active deployment of the unit
       final activeDeploymentRes = await _supabase
           .from('deployments')
-          .select('id')
+          .select('id, name')
           .eq('unit_id', unitId)
           .eq('is_active', true)
           .order('start_date', ascending: false)
           .limit(1)
           .maybeSingle();
 
-      final activeDeploymentId = activeDeploymentRes?['id'];
+      String? activeDeploymentId = activeDeploymentRes?['id']?.toString();
+      String? activeDeploymentName = activeDeploymentRes?['name']?.toString();
+
+      // Fallback: check the unit's COMPANY_MEDIC active_deployment_id if no active deployment row matched
+      if (activeDeploymentId == null || activeDeploymentId.isEmpty) {
+        try {
+          final chiefRow = await _supabase
+              .from('users')
+              .select('active_deployment_id')
+              .eq('unit_id', unitId)
+              .eq('role', 'COMPANY_MEDIC')
+              .limit(1)
+              .maybeSingle();
+          activeDeploymentId = chiefRow?['active_deployment_id']?.toString();
+        } catch (_) {}
+      }
+
+      final cleanPlatoon = (platoon != null && platoon.trim().isNotEmpty) ? platoon.trim() : user.platoon;
+      final cleanPhone = (phoneNumber != null && phoneNumber.trim().isNotEmpty) ? phoneNumber.trim() : user.phoneNumber;
 
       // Upsert user so missing profile rows are created cleanly
-      await _supabase.from('users').upsert({
-        'id': user.id,
-        'name': user.name,
-        'role': 'COMBAT_MEDIC',
-        'unit_id': unitId,
-        'active_deployment_id': activeDeploymentId,
-      });
+      try {
+        await _supabase.from('users').upsert({
+          'id': user.id,
+          'name': user.name,
+          'role': 'COMBAT_MEDIC',
+          'unit_id': unitId,
+          'active_deployment_id': activeDeploymentId,
+          'is_on_standby': true,
+          if (cleanPlatoon != null) 'platoon': cleanPlatoon,
+          if (cleanPhone != null) 'phone_number': cleanPhone,
+        });
+      } on PostgrestException catch (_) {
+        await _supabase.from('users').upsert({
+          'id': user.id,
+          'name': user.name,
+          'role': 'COMBAT_MEDIC',
+          'unit_id': unitId,
+          'active_deployment_id': activeDeploymentId,
+        });
+      }
 
       await AuthService().loadProfile();
       AuthService().updateCurrentUserUnit(
         unitId,
         response['name'] as String,
         response['join_code'] as String,
+        role: 'COMBAT_MEDIC',
       );
+      if (activeDeploymentId != null) {
+        AuthService().updateCurrentUserDeployment(activeDeploymentId, activeDeploymentName);
+      }
       return true;
     } catch (e) {
       debugPrint('Error joining unit: $e');

@@ -59,6 +59,18 @@ class EquipmentNotifier extends AsyncNotifier<List<Equipment>> {
 
   Map<String, String> _readCachedImages(SharedPreferences prefs, String cacheKey) {
     final result = <String, String>{};
+    // Also read shared by-name photo map so real photos propagate to all vests
+    final byNameRaw = prefs.getString('equipment_photos_by_name_v1');
+    if (byNameRaw != null && byNameRaw.isNotEmpty) {
+      try {
+        final byNameMap = jsonDecode(byNameRaw) as Map;
+        byNameMap.forEach((k, v) {
+          if (k != null && v != null && v.toString().isNotEmpty) {
+            result['name::${k.toString().trim()}'] = v.toString();
+          }
+        });
+      } catch (_) {}
+    }
     final cachedStr = prefs.getString(cacheKey);
     if (cachedStr == null || cachedStr.isEmpty) return result;
     try {
@@ -66,9 +78,13 @@ class EquipmentNotifier extends AsyncNotifier<List<Equipment>> {
       for (final raw in decoded) {
         if (raw is Map) {
           final id = raw['id']?.toString();
+          final name = raw['name']?.toString().trim();
           final img = raw['image_path']?.toString();
           if (id != null && img != null && img.isNotEmpty) {
             result[id] = img;
+          }
+          if (name != null && name.isNotEmpty && img != null && img.isNotEmpty) {
+            result['name::$name'] = img;
           }
         }
       }
@@ -96,8 +112,21 @@ class EquipmentNotifier extends AsyncNotifier<List<Equipment>> {
 
       var items = (response as List).map((map) {
         final eq = Equipment.fromMap(Map<String, dynamic>.from(map));
-        if (eq.imagePath == null && cachedImages.containsKey(eq.id)) {
-          return eq.copyWith(imagePath: cachedImages[eq.id]);
+        if (eq.imagePath != null && eq.imagePath!.isNotEmpty) {
+          cachedImages['name::${eq.name.trim()}'] = eq.imagePath!;
+        }
+        return eq;
+      }).toList();
+
+      // Propagate any real photo by item ID or by item name across all vests & company box
+      items = items.map((eq) {
+        if (eq.imagePath == null || eq.imagePath!.isEmpty) {
+          final byId = cachedImages[eq.id];
+          final byName = cachedImages['name::${eq.name.trim()}'];
+          final resolvedPhoto = byId ?? byName;
+          if (resolvedPhoto != null && resolvedPhoto.isNotEmpty) {
+            return eq.copyWith(imagePath: resolvedPhoto);
+          }
         }
         return eq;
       }).toList();
@@ -225,6 +254,8 @@ class EquipmentNotifier extends AsyncNotifier<List<Equipment>> {
   }
 
   /// Optimistically inserts or updates an equipment item (including its base64 photo) in 0ms.
+  /// If a real photo is set on [item], automatically propagates that photo to all items
+  /// with the same name across the company box and all medics' vests!
   Future<void> upsertItem(Equipment item) async {
     final currentList = List<Equipment>.from(state.value ?? []);
     final existingIdx = currentList.indexWhere((e) => e.id == item.id);
@@ -233,6 +264,33 @@ class EquipmentNotifier extends AsyncNotifier<List<Equipment>> {
     } else {
       currentList.add(item);
       currentList.sort((a, b) => a.name.compareTo(b.name));
+    }
+
+    final cleanName = item.name.trim();
+    final hasPhoto = item.imagePath != null && item.imagePath!.isNotEmpty;
+    final siblingUpdates = <Equipment>[];
+
+    if (hasPhoto && cleanName.isNotEmpty) {
+      for (int i = 0; i < currentList.length; i++) {
+        final other = currentList[i];
+        if (other.id != item.id &&
+            other.name.trim() == cleanName &&
+            other.imagePath != item.imagePath) {
+          final updatedSibling = other.copyWith(imagePath: item.imagePath);
+          currentList[i] = updatedSibling;
+          siblingUpdates.add(updatedSibling);
+        }
+      }
+      // Persist by-name photo cache so newly seeded vests get it automatically
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        final raw = prefs.getString('equipment_photos_by_name_v1');
+        final map = raw != null && raw.isNotEmpty
+            ? Map<String, dynamic>.from(jsonDecode(raw) as Map)
+            : <String, dynamic>{};
+        map[cleanName] = item.imagePath;
+        await prefs.setString('equipment_photos_by_name_v1', jsonEncode(map));
+      } catch (_) {}
     }
 
     // 0ms optimistic update so UI & photo update immediately
@@ -245,7 +303,11 @@ class EquipmentNotifier extends AsyncNotifier<List<Equipment>> {
     ref.invalidate(dashboardMetricsProvider);
 
     if (unitId != null) {
-      await Supabase.instance.client.from('equipment').upsert(item.toSupabaseMap());
+      final rowsToUpsert = [
+        item.toSupabaseMap(),
+        ...siblingUpdates.map((s) => s.toSupabaseMap()),
+      ];
+      await Supabase.instance.client.from('equipment').upsert(rowsToUpsert);
     }
 
     try {

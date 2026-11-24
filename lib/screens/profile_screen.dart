@@ -1065,14 +1065,55 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
                     if (isCompanyMedic && user?.unitJoinCode != null) ...[
                       const SizedBox(height: AppTheme.spacing16),
-                      HopalButton(
-                        label: 'הזמן חובשים לפלוגה',
-                        icon: LucideIcons.userPlus,
-                        variant: HopalButtonVariant.secondary,
-                        onPressed: () async {
-                          final message = 'היי! מוזמן להצטרף לסביבת הפלוגה שלנו באפליקציית HOPAL.\nקוד ההצטרפות שלנו הוא: *${user!.unitJoinCode}*';
-                          await SharePlus.instance.share(ShareParams(text: message));
-                        },
+                      Row(
+                        children: [
+                          Expanded(
+                            child: HopalButton(
+                              label: 'הזמן חובשים לפלוגה',
+                              icon: LucideIcons.userPlus,
+                              variant: HopalButtonVariant.secondary,
+                              onPressed: () async {
+                                final unitLabel = user?.unitName ?? 'הפלוגה שלנו';
+                                final message =
+                                    'אהלן צוות רפואה ($unitLabel)! 🩺\n'
+                                    'לקראת התעסוקה הקרובה אנחנו עוברים לנהל את הפניות הרפואיות, המצבת וכשירות הווסטים באפליקציית *חופ"ל (HOPAL)*.\n\n'
+                                    '🔗 *קישור לכניסה והתקנה מהירה:*\n'
+                                    '${AuthService.defaultWebRedirectUrl}\n\n'
+                                    '🔑 *קוד ההצטרפות הפלוגתי שלנו:* *${user!.unitJoinCode}*\n\n'
+                                    '*איך מתחברים ב-30 שניות:*\n'
+                                    '1. נכנסים לקישור ולוחצים על "הירשם עכשיו" (שם מלא, מייל וסיסמה).\n'
+                                    '2. במסך החיבור לפלוגה בוחרים בטאב *"יש לי קוד (חובש)"*, מזינים את הקוד *${user.unitJoinCode}* ובוחרים את המחלקה שלכם.\n'
+                                    '3. נכנסים לטאב *"ציוד"* ובודקים את תקן הווסט האישי שלכם (ומוסיפים את האפליקציה למסך הבית בטלפון).';
+                                await SharePlus.instance.share(ShareParams(text: message));
+                              },
+                            ),
+                          ),
+                          const SizedBox(width: AppTheme.spacing8),
+                          Expanded(
+                            child: HopalButton(
+                              label: 'שתף עם חופ"ל בגדוד',
+                              icon: LucideIcons.share2,
+                              variant: HopalButtonVariant.secondary,
+                              onPressed: () async {
+                                const message =
+                                    'אהלן חופ"לים! 🩺\n'
+                                    'לקראת התעסוקה הקרובה בנינו מערכת ייעודית לחופ"ל ולצוותי הרפואה במילואים – *חופ"ל (HOPAL)*.\n\n'
+                                    'מה יש במערכת?\n'
+                                    '• ניהול פניות רפואיות פלוגתי, תיק רפואי אישי לכל חייל ומעקב רגישויות (G6PD/אלרגיות).\n'
+                                    '• *מסדר מט"ב יומי* ותורנויות רופאים/פראמדיקים וחוג"ד עם שליחה אוטומטית לוואטסאפ.\n'
+                                    '• ניהול *ארגז חופ"ל ווסטים של חובשי המחלקות* כולל ניפוק אוטומטי מהמלאי ודרישת השלמות לחוג"ד בלחיצה.\n'
+                                    '• מדריך תרופות שטח, מחשבון מינונים וצ\'ק-ליסט דגלים אדומים (Red Flags).\n\n'
+                                    '🔗 *קישור לכניסה:*\n'
+                                    '${AuthService.defaultWebRedirectUrl}\n\n'
+                                    '*איך פותחים סביבה לפלוגה שלכם:*\n'
+                                    '1. נרשמים בקישור -> בוחרים בטאב *"פתיחת פלוגה (חופ"ל)"* ונותנים שם לפלוגה ולתעסוקה.\n'
+                                    '2. מייבאים את מצבת החיילים מאקסל/רשימה ב-10 שניות.\n'
+                                    '3. שולחים לחובשים שלכם את קוד ההצטרפות הפלוגתי שתקבלו.';
+                                await SharePlus.instance.share(ShareParams(text: message));
+                              },
+                            ),
+                          ),
+                        ],
                       ),
                     ],
 

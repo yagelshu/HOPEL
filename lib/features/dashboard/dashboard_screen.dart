@@ -30,6 +30,8 @@ import 'package:chopel_app/features/equipment/equipment_list_screen.dart';
 import 'package:chopel_app/features/equipment/providers.dart';
 import 'package:chopel_app/screens/profile_screen.dart';
 import 'package:chopel_app/features/notes/notes_screen.dart';
+import 'package:chopel_app/features/dashboard/shift_handover_screen.dart';
+import 'package:chopel_app/features/profile/p2p_sync_screen.dart';
 import 'package:chopel_app/core/services/outbreak_radar_service.dart';
 import 'package:chopel_app/features/dashboard/widgets/outbreak_radar_card.dart';
 import 'package:chopel_app/features/dashboard/widgets/matab_queue_card.dart';
