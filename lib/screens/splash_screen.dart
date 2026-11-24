@@ -9,7 +9,6 @@ import 'package:chopel_app/features/auth/update_password_screen.dart';
 import 'package:chopel_app/features/onboarding/deployment_selection_screen.dart';
 import 'package:chopel_app/features/onboarding/unit_selection_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:chopel_app/core/services/update_service.dart';
 import 'package:chopel_app/core/utils/app_constants.dart';
 
 class SplashScreen extends StatefulWidget {
@@ -55,10 +54,7 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
   }
 
   Future<void> _initializeAppData() async {
-    await Future.delayed(const Duration(milliseconds: 500));
-    if (!mounted) return;
-
-    await UpdateService.checkForUpdates(context);
+    await Future.delayed(const Duration(milliseconds: 250));
     if (!mounted) return;
 
     if (AuthService().isPasswordRecovery) {
@@ -70,7 +66,17 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
     }
 
     if (AuthService().isAuthenticated) {
-      await AuthService().loadProfile();
+      // 1. Check local cached profile in 0ms first!
+      final cachedUser = await AuthService().loadCachedProfileInstant();
+      if (cachedUser != null && cachedUser.unitId != null && cachedUser.activeDeploymentId != null) {
+        // Refresh profile & check updates in the background without blocking app startup!
+        unawaited(AuthService().loadProfile());
+      } else {
+        // No complete cached profile yet -> wait up to 4s for cloud profile
+        try {
+          await AuthService().loadProfile().timeout(const Duration(seconds: 4));
+        } catch (_) {}
+      }
       if (!mounted) return;
 
       final user = AuthService().currentUser;

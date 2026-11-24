@@ -1,4 +1,14 @@
 class PlatoonHelper {
+  /// Standard quick-select platoons including attached personnel ('מסופחים')
+  static const List<String> quickSelectPlatoons = [
+    'מחלקה 1',
+    'מחלקה 2',
+    'מחלקה 3',
+    'מפלג',
+    'חפ"ק',
+    'מסופחים',
+  ];
+
   /// Known non-numbered company platoons / units
   static const Set<String> _specialPlatoons = {
     'מפלג',
@@ -11,6 +21,8 @@ class PlatoonHelper {
     'אתק',
     'מפקדה',
     'פלוגה',
+    'מסופחים',
+    'מסופח',
   };
 
   /// Normalizes any platoon string into a canonical representation:
@@ -30,10 +42,15 @@ class PlatoonHelper {
       s = s.replaceFirst('מחלקה', '').trim();
     }
 
+    // Unify 'מסופח' / 'מחלקה מסופחים' -> 'מסופחים'
+    if (s == 'מסופח' || s == 'מסופחים' || s == 'מחלקה מסופחים' || s == 'מחלקת מסופחים') {
+      return 'מסופחים';
+    }
+
     // Check if it's 'מחלקה מפלג' -> 'מפלג'
     for (final sp in _specialPlatoons) {
       if (s.startsWith('מחלקה $sp') || s == 'מחלקה $sp') {
-        return sp;
+        return sp == 'מסופח' ? 'מסופחים' : sp;
       }
     }
 
@@ -75,8 +92,11 @@ class PlatoonHelper {
     Iterable<T> items,
     String? Function(T item) platoonGetter, {
     bool includeAll = true,
+    bool alwaysIncludeAttached = false,
   }) {
-    final platoonsSet = <String>{};
+    final platoonsSet = <String>{
+      if (alwaysIncludeAttached) 'מסופחים',
+    };
 
     for (final item in items) {
       final raw = platoonGetter(item);

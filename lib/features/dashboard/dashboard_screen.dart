@@ -30,8 +30,6 @@ import 'package:chopel_app/features/equipment/equipment_list_screen.dart';
 import 'package:chopel_app/features/equipment/providers.dart';
 import 'package:chopel_app/screens/profile_screen.dart';
 import 'package:chopel_app/features/notes/notes_screen.dart';
-import 'package:chopel_app/features/dashboard/shift_handover_screen.dart';
-import 'package:chopel_app/features/profile/p2p_sync_screen.dart';
 import 'package:chopel_app/core/services/outbreak_radar_service.dart';
 import 'package:chopel_app/features/dashboard/widgets/outbreak_radar_card.dart';
 import 'package:chopel_app/features/dashboard/widgets/matab_queue_card.dart';
@@ -847,104 +845,41 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with TickerPr
   Widget _buildQuickActions() {
     return Padding(
       padding: const EdgeInsets.fromLTRB(AppTheme.spacing16, AppTheme.spacing32, AppTheme.spacing16, 0),
-      child: Column(
+      child: Row(
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: HopalButton(
-                  label: 'פנייה חדשה',
-                  icon: LucideIcons.plusCircle,
-                  isExpanded: true,
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 14),
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const MedicalCaseCreateScreen(),
-                      ),
-                    );
-                  },
-                ),
-              ),
-              const SizedBox(width: AppTheme.spacing12),
-              Expanded(
-                child: HopalButton(
-                  label: 'יומן והודעות',
-                  icon: LucideIcons.notebookPen,
-                  isExpanded: true,
-                  variant: HopalButtonVariant.secondary,
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 14),
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const NotesScreen(),
-                      ),
-                    );
-                  },
-                ),
-              ),
-            ],
+          Expanded(
+            child: HopalButton(
+              label: 'פנייה חדשה',
+              icon: LucideIcons.plusCircle,
+              isExpanded: true,
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 14),
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const MedicalCaseCreateScreen(),
+                  ),
+                );
+              },
+            ),
           ),
-          const SizedBox(height: AppTheme.spacing12),
-          Row(
-            children: [
-              Expanded(
-                child: HopalButton(
-                  label: 'דוח חפיפה',
-                  icon: LucideIcons.fileSpreadsheet,
-                  isExpanded: true,
-                  variant: HopalButtonVariant.secondary,
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const ShiftHandoverScreen(),
-                      ),
-                    );
-                  },
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: HopalButton(
-                  label: 'מסדר מט"ב',
-                  icon: LucideIcons.stethoscope,
-                  isExpanded: true,
-                  variant: HopalButtonVariant.secondary,
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
-                  onPressed: () {
-                    final cases = ref.read(medicalCasesProvider).value ?? [];
-                    final soldiers = ref.read(soldiersProvider).value ?? [];
-                    MatabQueueCard.showQueueSheet(
-                      context,
-                      allCases: cases,
-                      soldiers: soldiers,
-                    );
-                  },
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: HopalButton(
-                  label: 'סנכרון P2P',
-                  icon: LucideIcons.radioTower,
-                  isExpanded: true,
-                  variant: HopalButtonVariant.secondary,
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const P2pSyncScreen(),
-                      ),
-                    );
-                  },
-                ),
-              ),
-            ],
+          const SizedBox(width: AppTheme.spacing12),
+          Expanded(
+            child: HopalButton(
+              label: 'יומן והודעות',
+              icon: LucideIcons.notebookPen,
+              isExpanded: true,
+              variant: HopalButtonVariant.secondary,
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 14),
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const NotesScreen(),
+                  ),
+                );
+              },
+            ),
           ),
         ],
       ),

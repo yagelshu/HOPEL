@@ -387,6 +387,19 @@ class AuthService {
 
   bool get isAuthenticated => _supabase.auth.currentUser != null;
 
+  /// Loads the locally cached user profile in 0ms if available so SplashScreen
+  /// never blocks when cellular signal or VPN is slow.
+  Future<User?> loadCachedProfileInstant() async {
+    final supaUser = _supabase.auth.currentUser;
+    if (supaUser == null) return null;
+    if (_currentUser != null) return _currentUser;
+    final cached = await _loadLocalProfile(supaUser.id);
+    if (cached != null) {
+      _currentUser = cached;
+    }
+    return _currentUser;
+  }
+
   /// Fetch user profile from the `users` table based on Auth ID
   Future<void> loadProfile() async {
     final supaUser = _supabase.auth.currentUser;
@@ -398,6 +411,9 @@ class AuthService {
       return;
     }
 
+    // Seed from local cache immediately so currentUser is never null while network is slow
+    _currentUser ??= await _loadLocalProfile(supaUser.id);
+
     try {
       Map<String, dynamic>? data;
       try {
@@ -405,13 +421,15 @@ class AuthService {
             .from('users')
             .select('id, name, role, phone_number, platoon, unit_id, active_deployment_id, competence_points, units(name, join_code), deployments(name)')
             .eq('id', supaUser.id)
-            .maybeSingle();
+            .maybeSingle()
+            .timeout(const Duration(seconds: 4));
       } on supa.PostgrestException catch (_) {
         data = await _supabase
             .from('users')
             .select('id, name, role, unit_id, active_deployment_id, competence_points, units(name, join_code), deployments(name)')
             .eq('id', supaUser.id)
-            .maybeSingle();
+            .maybeSingle()
+            .timeout(const Duration(seconds: 4));
       }
 
       if (data == null) {

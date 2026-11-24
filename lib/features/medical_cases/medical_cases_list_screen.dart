@@ -17,6 +17,7 @@ import 'package:chopel_app/theme/components/hopal_shimmer.dart';
 import 'package:chopel_app/core/utils/date_formatter.dart';
 import 'package:chopel_app/core/services/battalion_staff_service.dart';
 import 'package:chopel_app/core/services/csv_export_service.dart';
+import 'package:chopel_app/core/utils/platoon_helper.dart';
 import 'package:chopel_app/features/dashboard/widgets/matab_queue_card.dart';
 
 class MedicalCasesListScreen extends ConsumerStatefulWidget {
@@ -27,7 +28,8 @@ class MedicalCasesListScreen extends ConsumerStatefulWidget {
 }
 
 class _MedicalCasesListScreenState extends ConsumerState<MedicalCasesListScreen> {
-  String _filter = 'ALL'; // ALL, WAITING, FOLLOW_UP, CLOSED
+  String _filter = 'ALL'; // ALL, MATAB_QUEUE, COMPLETED
+  String _selectedPlatoon = 'הכל';
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
 
@@ -41,7 +43,11 @@ class _MedicalCasesListScreenState extends ConsumerState<MedicalCasesListScreen>
         data: (cases) {
           final soldiersAsync = ref.watch(soldiersProvider);
           final soldiers = soldiersAsync.value ?? [];
-          
+          final platoons = PlatoonHelper.extractPlatoons(
+            soldiers,
+            (s) => s.platoon,
+            alwaysIncludeAttached: true,
+          );
           final matabQueueCount = cases.where(BattalionStaffService.isCaseInMatabQueue).length;
 
           List<MedicalCase> filteredCases = cases;
@@ -54,6 +60,13 @@ class _MedicalCasesListScreenState extends ConsumerState<MedicalCasesListScreen>
           } else {
             // ALL active (hide completed and closed by default)
             filteredCases = cases.where((c) => c.status != 'COMPLETED' && c.status != 'CLOSED').toList();
+          }
+
+          if (_selectedPlatoon != 'הכל') {
+            filteredCases = filteredCases.where((c) {
+              final soldier = soldiers.where((s) => s.id == c.soldierId).firstOrNull;
+              return PlatoonHelper.matches(soldier?.platoon, _selectedPlatoon);
+            }).toList();
           }
 
           if (_searchQuery.isNotEmpty) {
@@ -131,7 +144,7 @@ class _MedicalCasesListScreenState extends ConsumerState<MedicalCasesListScreen>
                             onChanged: (val) => setState(() => _searchQuery = val.toLowerCase()),
                           ),
                         ),
-                        _buildFilterChips(matabQueueCount),
+                        _buildFilterChips(matabQueueCount, platoons),
                       ],
                     ),
                   ),
@@ -196,7 +209,7 @@ class _MedicalCasesListScreenState extends ConsumerState<MedicalCasesListScreen>
     return 50; 
   }
 
-  Widget _buildFilterChips(int matabQueueCount) {
+  Widget _buildFilterChips(int matabQueueCount, List<String> platoons) {
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       padding: const EdgeInsets.symmetric(horizontal: AppTheme.spacing16, vertical: AppTheme.spacing8),
@@ -210,6 +223,34 @@ class _MedicalCasesListScreenState extends ConsumerState<MedicalCasesListScreen>
           ),
           const SizedBox(width: AppTheme.spacing8),
           _buildChip('היסטוריה', 'COMPLETED'),
+          if (platoons.length > 1) ...[
+            const SizedBox(width: 10),
+            Container(width: 1, height: 22, color: AppTheme.borderSubtle),
+            const SizedBox(width: 10),
+            ...platoons.where((p) => p != 'הכל').map((plt) {
+              final isSelected = _selectedPlatoon == plt;
+              return Padding(
+                padding: const EdgeInsets.only(left: 6),
+                child: ChoiceChip(
+                  label: Text(plt),
+                  selected: isSelected,
+                  onSelected: (selected) {
+                    setState(() => _selectedPlatoon = selected ? plt : 'הכל');
+                  },
+                  selectedColor: AppTheme.infoBlue.withValues(alpha: 0.2),
+                  backgroundColor: AppTheme.backgroundSecondary,
+                  checkmarkColor: AppTheme.infoBlue,
+                  labelStyle: TextStyle(
+                    color: isSelected ? AppTheme.infoBlue : AppTheme.textSecondary,
+                    fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                    fontSize: 12.5,
+                  ),
+                  side: BorderSide(color: isSelected ? AppTheme.infoBlue : AppTheme.borderSubtle),
+                  shape: const RoundedRectangleBorder(borderRadius: AppTheme.radiusPill),
+                ),
+              );
+            }),
+          ],
         ],
       ),
     );

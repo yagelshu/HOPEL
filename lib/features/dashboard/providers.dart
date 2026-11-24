@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:chopel_app/core/database/database_service.dart';
@@ -46,6 +47,34 @@ class DashboardMetrics {
     return (((totalEquipment - missingEquipment) / totalEquipment) * 100).round().clamp(0, 100);
   }
 
+  Map<String, dynamic> toMap() => {
+        'activeMedicalCases': activeMedicalCases,
+        'requiresAttentionCases': requiresAttentionCases,
+        'missingEquipment': missingEquipment,
+        'totalEquipment': totalEquipment,
+        'expiringEquipment': expiringEquipment,
+        'unverifiedMedics': unverifiedMedics,
+        'timelineEvents': timelineEvents,
+        'activeMedics': activeMedics,
+      };
+
+  factory DashboardMetrics.fromMap(Map<String, dynamic> map) {
+    return DashboardMetrics(
+      activeMedicalCases: (map['activeMedicalCases'] as num?)?.toInt() ?? 0,
+      requiresAttentionCases: (map['requiresAttentionCases'] as num?)?.toInt() ?? 0,
+      missingEquipment: (map['missingEquipment'] as num?)?.toInt() ?? 0,
+      totalEquipment: (map['totalEquipment'] as num?)?.toInt() ?? 0,
+      expiringEquipment: (map['expiringEquipment'] as num?)?.toInt() ?? 0,
+      unverifiedMedics: (map['unverifiedMedics'] as num?)?.toInt() ?? 0,
+      timelineEvents: ((map['timelineEvents'] as List?) ?? const [])
+          .map((e) => Map<String, dynamic>.from(e as Map))
+          .toList(),
+      activeMedics: ((map['activeMedics'] as List?) ?? const [])
+          .map((e) => Map<String, dynamic>.from(e as Map))
+          .toList(),
+    );
+  }
+
   DashboardMetrics copyWith({
     int? activeMedicalCases,
     int? requiresAttentionCases,
@@ -74,12 +103,54 @@ class DashboardMetricsNotifier extends AsyncNotifier<DashboardMetrics> {
 
   @override
   FutureOr<DashboardMetrics> build() async {
+    final cached = await _loadCachedMetrics();
+    if (cached != null) {
+      unawaited(_refreshFromCloudInBackground());
+      return cached;
+    }
     return _fetchMetrics();
+  }
+
+  String? _cacheKey() {
+    final auth = AuthService();
+    final user = auth.currentUser;
+    if (user?.unitId == null) return null;
+    final effectiveId = auth.effectiveUserId ?? user!.id;
+    return 'cached_dashboard_metrics_v1_${user!.unitId}_${auth.effectiveRole}_$effectiveId';
+  }
+
+  Future<DashboardMetrics?> _loadCachedMetrics() async {
+    final key = _cacheKey();
+    if (key == null) return null;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(key);
+      if (raw != null && raw.isNotEmpty) {
+        return DashboardMetrics.fromMap(Map<String, dynamic>.from(jsonDecode(raw) as Map));
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  Future<void> _saveCachedMetrics(DashboardMetrics metrics) async {
+    final key = _cacheKey();
+    if (key == null) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(key, jsonEncode(metrics.toMap()));
+    } catch (_) {}
+  }
+
+  Future<void> _refreshFromCloudInBackground() async {
+    try {
+      final fresh = await _fetchMetrics();
+      state = AsyncValue.data(fresh);
+    } catch (_) {}
   }
 
   Future<T> _safe<T>(Future<T> Function() f, T fallback) async {
     try {
-      return await f();
+      return await f().timeout(const Duration(seconds: 4));
     } catch (e) {
       debugPrint('dashboard section failed: $e');
       return fallback;
@@ -328,7 +399,7 @@ class DashboardMetricsNotifier extends AsyncNotifier<DashboardMetrics> {
       }
     }
 
-    return DashboardMetrics(
+    final computed = DashboardMetrics(
       activeMedicalCases: activeCases,
       requiresAttentionCases: attentionCases,
       missingEquipment: missingEq,
@@ -338,6 +409,8 @@ class DashboardMetricsNotifier extends AsyncNotifier<DashboardMetrics> {
       timelineEvents: timeline,
       activeMedics: medics,
     );
+    unawaited(_saveCachedMetrics(computed));
+    return computed;
   }
 
   /// 0ms synchronous optimistic toggle for a daily schedule task (`V` checkmark).

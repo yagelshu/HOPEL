@@ -14,7 +14,8 @@ class UpdateService {
           .from('app_versions')
           .select()
           .order('created_at', ascending: false)
-          .limit(1);
+          .limit(1)
+          .timeout(const Duration(seconds: 3));
 
       if (response.isEmpty) return;
 

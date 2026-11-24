@@ -3,6 +3,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:chopel_app/core/services/battalion_staff_service.dart';
 import 'package:chopel_app/core/services/csv_export_service.dart';
+import 'package:chopel_app/core/utils/default_equipment_catalog.dart';
+import 'package:chopel_app/core/utils/equipment_visual_helper.dart';
+import 'package:chopel_app/core/utils/platoon_helper.dart';
+import 'package:chopel_app/features/dashboard/providers.dart';
 import 'package:chopel_app/features/learning/red_flags_guide_screen.dart';
 import 'package:chopel_app/features/medical_cases/widgets/inventory_dispense_sheet.dart';
 import 'package:chopel_app/models/medical_case.dart';
@@ -245,6 +249,66 @@ void main() {
         expect(topic.mandatoryChecks, isNotEmpty);
         expect(topic.immediateAction, isNotEmpty);
       }
+    });
+
+    test('PlatoonHelper supports מסופחים as a canonical company group', () {
+      expect(PlatoonHelper.normalize('מסופחים'), 'מסופחים');
+      expect(PlatoonHelper.normalize('מסופח'), 'מסופחים');
+      expect(PlatoonHelper.normalize('מחלקה מסופחים'), 'מסופחים');
+      expect(PlatoonHelper.quickSelectPlatoons, contains('מסופחים'));
+
+      final extracted = PlatoonHelper.extractPlatoons<Soldier>(
+        const [],
+        (s) => s.platoon,
+        alwaysIncludeAttached: true,
+      );
+      expect(extracted, contains('מסופחים'));
+    });
+
+    test('EquipmentVisualHelper resolves built-in medical illustrations for all standard IDF catalog items', () {
+      expect(
+        EquipmentVisualHelper.resolveType('חוסמי עורקים לעצירת דימום'),
+        EquipmentVisualType.catTourniquet,
+      );
+      expect(
+        EquipmentVisualHelper.resolveType('מזרק אפיפן'),
+        EquipmentVisualType.epipenInjector,
+      );
+      expect(
+        EquipmentVisualHelper.resolveType('שקיות נוזלים לעירוי (הרטמן 500 מל)'),
+        EquipmentVisualType.ivFluidBag,
+      );
+      for (final item in DefaultEquipmentCatalog.items) {
+        final name = item['name']?.toString() ?? '';
+        expect(name, isNotEmpty);
+        final visualType = EquipmentVisualHelper.resolveType(name);
+        expect(visualType, isNotNull);
+      }
+    });
+
+    test('DashboardMetrics serializes and deserializes for 0ms Cache-First startup', () {
+      final original = DashboardMetrics(
+        activeMedicalCases: 4,
+        requiresAttentionCases: 2,
+        missingEquipment: 3,
+        totalEquipment: 49,
+        expiringEquipment: 0,
+        unverifiedMedics: 1,
+        timelineEvents: [
+          {'id': 't1', 'time': '08:00', 'title': 'מסדר בוקר', 'is_done': true},
+        ],
+        activeMedics: [
+          {'id': 'm1', 'name': 'יגל', 'role': 'COMPANY_MEDIC', 'standby': true},
+        ],
+      );
+
+      final restored = DashboardMetrics.fromMap(original.toMap());
+      expect(restored.activeMedicalCases, 4);
+      expect(restored.requiresAttentionCases, 2);
+      expect(restored.missingEquipment, 3);
+      expect(restored.totalEquipment, 49);
+      expect(restored.timelineEvents.first['title'], 'מסדר בוקר');
+      expect(restored.activeMedics.first['name'], 'יגל');
     });
   });
 }

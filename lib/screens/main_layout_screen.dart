@@ -25,10 +25,37 @@ class MainLayoutScreen extends ConsumerStatefulWidget {
 
 class _MainLayoutScreenState extends ConsumerState<MainLayoutScreen> {
   int _currentIndex = 0;
+  final Set<int> _visitedTabs = {0};
 
   void _switchTab(int index) {
     if (index >= 0 && index <= 4) {
-      setState(() => _currentIndex = index);
+      setState(() {
+        _currentIndex = index;
+        _visitedTabs.add(index);
+      });
+    }
+  }
+
+  Widget _buildTab(int index) {
+    if (!_visitedTabs.contains(index)) {
+      return const SizedBox.shrink();
+    }
+    switch (index) {
+      case 0:
+        return DashboardScreen(
+          animateEntrance: widget.animateEntrance,
+          onSwitchTab: _switchTab,
+        );
+      case 1:
+        return const MedicalCasesListScreen();
+      case 2:
+        return const SoldiersManagementScreen(isEmbeddedTab: true);
+      case 3:
+        return const EquipmentListScreen();
+      case 4:
+        return const LearningCenterScreen();
+      default:
+        return const SizedBox.shrink();
     }
   }
 
@@ -119,14 +146,11 @@ class _MainLayoutScreenState extends ConsumerState<MainLayoutScreen> {
                     key: ValueKey('tabs_${showPreviewBanner}_$revision'),
                     index: _currentIndex,
                     children: [
-                      DashboardScreen(
-                        animateEntrance: widget.animateEntrance,
-                        onSwitchTab: _switchTab,
-                      ),
-                      const MedicalCasesListScreen(),
-                      const SoldiersManagementScreen(isEmbeddedTab: true),
-                      const EquipmentListScreen(),
-                      const LearningCenterScreen(),
+                      _buildTab(0),
+                      _buildTab(1),
+                      _buildTab(2),
+                      _buildTab(3),
+                      _buildTab(4),
                     ],
                   ),
                 ),
@@ -201,7 +225,7 @@ class _MainLayoutScreenState extends ConsumerState<MainLayoutScreen> {
         try {
           HapticFeedback.selectionClick();
         } catch (_) {}
-        setState(() => _currentIndex = index);
+        _switchTab(index);
       },
       behavior: HitTestBehavior.opaque,
       child: AnimatedScale(

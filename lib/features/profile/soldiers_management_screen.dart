@@ -81,8 +81,27 @@ class _SoldiersManagementScreenState extends ConsumerState<SoldiersManagementScr
               const SizedBox(height: AppTheme.spacing16),
               HopalTextField(
                 controller: platoonController,
-                hint: 'מחלקה (לדוגמה: מחלקה 1 / מפלג)',
+                hint: 'מחלקה (לדוגמה: מחלקה 1 / מפלג / מסופחים)',
                 icon: LucideIcons.users,
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: PlatoonHelper.quickSelectPlatoons.map((plt) {
+                  return ActionChip(
+                    label: Text(plt, style: const TextStyle(fontSize: 11)),
+                    backgroundColor: plt == 'מסופחים'
+                        ? AppTheme.infoBlue.withValues(alpha: 0.16)
+                        : AppTheme.backgroundTertiary,
+                    side: plt == 'מסופחים'
+                        ? BorderSide(color: AppTheme.infoBlue.withValues(alpha: 0.45))
+                        : null,
+                    onPressed: () {
+                      platoonController.text = plt;
+                    },
+                  );
+                }).toList(),
               ),
               const SizedBox(height: AppTheme.spacing16),
               HopalTextField(
@@ -390,7 +409,11 @@ class _SoldiersManagementScreenState extends ConsumerState<SoldiersManagementScr
           ),
           body: soldiersAsync.when(
             data: (all) {
-              final platoons = PlatoonHelper.extractPlatoons(all, (s) => s.platoon);
+              final platoons = PlatoonHelper.extractPlatoons(
+                all,
+                (s) => s.platoon,
+                alwaysIncludeAttached: true,
+              );
               final hasAnyAllergies = all.any((s) => s.hasAllergies);
 
               final q = _query.trim().toLowerCase();

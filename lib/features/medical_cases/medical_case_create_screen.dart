@@ -522,8 +522,27 @@ class _MedicalCaseCreateScreenState extends ConsumerState<MedicalCaseCreateScree
                 const SizedBox(height: AppTheme.spacing16),
                 HopalTextField(
                   controller: platoonController,
-                  hint: 'מחלקה (לדוגמה: מחלקה 1 / חפ"ק)',
+                  hint: 'מחלקה (לדוגמה: מחלקה 1 / חפ"ק / מסופחים)',
                   icon: LucideIcons.shield,
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: PlatoonHelper.quickSelectPlatoons.map((plt) {
+                    return ActionChip(
+                      label: Text(plt, style: const TextStyle(fontSize: 11)),
+                      backgroundColor: plt == 'מסופחים'
+                          ? AppTheme.infoBlue.withValues(alpha: 0.16)
+                          : AppTheme.backgroundTertiary,
+                      side: plt == 'מסופחים'
+                          ? BorderSide(color: AppTheme.infoBlue.withValues(alpha: 0.45))
+                          : null,
+                      onPressed: () {
+                        platoonController.text = plt;
+                      },
+                    );
+                  }).toList(),
                 ),
                 const SizedBox(height: AppTheme.spacing16),
                 HopalTextField(

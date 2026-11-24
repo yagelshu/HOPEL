@@ -19,7 +19,34 @@ class EquipmentNotifier extends AsyncNotifier<List<Equipment>> {
 
   @override
   FutureOr<List<Equipment>> build() async {
+    final user = AuthService().currentUser;
+    if (user?.unitId != null) {
+      final cacheKey = 'cached_equipment_${user!.unitId}';
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        final cachedStr = prefs.getString(cacheKey);
+        if (cachedStr != null && cachedStr.isNotEmpty) {
+          final decoded = jsonDecode(cachedStr) as List;
+          final cachedItems = decoded
+              .map((m) => Equipment.fromMap(Map<String, dynamic>.from(m as Map)))
+              .toList();
+          if (cachedItems.isNotEmpty) {
+            unawaited(_refreshEquipmentInBackground());
+            return cachedItems;
+          }
+        }
+      } catch (_) {}
+    }
     return _loadEquipment();
+  }
+
+  Future<void> _refreshEquipmentInBackground() async {
+    try {
+      final fresh = await _loadEquipment();
+      if (fresh.isNotEmpty) {
+        state = AsyncValue.data(fresh);
+      }
+    } catch (_) {}
   }
 
   Future<void> _persistLocalCache(String unitId, List<Equipment> items) async {
@@ -64,7 +91,8 @@ class EquipmentNotifier extends AsyncNotifier<List<Equipment>> {
           .from('equipment')
           .select()
           .eq('unit_id', unitId)
-          .order('name');
+          .order('name')
+          .timeout(const Duration(seconds: 5));
 
       var items = (response as List).map((map) {
         final eq = Equipment.fromMap(Map<String, dynamic>.from(map));

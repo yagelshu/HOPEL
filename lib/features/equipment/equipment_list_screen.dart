@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:chopel_app/core/utils/battalion_medic_helper.dart';
+import 'package:chopel_app/core/utils/equipment_visual_helper.dart';
 import 'package:chopel_app/core/utils/platform_image.dart';
 import 'package:chopel_app/core/utils/app_error_helper.dart';
 import 'package:flutter/material.dart';
@@ -232,11 +233,17 @@ class _EquipmentListScreenState extends ConsumerState<EquipmentListScreen> {
                       : Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Icon(LucideIcons.camera, color: AppTheme.textSecondary, size: 30),
-                            const SizedBox(height: 6),
+                            EquipmentVisualHelper.buildIllustration(
+                              itemName: nameController.text.isNotEmpty
+                                  ? nameController.text
+                                  : (item?.name ?? 'ציוד רפואי'),
+                              itemType: itemType,
+                              size: 68,
+                            ),
+                            const SizedBox(height: 8),
                             Text(
-                              'הוסף תמונת זיהוי לפריט הציוד',
-                              style: TextStyle(color: AppTheme.textSecondary, fontSize: 13),
+                              'איור תקן מובנה (ניתן גם לצלם תמונה מותאמת)',
+                              style: TextStyle(color: AppTheme.textSecondary, fontSize: 12),
                             ),
                           ],
                         ),
@@ -1554,17 +1561,20 @@ class _EquipmentListScreenState extends ConsumerState<EquipmentListScreen> {
                                 key: ValueKey('${item.id}_${item.imagePath!.length}'),
                                 image: resolveLocalOrWebImage(item.imagePath!),
                                 fit: BoxFit.cover,
-                                errorBuilder: (_, __, ___) => Icon(
-                                  item.itemType == 'מתכלה' ? LucideIcons.pill : LucideIcons.briefcase,
-                                  color: AppTheme.textSecondary,
-                                  size: 24,
+                                errorBuilder: (_, __, ___) => EquipmentVisualHelper.buildIllustration(
+                                  itemName: item.name,
+                                  itemType: item.itemType,
+                                  size: 50,
                                 ),
                               ),
                             )
-                          : Icon(
-                              item.itemType == 'מתכלה' ? LucideIcons.pill : LucideIcons.briefcase,
-                              color: AppTheme.textSecondary,
-                              size: 24,
+                          : ClipRRect(
+                              borderRadius: AppTheme.radiusSm,
+                              child: EquipmentVisualHelper.buildIllustration(
+                                itemName: item.name,
+                                itemType: item.itemType,
+                                size: 50,
+                              ),
                             ),
                     ),
                     const SizedBox(width: AppTheme.spacing16),
