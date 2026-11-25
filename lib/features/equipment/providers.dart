@@ -142,16 +142,22 @@ class EquipmentNotifier extends AsyncNotifier<List<Equipment>> {
         return eq;
       }).toList();
 
-      // Ensure the 3 newly added standard items ('גזה דחוסה לספיגה ועצירת דימומים', 'שמיכת מילוט', 'אגד גזה')
-      // exist in existing units so medics see the full updated catalog!
-      if (items.isNotEmpty && !(prefs.getBool('equipment_supplement_v72_$unitId') ?? false)) {
+      // Ensure newly added standard items exist in existing units so medics see the full updated catalog!
+      if (items.isNotEmpty && !(prefs.getBool('equipment_supplement_v73_$unitId') ?? false)) {
         final newRowsToInsert = <Map<String, dynamic>>[];
         const requiredNewItems = [
           {'name': 'גזה דחוסה לספיגה ועצירת דימומים', 'category': 'וסט חובש', 'item_type': 'מתכלה', 'minimum_required': 2},
           {'name': 'שמיכת מילוט', 'category': 'וסט חובש', 'item_type': 'מתכלה', 'minimum_required': 1},
           {'name': 'אגד גזה', 'category': 'וסט חובש', 'item_type': 'מתכלה', 'minimum_required': 4},
+          {'name': 'ונפלון ירוק 18G', 'category': 'וסט חובש', 'item_type': 'מתכלה', 'minimum_required': 4},
+          {'name': 'ונפלון כתום 14G', 'category': 'וסט חובש', 'item_type': 'מתכלה', 'minimum_required': 2},
+          {'name': 'ונפלון כחול 22G', 'category': 'וסט חובש', 'item_type': 'מתכלה', 'minimum_required': 2},
           {'name': 'גזה דחוסה לספיגה ועצירת דימומים', 'category': 'ארגז חופל', 'item_type': 'מתכלה', 'minimum_required': 4},
           {'name': 'אגד גזה', 'category': 'ארגז חופל', 'item_type': 'מתכלה', 'minimum_required': 10},
+          {'name': 'ונפלון ירוק 18G', 'category': 'ארגז חופל', 'item_type': 'מתכלה', 'minimum_required': 10},
+          {'name': 'ונפלון כתום 14G', 'category': 'ארגז חופל', 'item_type': 'מתכלה', 'minimum_required': 4},
+          {'name': 'ונפלון כחול 22G', 'category': 'ארגז חופל', 'item_type': 'מתכלה', 'minimum_required': 6},
+          {'name': 'תמיסת הרטמן לעירוי', 'category': 'ארגז חופל', 'item_type': 'מתכלה', 'minimum_required': 4},
         ];
         for (final req in requiredNewItems) {
           final reqName = req['name'] as String;
@@ -181,7 +187,7 @@ class EquipmentNotifier extends AsyncNotifier<List<Equipment>> {
             await Supabase.instance.client.from('equipment').insert(newRowsToInsert);
           } catch (_) {}
         }
-        await prefs.setBool('equipment_supplement_v72_$unitId', true);
+        await prefs.setBool('equipment_supplement_v73_$unitId', true);
       }
 
       // Auto-seed standard IDF equipment once for units that have 0 items yet

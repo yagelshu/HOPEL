@@ -377,6 +377,30 @@ void main() {
         EquipmentPhotoCatalog.resolveBuiltInPhoto('צמרוני אוזניים / מקלוני צמר גפן'),
         'assets/images/eq_cotton_swabs.png',
       );
+      expect(
+        EquipmentPhotoCatalog.resolveBuiltInPhoto('מספריים רפואיים חזקים (מלע"כ)'),
+        'assets/images/eq_trauma_shears.png',
+      );
+      expect(
+        EquipmentPhotoCatalog.resolveBuiltInPhoto('צמר גפן לחיטוי וחבישה'),
+        'assets/images/eq_cotton_wool.png',
+      );
+      expect(
+        EquipmentPhotoCatalog.resolveBuiltInPhoto('ונפלון ירוק 18G'),
+        'assets/images/eq_venflon_green_18g.png',
+      );
+      expect(
+        EquipmentPhotoCatalog.resolveBuiltInPhoto('ונפלון כתום 14G'),
+        'assets/images/eq_venflon_orange_14g.png',
+      );
+      expect(
+        EquipmentPhotoCatalog.resolveBuiltInPhoto('תחבושת בטן'),
+        'assets/images/eq_abdominal_bandage.png',
+      );
+      expect(
+        EquipmentPhotoCatalog.resolveBuiltInPhoto('תמיסת הרטמן לעירוי'),
+        'assets/images/eq_hartmann_solution.png',
+      );
     });
   });
 }
