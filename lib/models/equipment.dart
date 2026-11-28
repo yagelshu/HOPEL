@@ -2,8 +2,10 @@ class Equipment {
   static const String companyBoxCategory = 'ארגז חופל';
   static const String legacyVestCategory = 'וסט חובש';
   static const String vestPrefix = 'וסט חובש::';
+  static const String stationPrefix = 'עמדה/רכב::';
 
   static String vestCategoryFor(String medicId) => '$vestPrefix$medicId';
+  static String stationCategoryFor(String stationName) => '$stationPrefix${stationName.trim()}';
 
   final String id;
   final String name;
@@ -36,6 +38,11 @@ class Equipment {
 
   String? get vestOwnerId =>
       category.startsWith(vestPrefix) ? category.substring(vestPrefix.length) : null;
+
+  bool get isStationOrVehicle => category.startsWith(stationPrefix);
+
+  String? get stationName =>
+      category.startsWith(stationPrefix) ? category.substring(stationPrefix.length).trim() : null;
 
   bool belongsToMedicVest(String medicId, {required bool includeLegacyUnassigned}) {
     if (category == vestCategoryFor(medicId)) return true;

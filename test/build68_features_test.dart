@@ -10,6 +10,7 @@ import 'package:chopel_app/core/utils/platoon_helper.dart';
 import 'package:chopel_app/features/dashboard/providers.dart';
 import 'package:chopel_app/features/learning/red_flags_guide_screen.dart';
 import 'package:chopel_app/features/medical_cases/widgets/inventory_dispense_sheet.dart';
+import 'package:chopel_app/models/equipment.dart';
 import 'package:chopel_app/models/medical_case.dart';
 import 'package:chopel_app/models/soldier.dart';
 
@@ -437,6 +438,26 @@ void main() {
         ].join(' ');
         expect(combined.contains('תסביב אשך'), isFalse);
       }
+    });
+
+    test('Equipment model supports vehicle, outpost, and patrol station categories cleanly', () {
+      final cat = Equipment.stationCategoryFor('דוד סיור 1');
+      expect(cat, 'עמדה/רכב::דוד סיור 1');
+
+      final item = Equipment(
+        id: 'eq_v1',
+        name: 'חוסמי עורקים לעצירת דימום',
+        category: cat,
+        itemType: 'מתכלה',
+        quantity: 2,
+        minimumRequired: 2,
+        status: 'IN_STOCK',
+      );
+
+      expect(item.isStationOrVehicle, isTrue);
+      expect(item.stationName, 'דוד סיור 1');
+      expect(item.isCompanyBox, isFalse);
+      expect(item.isAnyMedicVest, isFalse);
     });
   });
 }

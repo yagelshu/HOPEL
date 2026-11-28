@@ -10,6 +10,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:uuid/uuid.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:chopel_app/features/equipment/providers.dart';
 import 'package:chopel_app/features/dashboard/providers.dart';
@@ -29,6 +30,8 @@ class _KitScope {
   final String targetCategory;
   final String? medicId;
   final bool includeLegacyVest;
+  final bool isStation;
+  final String? stationName;
 
   const _KitScope({
     required this.key,
@@ -36,6 +39,8 @@ class _KitScope {
     required this.targetCategory,
     this.medicId,
     this.includeLegacyVest = false,
+    this.isStation = false,
+    this.stationName,
   });
 
   List<Equipment> filter(List<Equipment> all) {
@@ -57,6 +62,196 @@ class EquipmentListScreen extends ConsumerStatefulWidget {
 
 class _EquipmentListScreenState extends ConsumerState<EquipmentListScreen> {
   String _selectedScopeKey = 'box';
+  List<String> _savedStationNames = [];
+
+  static const List<String> _stationPresets = [
+    'רכב סיור 1',
+    'רכב סיור 2',
+    'חפ"ק מ"פ',
+    'חפ"ק סמ"פ',
+    'פילבוקס / עמדה',
+    'תיק חובש רכוב',
+    'אמבולנס / תאג"ד',
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSavedStations();
+  }
+
+  String _stationsPrefsKey() {
+    final unitId = AuthService().currentUser?.unitId ?? 'default';
+    return 'custom_equipment_stations_$unitId';
+  }
+
+  Future<void> _loadSavedStations() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final list = prefs.getStringList(_stationsPrefsKey()) ?? const [];
+      if (mounted) {
+        setState(() => _savedStationNames = List<String>.from(list));
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _persistSavedStations(List<String> names) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setStringList(_stationsPrefsKey(), names);
+    } catch (_) {}
+  }
+
+  void _showAddStationSheet(BuildContext context) {
+    final nameController = TextEditingController();
+    bool seedBaseKit = true;
+    bool isSaving = false;
+
+    HopalBottomSheet.show(
+      context: context,
+      title: 'הוספת רכב / עמדה / נקודת ציוד',
+      child: StatefulBuilder(
+        builder: (sheetCtx, setModalState) {
+          return SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  'פתח כרטיסיית ציוד ייעודית לרכב סיור, חפ"ק או עמדה במוצב כדי לעקוב אחרי הציוד הרפואי שמוצב שם:',
+                  style: TextStyle(color: AppTheme.textSecondary, fontSize: 13, height: 1.4),
+                ),
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: _stationPresets.map((preset) {
+                    return ActionChip(
+                      label: Text(preset, style: const TextStyle(fontSize: 12)),
+                      backgroundColor: AppTheme.backgroundSecondary,
+                      side: BorderSide(color: AppTheme.infoBlue.withValues(alpha: 0.4)),
+                      onPressed: () {
+                        nameController.text = preset;
+                      },
+                    );
+                  }).toList(),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: nameController,
+                  style: TextStyle(color: AppTheme.textPrimary),
+                  decoration: const InputDecoration(
+                    labelText: 'שם הרכב / העמדה (לדוגמה: דוד סיור 1 / פילבוקס צפוני)',
+                    prefixIcon: Icon(LucideIcons.truck),
+                    border: OutlineInputBorder(borderRadius: AppTheme.radiusMd),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Container(
+                  decoration: BoxDecoration(
+                    color: AppTheme.backgroundSecondary,
+                    borderRadius: AppTheme.radiusMd,
+                    border: Border.all(color: AppTheme.borderSubtle),
+                  ),
+                  child: SwitchListTile(
+                    dense: true,
+                    activeTrackColor: AppTheme.primaryGreen,
+                    title: Text(
+                      'טען ערכת בסיס לרכב/עמדה',
+                      style: TextStyle(
+                        color: AppTheme.textPrimary,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 13,
+                      ),
+                    ),
+                    subtitle: Text(
+                      'חו"ע, תחבושות אישיות, גזה דחוסה, קומבאט גז, שמיכת מילוט, משולשי בד, מלע"כ וכפפות',
+                      style: TextStyle(color: AppTheme.textSecondary, fontSize: 11.5),
+                    ),
+                    value: seedBaseKit,
+                    onChanged: (val) => setModalState(() => seedBaseKit = val),
+                  ),
+                ),
+                const SizedBox(height: 18),
+                HopalButton(
+                  label: 'צור כרטיסיית ציוד לרכב / עמדה',
+                  icon: LucideIcons.plus,
+                  isLoading: isSaving,
+                  isExpanded: true,
+                  onPressed: () async {
+                    final stName = nameController.text.trim();
+                    if (stName.isEmpty) {
+                      HopalFeedback.showError(context, 'נא להזין שם לרכב או לעמדה');
+                      return;
+                    }
+                    setModalState(() => isSaving = true);
+                    final updatedStations = <String>{..._savedStationNames, stName}.toList();
+                    await _persistSavedStations(updatedStations);
+                    if (seedBaseKit) {
+                      await ref.read(equipmentProvider.notifier).seedVehicleOrStationKit(stName);
+                    }
+                    if (mounted) {
+                      setState(() {
+                        _savedStationNames = updatedStations;
+                        _selectedScopeKey = 'station::$stName';
+                      });
+                    }
+                    if (sheetCtx.mounted) Navigator.pop(sheetCtx);
+                    if (context.mounted) {
+                      HopalFeedback.showSuccess(context, 'נוספה כרטיסיית ציוד: $stName');
+                    }
+                  },
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Future<void> _confirmDeleteStation(BuildContext context, _KitScope stationScope) async {
+    final stName = stationScope.stationName ?? stationScope.label;
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppTheme.backgroundSecondary,
+        title: Text(
+          'מחיקת נקודת ציוד ($stName)',
+          style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.bold),
+        ),
+        content: Text(
+          'האם למחוק את הכרטיסייה "$stName" ואת רשימת הציוד המשויכת אליה?',
+          style: TextStyle(color: AppTheme.textSecondary),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text('ביטול', style: TextStyle(color: AppTheme.textSecondary)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(
+              'מחק כרטיסייה',
+              style: TextStyle(color: AppTheme.criticalRed, fontWeight: FontWeight.bold),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+    final updated = _savedStationNames.where((s) => s != stName).toList();
+    await _persistSavedStations(updated);
+    await ref.read(equipmentProvider.notifier).deleteStationCategory(stationScope.targetCategory);
+    if (mounted) {
+      setState(() {
+        _savedStationNames = updated;
+        _selectedScopeKey = 'box';
+      });
+      HopalFeedback.showSuccess(context, 'נקודת הציוד "$stName" הוסרה');
+    }
+  }
 
   List<_KitScope> _buildCompanyMedicScopes(List<Equipment> eqList, List<Map<String, dynamic>> activeMedics) {
     final hopalId = AuthService().currentUser?.id ?? 'hopal';
@@ -110,6 +305,23 @@ class _EquipmentListScreenState extends ConsumerState<EquipmentListScreen> {
           ),
         );
       }
+    }
+
+    // Include vehicle / outpost / station scopes from local preferences AND cloud equipment items
+    final stationNames = <String>{
+      ..._savedStationNames,
+      ...eqList.map((e) => e.stationName).whereType<String>().where((s) => s.isNotEmpty),
+    };
+    for (final stName in stationNames) {
+      scopes.add(
+        _KitScope(
+          key: 'station::$stName',
+          label: '🚙 $stName',
+          targetCategory: Equipment.stationCategoryFor(stName),
+          isStation: true,
+          stationName: stName,
+        ),
+      );
     }
 
     return scopes;
@@ -392,7 +604,7 @@ class _EquipmentListScreenState extends ConsumerState<EquipmentListScreen> {
                     if (val != null) setModalState(() => itemType = val);
                   },
                 ),
-                if (!isEditing && scopes.where((s) => s.key != 'box').length > 1) ...[
+                if (!isEditing && scopes.where((s) => s.medicId != null).length > 1) ...[
                   const SizedBox(height: AppTheme.spacing12),
                   Container(
                     decoration: BoxDecoration(
@@ -416,7 +628,7 @@ class _EquipmentListScreenState extends ConsumerState<EquipmentListScreen> {
                         ),
                       ),
                       subtitle: Text(
-                        'יוסיף את הפריט במקביל לכל ${scopes.where((s) => s.key != 'box').length} הווסטים הפעילים',
+                        'יוסיף את הפריט במקביל לכל ${scopes.where((s) => s.medicId != null).length} הווסטים הפעילים',
                         style: TextStyle(color: AppTheme.textSecondary, fontSize: 11.5),
                       ),
                       value: addToAllVests,
@@ -529,7 +741,7 @@ class _EquipmentListScreenState extends ConsumerState<EquipmentListScreen> {
                           try {
                             if (!isEditing && addToAllVests) {
                               final vestCategories = scopes
-                                  .where((s) => s.key != 'box')
+                                  .where((s) => s.medicId != null)
                                   .map((s) => s.targetCategory)
                                   .toList();
                               final addedCount = await ref
@@ -1386,7 +1598,7 @@ class _EquipmentListScreenState extends ConsumerState<EquipmentListScreen> {
                                         ),
                                         icon: const Icon(LucideIcons.arrowLeftRight, size: 16),
                                         label: const Text(
-                                          'העברה מארגז לווסט',
+                                          'העברה מארגז לווסט/רכב',
                                           style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12.5),
                                           overflow: TextOverflow.ellipsis,
                                         ),
@@ -1407,44 +1619,131 @@ class _EquipmentListScreenState extends ConsumerState<EquipmentListScreen> {
                     ),
                     if (isCompanyMedic)
                       SliverToBoxAdapter(
-                        child: SingleChildScrollView(
-                          scrollDirection: Axis.horizontal,
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: AppTheme.spacing16,
-                            vertical: AppTheme.spacing8,
-                          ),
-                          child: Row(
-                            children: scopes.map((scope) {
-                              final isSelected = activeScope.key == scope.key;
-                              return Padding(
-                                padding: const EdgeInsets.only(left: AppTheme.spacing8),
-                                child: ChoiceChip(
-                                  label: Text(
-                                    scope.label,
-                                    style: TextStyle(
-                                      color: isSelected ? AppTheme.onPrimaryGreen : AppTheme.textSecondary,
-                                      fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            SingleChildScrollView(
+                              scrollDirection: Axis.horizontal,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: AppTheme.spacing16,
+                                vertical: AppTheme.spacing8,
+                              ),
+                              child: Row(
+                                children: [
+                                  ...scopes.map((scope) {
+                                    final isSelected = activeScope.key == scope.key;
+                                    final activeColor = scope.isStation
+                                        ? AppTheme.infoBlue
+                                        : AppTheme.primaryGreen;
+                                    return Padding(
+                                      padding: const EdgeInsets.only(left: AppTheme.spacing8),
+                                      child: ChoiceChip(
+                                        label: Text(
+                                          scope.label,
+                                          style: TextStyle(
+                                            color: isSelected
+                                                ? (scope.isStation ? Colors.white : AppTheme.onPrimaryGreen)
+                                                : AppTheme.textSecondary,
+                                            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                                          ),
+                                        ),
+                                        selected: isSelected,
+                                        checkmarkColor:
+                                            scope.isStation ? Colors.white : AppTheme.onPrimaryGreen,
+                                        onSelected: (selected) {
+                                          if (selected) {
+                                            setState(() => _selectedScopeKey = scope.key);
+                                          }
+                                        },
+                                        backgroundColor: AppTheme.backgroundSecondary,
+                                        selectedColor: activeColor,
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(20),
+                                          side: BorderSide(
+                                            color: isSelected ? activeColor : AppTheme.borderSubtle,
+                                          ),
+                                        ),
+                                      ),
+                                    );
+                                  }),
+                                  ActionChip(
+                                    avatar: Icon(LucideIcons.truck, size: 15, color: AppTheme.infoBlue),
+                                    label: Text(
+                                      '+ רכב / עמדה',
+                                      style: TextStyle(
+                                        color: AppTheme.infoBlue,
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 12.5,
+                                      ),
                                     ),
+                                    backgroundColor: AppTheme.infoBlue.withValues(alpha: 0.12),
+                                    side: BorderSide(color: AppTheme.infoBlue.withValues(alpha: 0.45)),
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                                    onPressed: () => _showAddStationSheet(context),
                                   ),
-                                  selected: isSelected,
-                                  checkmarkColor: AppTheme.onPrimaryGreen,
-                                  onSelected: (selected) {
-                                    if (selected) {
-                                      setState(() => _selectedScopeKey = scope.key);
-                                    }
-                                  },
-                                  backgroundColor: AppTheme.backgroundSecondary,
-                                  selectedColor: AppTheme.primaryGreen,
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(20),
-                                    side: BorderSide(
-                                      color: isSelected ? AppTheme.primaryGreen : AppTheme.borderSubtle,
-                                    ),
+                                ],
+                              ),
+                            ),
+                            if (activeScope.isStation)
+                              Padding(
+                                padding: const EdgeInsets.fromLTRB(
+                                  AppTheme.spacing16,
+                                  0,
+                                  AppTheme.spacing16,
+                                  AppTheme.spacing8,
+                                ),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                  decoration: BoxDecoration(
+                                    color: AppTheme.infoBlue.withValues(alpha: 0.1),
+                                    borderRadius: AppTheme.radiusMd,
+                                    border: Border.all(color: AppTheme.infoBlue.withValues(alpha: 0.35)),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Icon(LucideIcons.truck, size: 16, color: AppTheme.infoBlue),
+                                      const SizedBox(width: 8),
+                                      Expanded(
+                                        child: Text(
+                                          'ציוד משויך לנקודה: ${activeScope.stationName ?? activeScope.label}',
+                                          style: TextStyle(
+                                            color: AppTheme.textPrimary,
+                                            fontSize: 12.5,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                      ),
+                                      if (items.isEmpty)
+                                        TextButton.icon(
+                                          style: TextButton.styleFrom(
+                                            foregroundColor: AppTheme.primaryGreen,
+                                            visualDensity: VisualDensity.compact,
+                                          ),
+                                          icon: const Icon(LucideIcons.packagePlus, size: 14),
+                                          label: const Text(
+                                            'טען ערכת בסיס',
+                                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                                          ),
+                                          onPressed: () async {
+                                            final stName = activeScope.stationName ?? '';
+                                            if (stName.isNotEmpty) {
+                                              await ref
+                                                  .read(equipmentProvider.notifier)
+                                                  .seedVehicleOrStationKit(stName);
+                                            }
+                                          },
+                                        ),
+                                      IconButton(
+                                        visualDensity: VisualDensity.compact,
+                                        tooltip: 'הסר נקודת ציוד זו',
+                                        icon: Icon(LucideIcons.trash2, size: 16, color: AppTheme.criticalRed),
+                                        onPressed: () => _confirmDeleteStation(context, activeScope),
+                                      ),
+                                    ],
                                   ),
                                 ),
-                              );
-                            }).toList(),
-                          ),
+                              ),
+                          ],
                         ),
                       )
                     else

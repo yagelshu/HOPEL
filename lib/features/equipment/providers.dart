@@ -601,6 +601,92 @@ class EquipmentNotifier extends AsyncNotifier<List<Equipment>> {
 
     return newItems.length;
   }
+
+  /// Seeds a standard tactical vehicle/outpost medical kit under `עמדה/רכב::<stationName>`.
+  Future<int> seedVehicleOrStationKit(String stationName) async {
+    final cleanStation = stationName.trim();
+    if (cleanStation.isEmpty) return 0;
+    final targetCat = Equipment.stationCategoryFor(cleanStation);
+    final unitId = AuthService().currentUser?.unitId;
+    final currentList = List<Equipment>.from(state.value ?? const []);
+
+    const baseVehicleItems = [
+      {'name': 'חוסמי עורקים לעצירת דימום', 'item_type': 'מתכלה', 'qty': 2},
+      {'name': 'תחבושת אישית First Care', 'item_type': 'מתכלה', 'qty': 4},
+      {'name': 'גזה דחוסה לספיגה ועצירת דימומים', 'item_type': 'מתכלה', 'qty': 2},
+      {'name': 'קומבאט גז (Combat Gauze) לעצירת דימומים', 'item_type': 'מתכלה', 'qty': 1},
+      {'name': 'שמיכת מילוט', 'item_type': 'מתכלה', 'qty': 2},
+      {'name': 'משולשי בד לחבישה וקיבוע', 'item_type': 'מתכלה', 'qty': 2},
+      {'name': 'מספריים רפואיים חזקים (מלע"כ)', 'item_type': 'קבוע', 'qty': 1},
+      {'name': 'כפפות רפואיות חד פעמיות', 'item_type': 'מתכלה', 'qty': 10},
+    ];
+
+    final newItems = <Equipment>[];
+    for (final spec in baseVehicleItems) {
+      final itemName = spec['name'] as String;
+      final alreadyExists = currentList.any(
+        (e) => e.category == targetCat && e.name.trim() == itemName,
+      );
+      if (alreadyExists) continue;
+      final qty = spec['qty'] as int;
+      final eq = _attachBuiltInPhotoIfNeeded(
+        Equipment(
+          id: const Uuid().v4(),
+          unitId: unitId,
+          name: itemName,
+          category: targetCat,
+          itemType: spec['item_type'] as String,
+          quantity: qty,
+          minimumRequired: qty,
+          status: 'IN_STOCK',
+        ),
+      );
+      currentList.add(eq);
+      newItems.add(eq);
+    }
+
+    if (newItems.isEmpty) return 0;
+
+    currentList.sort((a, b) => a.name.compareTo(b.name));
+    state = AsyncValue.data(currentList);
+    if (unitId != null) {
+      await _persistLocalCache(unitId, currentList);
+    }
+    ref.invalidate(dashboardMetricsProvider);
+
+    try {
+      await Supabase.instance.client
+          .from('equipment')
+          .upsert(newItems.map((e) => e.toSupabaseMap()).toList());
+    } catch (_) {}
+
+    return newItems.length;
+  }
+
+  /// Removes all equipment items belonging to a vehicle/station category.
+  Future<void> deleteStationCategory(String stationCategory) async {
+    final currentList = List<Equipment>.from(state.value ?? const []);
+    final idsToRemove = currentList
+        .where((e) => e.category == stationCategory)
+        .map((e) => e.id)
+        .toList();
+    if (idsToRemove.isEmpty) return;
+
+    currentList.removeWhere((e) => e.category == stationCategory);
+    state = AsyncValue.data(currentList);
+    final unitId = AuthService().currentUser?.unitId;
+    if (unitId != null) {
+      await _persistLocalCache(unitId, currentList);
+    }
+    ref.invalidate(dashboardMetricsProvider);
+
+    try {
+      await Supabase.instance.client
+          .from('equipment')
+          .delete()
+          .inFilter('id', idsToRemove);
+    } catch (_) {}
+  }
 }
 
 final equipmentProvider = AsyncNotifierProvider<EquipmentNotifier, List<Equipment>>(() {

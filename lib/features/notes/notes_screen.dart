@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:uuid/uuid.dart';
 import 'package:chopel_app/core/auth/auth_service.dart';
 import 'package:chopel_app/core/models/note_model.dart';
@@ -449,6 +451,27 @@ class _NotesScreenState extends State<NotesScreen> with SingleTickerProviderStat
                           Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
+                              IconButton(
+                                tooltip: 'העתק טקסט',
+                                icon: Icon(LucideIcons.copy, color: AppTheme.textSecondary, size: 16),
+                                onPressed: () async {
+                                  await Clipboard.setData(ClipboardData(text: note.content));
+                                  if (context.mounted) {
+                                    HopalFeedback.showSuccess(context, 'ההערה הועתקה ללוח');
+                                  }
+                                },
+                                constraints: const BoxConstraints(),
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              ),
+                              IconButton(
+                                tooltip: 'שתף בוואטסאפ',
+                                icon: Icon(LucideIcons.share2, color: AppTheme.primaryGreen, size: 16),
+                                onPressed: () async {
+                                  await SharePlus.instance.share(ShareParams(text: note.content));
+                                },
+                                constraints: const BoxConstraints(),
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              ),
                               if (isOwner)
                                 IconButton(
                                   tooltip: 'ערוך הערה',
