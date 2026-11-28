@@ -69,10 +69,8 @@ class _SoldiersManagementScreenState extends ConsumerState<SoldiersManagementScr
       for (final c in openCases) {
         final s = soldierMap[c.soldierId];
         final inMatab = BattalionStaffService.isCaseInMatabQueue(c) ? ' [במסדר מט"ב]' : '';
-        final exBadge = BattalionStaffService.extractExemptionBadge(c);
-        final exTag = exBadge != null ? ' [🛡️ $exBadge]' : '';
         final cleanDesc = (c.description ?? 'במעקב').split('\n').first.trim();
-        sb.writeln('• *${s?.name ?? 'חייל'}*$inMatab$exTag: $cleanDesc');
+        sb.writeln('• *${s?.name ?? 'חייל'}*$inMatab: $cleanDesc');
       }
     }
 

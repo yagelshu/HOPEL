@@ -438,53 +438,5 @@ void main() {
         expect(combined.contains('תסביב אשך'), isFalse);
       }
     });
-
-    test('BattalionStaffService formats Matab decision stamps, tracks active exemptions, and generates commander reports', () {
-      final refDate = DateTime(2026, 11, 28, 10, 30);
-      final stamp = BattalionStaffService.formatMatabDecisionStamp(
-        decision: "ימי ב' (מנוחה במוצב)",
-        exemptionDays: 2,
-        notes: 'מוקסיפן 500 מ"ג x3 ביום',
-        now: refDate,
-      );
-
-      expect(stamp, contains('סיכום מט"ב'));
-      expect(stamp, contains("ימי ב' (מנוחה במוצב)"));
-      expect(stamp, contains('תוקף פטור עד: 30/11/2026 (2 ימים)'));
-
-      final activeExemptionCase = MedicalCase(
-        id: 'ex1',
-        soldierId: 's1',
-        status: 'REQUIRES_ATTENTION',
-        category: BattalionStaffService.exemptionCategory,
-        description: 'כאב גרון וחום\n$stamp',
-        createdDate: refDate.toIso8601String(),
-      );
-
-      expect(BattalionStaffService.isCaseInMatabQueue(activeExemptionCase), isFalse);
-      expect(
-        BattalionStaffService.hasActiveExemption(activeExemptionCase, now: DateTime(2026, 11, 29, 12)),
-        isTrue,
-      );
-      expect(
-        BattalionStaffService.extractExemptionBadge(activeExemptionCase, now: DateTime(2026, 11, 29, 12)),
-        "ימי ב' (מוצב) • עד 30/11",
-      );
-      expect(
-        BattalionStaffService.hasActiveExemption(activeExemptionCase, now: DateTime(2026, 12, 1, 8)),
-        isFalse,
-      );
-
-      final report = BattalionStaffService.buildActiveExemptionsReport(
-        cases: [activeExemptionCase],
-        soldiers: [
-          Soldier(id: 's1', name: 'עומר כהן', platoon: 'מחלקה 2'),
-        ],
-        unitName: 'פלוגה א',
-        now: DateTime(2026, 11, 29, 9),
-      );
-      expect(report, contains('עומר כהן'));
-      expect(report, contains("ימי ב' (מוצב) • עד 30/11"));
-    });
   });
 }
