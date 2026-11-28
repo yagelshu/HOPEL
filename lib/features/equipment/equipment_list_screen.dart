@@ -9,6 +9,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:uuid/uuid.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:chopel_app/features/equipment/providers.dart';
 import 'package:chopel_app/features/dashboard/providers.dart';
 import 'package:chopel_app/theme/app_theme.dart';
@@ -541,6 +543,41 @@ class _EquipmentListScreenState extends ConsumerState<EquipmentListScreen> {
         .join('\n');
 
     return '$header\n\n$lines';
+  }
+
+  Future<void> _sendCombatMedicMissingToHopal(
+    BuildContext context, {
+    required List<Equipment> scopeItems,
+    required String medicName,
+    required List<Map<String, dynamic>> activeMedics,
+  }) async {
+    final missing = scopeItems.where((e) => e.quantity < e.minimumRequired).toList();
+    if (missing.isEmpty) {
+      HopalFeedback.showInfo(context, 'הווסט שלך בכשירות מלאה – אין חוסרים לדיווח');
+      return;
+    }
+
+    final platoon = AuthService().effectiveUserPlatoon;
+    final platoonTag = (platoon != null && platoon.trim().isNotEmpty) ? ' ($platoon)' : '';
+    final lines = missing
+        .map((e) => '• ${e.name}: קיים ${e.quantity} מתוך ${e.minimumRequired} (חסר: ${e.minimumRequired - e.quantity})')
+        .join('\n');
+    final report = 'היי החופ"ל, להלן חוסרים להשלמה בווסט החובש האישי שלי – *$medicName*$platoonTag:\n\n$lines';
+
+    // Try finding the Company Medic's phone number from activeMedics
+    final hopalRow = activeMedics.where((m) => m['role'] == 'COMPANY_MEDIC').firstOrNull;
+    final rawPhone = hopalRow?['phone_number']?.toString().replaceAll(RegExp(r'\D'), '') ?? '';
+
+    if (rawPhone.isNotEmpty) {
+      final intlPhone = rawPhone.startsWith('0') ? '972${rawPhone.substring(1)}' : rawPhone;
+      final uri = Uri.parse('https://wa.me/$intlPhone?text=${Uri.encodeComponent(report)}');
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+        return;
+      }
+    }
+
+    await SharePlus.instance.share(ShareParams(text: report));
   }
 
   void _showRestockShipmentSheet(
@@ -1239,6 +1276,21 @@ class _EquipmentListScreenState extends ConsumerState<EquipmentListScreen> {
                                       onPressed: () => BattalionMedicHelper.sendReportToHogad(
                                         context,
                                         _buildHogadMissingReport(eqList),
+                                      ),
+                                    ),
+                                  ),
+                                ] else if (!isCompanyMedic && missingInScopeCount > 0) ...[
+                                  const SizedBox(width: AppTheme.spacing8),
+                                  Expanded(
+                                    flex: 5,
+                                    child: HopalButton(
+                                      label: 'שלח חוסרים לחופ"ל',
+                                      icon: LucideIcons.messageCircle,
+                                      onPressed: () => _sendCombatMedicMissingToHopal(
+                                        context,
+                                        scopeItems: items,
+                                        medicName: effectiveMedicName,
+                                        activeMedics: activeMedics,
                                       ),
                                     ),
                                   ),

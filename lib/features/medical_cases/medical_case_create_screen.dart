@@ -1021,6 +1021,15 @@ class _MedicalCaseCreateScreenState extends ConsumerState<MedicalCaseCreateScree
       finalDescription = '$finalDescription\n$dispensedLine';
     }
 
+    if (widget.existingCase == null && !finalDescription.contains('🩺 תועד ע"י:')) {
+      final medicName = AuthService().effectiveUserName.trim();
+      final medicPlatoon = AuthService().effectiveUserPlatoon?.trim();
+      final roleLabel = AuthService().isCompanyMedic
+          ? 'חופ"ל'
+          : (medicPlatoon != null && medicPlatoon.isNotEmpty ? 'חובש $medicPlatoon' : 'חובש');
+      finalDescription = '$finalDescription\n🩺 תועד ע"י: $medicName ($roleLabel)';
+    }
+
     final effectiveCategory = (_selectedOutcome != 'COMPLETED' && _addToMatabQueue)
         ? BattalionStaffService.matabCategory
         : (_selectedCategory == BattalionStaffService.matabCategory && !_addToMatabQueue

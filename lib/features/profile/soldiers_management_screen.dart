@@ -33,6 +33,14 @@ class _SoldiersManagementScreenState extends ConsumerState<SoldiersManagementScr
   String _query = '';
   String _selectedPlatoon = 'הכל';
   bool _onlyAllergies = false;
+  bool _onlyMissingDetails = false;
+
+  bool _isSoldierMissingDetails(Soldier s) {
+    final noPn = s.personalNumber == null || s.personalNumber!.trim().isEmpty;
+    final noPlatoon = s.platoon == null || s.platoon!.trim().isEmpty;
+    final noPhone = s.phoneNumber == null || s.phoneNumber!.trim().isEmpty;
+    return noPn || noPlatoon || noPhone;
+  }
 
   @override
   void dispose() {
@@ -415,6 +423,7 @@ class _SoldiersManagementScreenState extends ConsumerState<SoldiersManagementScr
                 alwaysIncludeAttached: true,
               );
               final hasAnyAllergies = all.any((s) => s.hasAllergies);
+              final missingDetailsCount = all.where(_isSoldierMissingDetails).length;
 
               final q = _query.trim().toLowerCase();
               final cleanQ = q.replaceAll(RegExp(r'[\s-]'), '');
@@ -429,7 +438,8 @@ class _SoldiersManagementScreenState extends ConsumerState<SoldiersManagementScr
 
                 final matchesPlatoon = _selectedPlatoon == 'הכל' || PlatoonHelper.matches(s.platoon, _selectedPlatoon);
                 final matchesAllergy = !_onlyAllergies || s.hasAllergies;
-                return matchesQuery && matchesPlatoon && matchesAllergy;
+                final matchesMissing = !_onlyMissingDetails || _isSoldierMissingDetails(s);
+                return matchesQuery && matchesPlatoon && matchesAllergy && matchesMissing;
               }).toList();
               soldiers.sort((a, b) => a.name.compareTo(b.name));
 
@@ -460,7 +470,7 @@ class _SoldiersManagementScreenState extends ConsumerState<SoldiersManagementScr
                       ),
                     ),
                   ),
-                  if (platoons.length > 1 || hasAnyAllergies)
+                  if (platoons.length > 1 || hasAnyAllergies || missingDetailsCount > 0)
                     Container(
                       height: 48,
                       margin: const EdgeInsets.only(top: 8),
@@ -484,6 +494,26 @@ class _SoldiersManagementScreenState extends ConsumerState<SoldiersManagementScr
                               labelStyle: TextStyle(
                                 color: _onlyAllergies ? AppTheme.criticalRed : AppTheme.textSecondary,
                                 fontWeight: _onlyAllergies ? FontWeight.bold : FontWeight.normal,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                          ],
+                          if (missingDetailsCount > 0) ...[
+                            FilterChip(
+                              avatar: Icon(
+                                LucideIcons.userCog,
+                                size: 14,
+                                color: _onlyMissingDetails ? AppTheme.warningAmber : AppTheme.textSecondary,
+                              ),
+                              label: Text('להשלמת פרטים ($missingDetailsCount)'),
+                              selected: _onlyMissingDetails,
+                              checkmarkColor: AppTheme.warningAmber,
+                              onSelected: (v) => setState(() => _onlyMissingDetails = v),
+                              selectedColor: AppTheme.warningAmber.withValues(alpha: 0.18),
+                              backgroundColor: AppTheme.backgroundSecondary,
+                              labelStyle: TextStyle(
+                                color: _onlyMissingDetails ? AppTheme.warningAmber : AppTheme.textSecondary,
+                                fontWeight: _onlyMissingDetails ? FontWeight.bold : FontWeight.normal,
                               ),
                             ),
                             const SizedBox(width: 8),

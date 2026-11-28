@@ -146,6 +146,52 @@ class MedicalCasesNotifier extends AsyncNotifier<List<MedicalCase>> {
     final fresh = await _loadCases();
     state = AsyncValue.data(fresh);
   }
+
+  Future<void> _persistCasesCache(List<MedicalCase> list) async {
+    final depId = AuthService().currentUser?.activeDeploymentId;
+    if (depId == null) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(
+        'cached_cases_$depId',
+        jsonEncode(list.map((c) => c.toMap()).toList()),
+      );
+    } catch (_) {}
+  }
+
+  /// Updates or inserts [updatedCase] in 0ms locally (including offline cache) and syncs to Supabase.
+  Future<void> upsertCaseOptimistically(MedicalCase updatedCase) async {
+    final current = List<MedicalCase>.from(state.value ?? const []);
+    final idx = current.indexWhere((c) => c.id == updatedCase.id);
+    if (idx != -1) {
+      current[idx] = updatedCase;
+    } else {
+      current.insert(0, updatedCase);
+    }
+    state = AsyncValue.data(current);
+    await _persistCasesCache(current);
+
+    try {
+      await Supabase.instance.client
+          .from('medical_cases')
+          .upsert(updatedCase.toMap());
+    } catch (_) {}
+  }
+
+  /// Deletes [caseId] in 0ms locally and removes from Supabase.
+  Future<void> deleteCaseOptimistically(String caseId) async {
+    final current = List<MedicalCase>.from(state.value ?? const [])
+      ..removeWhere((c) => c.id == caseId);
+    state = AsyncValue.data(current);
+    await _persistCasesCache(current);
+
+    try {
+      await Supabase.instance.client
+          .from('medical_cases')
+          .delete()
+          .eq('id', caseId);
+    } catch (_) {}
+  }
 }
 
 final medicalCasesProvider = AsyncNotifierProvider<MedicalCasesNotifier, List<MedicalCase>>(() {

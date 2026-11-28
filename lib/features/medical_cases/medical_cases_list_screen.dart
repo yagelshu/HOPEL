@@ -17,8 +17,11 @@ import 'package:chopel_app/theme/components/hopal_shimmer.dart';
 import 'package:chopel_app/core/utils/date_formatter.dart';
 import 'package:chopel_app/core/services/battalion_staff_service.dart';
 import 'package:chopel_app/core/services/csv_export_service.dart';
+import 'package:chopel_app/core/utils/doctor_consult_helper.dart';
 import 'package:chopel_app/core/utils/platoon_helper.dart';
+import 'package:chopel_app/features/dashboard/providers.dart';
 import 'package:chopel_app/features/dashboard/widgets/matab_queue_card.dart';
+import 'package:chopel_app/theme/components/hopal_feedback.dart';
 
 class MedicalCasesListScreen extends ConsumerStatefulWidget {
   const MedicalCasesListScreen({super.key});
@@ -303,121 +306,240 @@ class _MedicalCasesListScreenState extends ConsumerState<MedicalCasesListScreen>
     }
 
     final formattedDate = DateFormatter.formatRelative(mCase.createdDate);
+    final isOpen = mCase.status != 'COMPLETED' && mCase.status != 'CLOSED';
+    final isInMatabQueue = BattalionStaffService.isCaseInMatabQueue(mCase);
 
-    return Padding(
-      padding: const EdgeInsets.only(bottom: AppTheme.spacing12),
-      child: HopalCard(
-        borderColor: borderColor,
-        onTap: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => MedicalCaseDetailScreen(medicalCase: mCase),
-            ),
-          ).then((_) => ref.read(medicalCasesProvider.notifier).refresh());
-        },
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Hero(
-                  tag: 'soldier_name_${mCase.id}',
-                  child: Material(
-                    type: MaterialType.transparency,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Text(soldier.name, style: Theme.of(context).textTheme.titleMedium),
-                            if (soldier.hasAllergies) ...[
-                              const SizedBox(width: AppTheme.spacing8),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                decoration: BoxDecoration(
-                                  color: AppTheme.criticalRed.withValues(alpha: 0.15),
-                                  borderRadius: BorderRadius.circular(6),
-                                  border: Border.all(color: AppTheme.criticalRed.withValues(alpha: 0.4)),
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Icon(LucideIcons.shieldAlert, size: 12, color: AppTheme.criticalRed),
-                                    const SizedBox(width: 4),
-                                    Text(
-                                      soldier.allergies!,
-                                      style: TextStyle(color: AppTheme.criticalRed, fontSize: 11, fontWeight: FontWeight.bold),
-                                    ),
-                                  ],
-                                ),
+    Widget cardContent = HopalCard(
+      borderColor: borderColor,
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => MedicalCaseDetailScreen(medicalCase: mCase),
+          ),
+        ).then((_) => ref.read(medicalCasesProvider.notifier).refresh());
+      },
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Hero(
+                tag: 'soldier_name_${mCase.id}',
+                child: Material(
+                  type: MaterialType.transparency,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Text(soldier.name, style: Theme.of(context).textTheme.titleMedium),
+                          if (soldier.hasAllergies) ...[
+                            const SizedBox(width: AppTheme.spacing8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: AppTheme.criticalRed.withValues(alpha: 0.15),
+                                borderRadius: BorderRadius.circular(6),
+                                border: Border.all(color: AppTheme.criticalRed.withValues(alpha: 0.4)),
                               ),
-                            ],
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(LucideIcons.shieldAlert, size: 12, color: AppTheme.criticalRed),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    soldier.allergies!,
+                                    style: TextStyle(color: AppTheme.criticalRed, fontSize: 11, fontWeight: FontWeight.bold),
+                                  ),
+                                ],
+                              ),
+                            ),
                           ],
-                        ),
-                        const SizedBox(height: 2),
-                        Row(
-                          children: [
+                        ],
+                      ),
+                      const SizedBox(height: 2),
+                      Row(
+                        children: [
+                          if (soldier.personalNumber != null)
+                            Text('מ.א: ${soldier.personalNumber}', style: TextStyle(color: AppTheme.textSecondary, fontSize: 13)),
+                          if (soldier.platoon != null && soldier.platoon!.isNotEmpty) ...[
                             if (soldier.personalNumber != null)
-                              Text('מ.א: ${soldier.personalNumber}', style: TextStyle(color: AppTheme.textSecondary, fontSize: 13)),
-                            if (soldier.platoon != null && soldier.platoon!.isNotEmpty) ...[
-                              if (soldier.personalNumber != null)
-                                Text(' • ', style: TextStyle(color: AppTheme.textSecondary, fontSize: 13)),
-                              Text(soldier.platoon!, style: TextStyle(color: AppTheme.textSecondary, fontSize: 13)),
-                            ],
+                              Text(' • ', style: TextStyle(color: AppTheme.textSecondary, fontSize: 13)),
+                            Text(PlatoonHelper.formatDisplay(soldier.platoon), style: TextStyle(color: AppTheme.textSecondary, fontSize: 13)),
                           ],
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              HopalStatusBadge(label: statusText, icon: statusIcon, variant: variant),
+            ],
+          ),
+          const SizedBox(height: AppTheme.spacing12),
+          Text(
+            mCase.description ?? 'ללא תיאור מפורט',
+            style: TextStyle(color: AppTheme.textSecondary, fontSize: 14),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+          const SizedBox(height: AppTheme.spacing12),
+          Row(
+            children: [
+              Icon(LucideIcons.calendar, size: 14, color: AppTheme.militaryOlive),
+              const SizedBox(width: AppTheme.spacing4),
+              Text('נפתח: $formattedDate', style: TextStyle(color: AppTheme.militaryOlive, fontSize: 12)),
+              const Spacer(),
+              if (isInMatabQueue)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: AppTheme.primaryGreen.withValues(alpha: 0.14),
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(color: AppTheme.primaryGreen.withValues(alpha: 0.35)),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(LucideIcons.stethoscope, size: 12, color: AppTheme.primaryGreen),
+                      const SizedBox(width: 4),
+                      Text(
+                        'במסדר מט"ב',
+                        style: TextStyle(
+                          color: AppTheme.primaryGreen,
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
                         ),
-                      ],
+                      ),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+          if (isOpen) ...[
+            const SizedBox(height: 10),
+            Divider(color: AppTheme.borderSubtle, height: 1),
+            const SizedBox(height: 4),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                Flexible(
+                  child: TextButton.icon(
+                    style: TextButton.styleFrom(
+                      foregroundColor: isInMatabQueue ? AppTheme.primaryGreen : AppTheme.textSecondary,
+                      visualDensity: VisualDensity.compact,
+                    ),
+                    icon: const Icon(LucideIcons.stethoscope, size: 15),
+                    label: Text(
+                      isInMatabQueue ? 'במסדר מט"ב ✓' : 'שבץ למט"ב',
+                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    onPressed: () async {
+                      final nextCat = isInMatabQueue ? 'שגרת מרפאה' : BattalionStaffService.matabCategory;
+                      final map = mCase.toMap();
+                      map['category'] = nextCat;
+                      map['updated_date'] = DateTime.now().toIso8601String();
+                      await ref
+                          .read(medicalCasesProvider.notifier)
+                          .upsertCaseOptimistically(MedicalCase.fromMap(map));
+                      if (mounted) {
+                        HopalFeedback.showSuccess(
+                          context,
+                          !isInMatabQueue ? '${soldier.name} שובץ למסדר מט"ב' : '${soldier.name} הוסר ממסדר מט"ב',
+                        );
+                      }
+                    },
+                  ),
+                ),
+                Flexible(
+                  child: TextButton.icon(
+                    style: TextButton.styleFrom(
+                      foregroundColor: AppTheme.infoBlue,
+                      visualDensity: VisualDensity.compact,
+                    ),
+                    icon: const Icon(LucideIcons.share2, size: 15),
+                    label: const Text(
+                      'שלח למט"ב',
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    onPressed: () => DoctorConsultHelper.shareMedicalCase(
+                      context,
+                      medicalCase: mCase,
+                      soldier: soldier,
                     ),
                   ),
                 ),
-                HopalStatusBadge(label: statusText, icon: statusIcon, variant: variant),
-              ],
-            ),
-            const SizedBox(height: AppTheme.spacing12),
-            Text(
-              mCase.description ?? 'ללא תיאור מפורט',
-              style: TextStyle(color: AppTheme.textSecondary, fontSize: 14),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-            ),
-            const SizedBox(height: AppTheme.spacing12),
-            Row(
-              children: [
-                Icon(LucideIcons.calendar, size: 14, color: AppTheme.militaryOlive),
-                const SizedBox(width: AppTheme.spacing4),
-                Text('נפתח: $formattedDate', style: TextStyle(color: AppTheme.militaryOlive, fontSize: 12)),
-                const Spacer(),
-                if (BattalionStaffService.isCaseInMatabQueue(mCase))
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: AppTheme.primaryGreen.withValues(alpha: 0.14),
-                      borderRadius: BorderRadius.circular(6),
-                      border: Border.all(color: AppTheme.primaryGreen.withValues(alpha: 0.35)),
+                Flexible(
+                  child: TextButton.icon(
+                    style: TextButton.styleFrom(
+                      foregroundColor: AppTheme.successGreen,
+                      visualDensity: VisualDensity.compact,
                     ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(LucideIcons.stethoscope, size: 12, color: AppTheme.primaryGreen),
-                        const SizedBox(width: 4),
-                        Text(
-                          'במסדר מט"ב',
-                          style: TextStyle(
-                            color: AppTheme.primaryGreen,
-                            fontSize: 11,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ],
+                    icon: const Icon(LucideIcons.checkCircle2, size: 15),
+                    label: const Text(
+                      'סיום טיפול',
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                      overflow: TextOverflow.ellipsis,
                     ),
+                    onPressed: () => _quickCompleteCase(mCase, soldier),
                   ),
+                ),
               ],
             ),
           ],
-        ),
+        ],
       ),
     );
+
+    if (isOpen) {
+      cardContent = Dismissible(
+        key: ValueKey('case_dismiss_${mCase.id}'),
+        direction: DismissDirection.endToStart,
+        confirmDismiss: (_) async {
+          await _quickCompleteCase(mCase, soldier);
+          return false; // State updates via provider
+        },
+        background: Container(
+          decoration: BoxDecoration(
+            color: AppTheme.successGreen,
+            borderRadius: AppTheme.radiusLg,
+          ),
+          alignment: Alignment.centerRight,
+          padding: const EdgeInsets.only(right: 20),
+          child: const Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(LucideIcons.checkCheck, color: Colors.white),
+              SizedBox(width: 8),
+              Text('סיום וסגירת תיק', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            ],
+          ),
+        ),
+        child: cardContent,
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppTheme.spacing12),
+      child: cardContent,
+    );
+  }
+
+  Future<void> _quickCompleteCase(MedicalCase mCase, Soldier soldier) async {
+    final map = mCase.toMap();
+    map['status'] = 'COMPLETED';
+    map['closed_date'] = DateTime.now().toIso8601String();
+    map['updated_date'] = DateTime.now().toIso8601String();
+    await ref
+        .read(medicalCasesProvider.notifier)
+        .upsertCaseOptimistically(MedicalCase.fromMap(map));
+    ref.invalidate(dashboardMetricsProvider);
+    if (mounted) {
+      HopalFeedback.showSuccess(context, 'הפנייה של ${soldier.name} סומנה כהושלמה');
+    }
   }
 }

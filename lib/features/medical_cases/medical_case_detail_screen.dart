@@ -57,16 +57,43 @@ class _MedicalCaseDetailScreenState extends ConsumerState<MedicalCaseDetailScree
   }
 
   Future<void> _loadSoldierDetails() async {
+    final unitName = AuthService().currentUser?.unitName ?? 'פלוגה';
+
+    // 1. Instant 0ms lookup from local soldiersProvider (works 100% offline!)
+    final cachedSoldiers = ref.read(soldiersProvider).value ?? const [];
+    final localMatch = cachedSoldiers
+        .where((s) => s.id == widget.medicalCase.soldierId)
+        .firstOrNull;
+    if (localMatch != null) {
+      final platoonPart = (localMatch.platoon != null && localMatch.platoon!.trim().isNotEmpty)
+          ? ' • ${ localMatch.platoon!.trim()}'
+          : '';
+      final pnPart = (localMatch.personalNumber != null && localMatch.personalNumber!.isNotEmpty)
+          ? ' • מ.א ${localMatch.personalNumber}'
+          : '';
+      if (mounted) {
+        setState(() {
+          _soldier = localMatch;
+          _soldierName = localMatch.name;
+          _soldierContext = '$unitName$platoonPart$pnPart';
+          _soldierPhone = localMatch.phoneNumber ?? '';
+        });
+      }
+      return;
+    }
+
+    // 2. Fallback to Supabase if not yet in local provider
     try {
       final sb = Supabase.instance.client;
       final soldierRes = await sb
           .from('soldiers')
           .select('*, unit:units(name)')
           .eq('id', widget.medicalCase.soldierId)
-          .maybeSingle();
+          .maybeSingle()
+          .timeout(const Duration(seconds: 4));
 
       if (soldierRes != null) {
-        final unitName = (soldierRes['unit'] as Map<String, dynamic>?)?['name'] ?? 'יחידה לא ידועה';
+        final fetchedUnitName = (soldierRes['unit'] as Map<String, dynamic>?)?['name'] ?? unitName;
         final soldier = Soldier.fromMap(soldierRes);
 
         if (mounted) {
@@ -74,8 +101,8 @@ class _MedicalCaseDetailScreenState extends ConsumerState<MedicalCaseDetailScree
             _soldier = soldier;
             _soldierName = soldier.name;
             _soldierContext = soldier.personalNumber != null
-                ? '$unitName • מ.א ${soldier.personalNumber}'
-                : unitName;
+                ? '$fetchedUnitName • מ.א ${soldier.personalNumber}'
+                : fetchedUnitName;
             _soldierPhone = soldier.phoneNumber ?? '';
           });
         }
@@ -165,11 +192,12 @@ class _MedicalCaseDetailScreenState extends ConsumerState<MedicalCaseDetailScree
 
     setState(() => _isUpdating = true);
     updatedCase['status'] = newStatus;
+    updatedCase['updated_date'] = DateTime.now().toIso8601String();
 
-    await Supabase.instance.client
-        .from('medical_cases')
-        .update(updatedCase)
-        .eq('id', widget.medicalCase.id);
+    await ref
+        .read(medicalCasesProvider.notifier)
+        .upsertCaseOptimistically(MedicalCase.fromMap(updatedCase));
+    ref.invalidate(dashboardMetricsProvider);
 
     if (!mounted) return;
 
@@ -177,6 +205,126 @@ class _MedicalCaseDetailScreenState extends ConsumerState<MedicalCaseDetailScree
       _currentStatus = newStatus;
       _isUpdating = false;
     });
+  }
+
+  Future<void> _addClinicalFollowUpEntry() async {
+    final noteController = TextEditingController();
+    const quickFollowUpChips = [
+      'בדיקת חום חוזרת תקינה',
+      'נבדק ע"י מט"ב',
+      'חל שיפור בתסמינים',
+      'הונחה להמשך מנוחה ושתייה',
+      'ללא החמרה או דגלים אדומים',
+    ];
+
+    final addedText = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AppTheme.backgroundSecondary,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (sheetCtx) {
+        return Padding(
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.of(sheetCtx).viewInsets.bottom +
+                MediaQuery.of(sheetCtx).padding.bottom +
+                AppTheme.spacing24,
+            left: AppTheme.spacing20,
+            right: AppTheme.spacing20,
+            top: AppTheme.spacing20,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  Icon(LucideIcons.clipboardPlus, color: AppTheme.primaryGreen, size: 22),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'הוספת עדכון מעקב / הוראת מט"ב',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: AppTheme.textPrimary,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'העדכון יתווסף עם חותמת תאריך, שעה ושם המטפל לציר הזמן של הפנייה:',
+                style: TextStyle(fontSize: 13, color: AppTheme.textSecondary),
+              ),
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: quickFollowUpChips.map((chip) {
+                  return ActionChip(
+                    label: Text(chip, style: const TextStyle(fontSize: 12)),
+                    backgroundColor: AppTheme.backgroundTertiary,
+                    onPressed: () {
+                      final cur = noteController.text.trim();
+                      noteController.text = cur.isEmpty ? chip : '$cur, $chip';
+                    },
+                  );
+                }).toList(),
+              ),
+              const SizedBox(height: 12),
+              HopalTextField(
+                controller: noteController,
+                hint: 'הקלד ממצאי מעקב, מדדים חוזרים או הוראת רופא...',
+                icon: LucideIcons.fileText,
+                maxLines: 3,
+              ),
+              const SizedBox(height: 18),
+              HopalButton(
+                label: 'שמור עדכון בתיק הפנייה',
+                icon: LucideIcons.check,
+                onPressed: () {
+                  final text = noteController.text.trim();
+                  if (text.isEmpty) return;
+                  Navigator.pop(sheetCtx, text);
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
+
+    if (addedText == null || addedText.isEmpty || !mounted) return;
+
+    final now = DateTime.now();
+    final timeStamp =
+        '${now.day.toString().padLeft(2, '0')}/${now.month.toString().padLeft(2, '0')} '
+        '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
+    final medicName = AuthService().effectiveUserName;
+    final entryLine = '📌 [$timeStamp • $medicName]: $addedText';
+    final newDesc = '$_currentDescription\n$entryLine';
+
+    final updatedMap = widget.medicalCase.toMap();
+    updatedMap['description'] = newDesc;
+    updatedMap['status'] = _currentStatus;
+    updatedMap['category'] = _currentCategory;
+    updatedMap['updated_date'] = now.toIso8601String();
+
+    setState(() {
+      _currentDescription = newDesc;
+    });
+
+    await ref
+        .read(medicalCasesProvider.notifier)
+        .upsertCaseOptimistically(MedicalCase.fromMap(updatedMap));
+    ref.invalidate(dashboardMetricsProvider);
+
+    if (mounted) {
+      HopalFeedback.showSuccess(context, 'עדכון המעקב נוסף לתיק הפנייה');
+    }
   }
 
   Future<void> _shareWithDoctor() {
@@ -208,18 +356,20 @@ class _MedicalCaseDetailScreenState extends ConsumerState<MedicalCaseDetailScree
       }
     }
 
-    try {
-      await Supabase.instance.client.from('medical_cases').update({
-        'description': newDesc,
-        'updated_date': DateTime.now().toIso8601String(),
-      }).eq('id', widget.medicalCase.id);
-    } catch (_) {}
+    final updatedMap = widget.medicalCase.toMap();
+    updatedMap['description'] = newDesc;
+    updatedMap['status'] = _currentStatus;
+    updatedMap['category'] = _currentCategory;
+    updatedMap['updated_date'] = DateTime.now().toIso8601String();
+
+    await ref
+        .read(medicalCasesProvider.notifier)
+        .upsertCaseOptimistically(MedicalCase.fromMap(updatedMap));
 
     if (mounted) {
       setState(() {
         _currentDescription = newDesc;
       });
-      ref.read(medicalCasesProvider.notifier).refresh();
       ref.invalidate(dashboardMetricsProvider);
       HopalFeedback.showSuccess(context, 'הציוד שנופק הופחת אוטומטית מהמלאי ותועד בתיק');
     }
@@ -232,20 +382,21 @@ class _MedicalCaseDetailScreenState extends ConsumerState<MedicalCaseDetailScree
         ? 'REQUIRES_ATTENTION'
         : _currentStatus;
 
-    try {
-      await Supabase.instance.client.from('medical_cases').update({
-        'category': nextCategory,
-        'status': nextStatus,
-        'updated_date': DateTime.now().toIso8601String(),
-      }).eq('id', widget.medicalCase.id);
-    } catch (_) {}
+    final updatedMap = widget.medicalCase.toMap();
+    updatedMap['description'] = _currentDescription;
+    updatedMap['category'] = nextCategory;
+    updatedMap['status'] = nextStatus;
+    updatedMap['updated_date'] = DateTime.now().toIso8601String();
+
+    await ref
+        .read(medicalCasesProvider.notifier)
+        .upsertCaseOptimistically(MedicalCase.fromMap(updatedMap));
 
     if (mounted) {
       setState(() {
         _currentCategory = nextCategory;
         _currentStatus = nextStatus;
       });
-      ref.read(medicalCasesProvider.notifier).refresh();
       ref.invalidate(dashboardMetricsProvider);
       HopalFeedback.showSuccess(
         context,
@@ -383,10 +534,10 @@ class _MedicalCaseDetailScreenState extends ConsumerState<MedicalCaseDetailScree
 
                         if (confirm == true) {
                           try {
-                            await Supabase.instance.client
-                                .from('medical_cases')
-                                .delete()
-                                .eq('id', widget.medicalCase.id);
+                            await ref
+                                .read(medicalCasesProvider.notifier)
+                                .deleteCaseOptimistically(widget.medicalCase.id);
+                            ref.invalidate(dashboardMetricsProvider);
 
                             if (context.mounted) {
                               HopalFeedback.showSuccess(context, 'התיק נמחק בהצלחה');
@@ -562,9 +713,12 @@ class _MedicalCaseDetailScreenState extends ConsumerState<MedicalCaseDetailScree
                     const SizedBox(height: AppTheme.spacing40),
 
                     // Inline Status Update (Pills) & Quick Actions
+                    Text(
+                      isCompanyMedic ? 'החלטת חופ"ל ופעולות מהירות:' : 'פעולות מעקב לחובש:',
+                      style: TextStyle(fontSize: 14, color: AppTheme.textSecondary, fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: AppTheme.spacing16),
                     if (isCompanyMedic) ...[
-                      Text('החלטת חופ"ל ופעולות מהירות:', style: TextStyle(fontSize: 14, color: AppTheme.textSecondary, fontWeight: FontWeight.bold)),
-                      const SizedBox(height: AppTheme.spacing16),
                       Wrap(
                         spacing: AppTheme.spacing8,
                         runSpacing: AppTheme.spacing8,
@@ -574,10 +728,22 @@ class _MedicalCaseDetailScreenState extends ConsumerState<MedicalCaseDetailScree
                         ],
                       ),
                       const SizedBox(height: AppTheme.spacing12),
-                      Wrap(
-                        spacing: AppTheme.spacing8,
-                        runSpacing: AppTheme.spacing8,
-                        children: [
+                    ],
+                    Wrap(
+                      spacing: AppTheme.spacing8,
+                      runSpacing: AppTheme.spacing8,
+                      children: [
+                        OutlinedButton.icon(
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: AppTheme.primaryGreen,
+                            side: BorderSide(color: AppTheme.primaryGreen.withValues(alpha: 0.5)),
+                            shape: const RoundedRectangleBorder(borderRadius: AppTheme.radiusPill),
+                          ),
+                          icon: const Icon(LucideIcons.clipboardPlus, size: 16),
+                          label: const Text('הוסף עדכון מעקב / הוראת מט"ב', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                          onPressed: _addClinicalFollowUpEntry,
+                        ),
+                        if (isCompanyMedic)
                           OutlinedButton.icon(
                             style: OutlinedButton.styleFrom(
                               foregroundColor: AppTheme.primaryGreen,
@@ -588,37 +754,36 @@ class _MedicalCaseDetailScreenState extends ConsumerState<MedicalCaseDetailScree
                             label: const Text('נפק תרופה / ציוד מהמלאי', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
                             onPressed: _dispenseEquipmentForCase,
                           ),
-                          OutlinedButton.icon(
-                            style: OutlinedButton.styleFrom(
-                              backgroundColor: _currentCategory == BattalionStaffService.matabCategory
-                                  ? AppTheme.infoBlue.withValues(alpha: 0.15)
-                                  : Colors.transparent,
-                              foregroundColor: AppTheme.infoBlue,
-                              side: BorderSide(
-                                color: _currentCategory == BattalionStaffService.matabCategory
-                                    ? AppTheme.infoBlue
-                                    : AppTheme.infoBlue.withValues(alpha: 0.5),
-                              ),
-                              shape: const RoundedRectangleBorder(borderRadius: AppTheme.radiusPill),
+                        OutlinedButton.icon(
+                          style: OutlinedButton.styleFrom(
+                            backgroundColor: _currentCategory == BattalionStaffService.matabCategory
+                                ? AppTheme.infoBlue.withValues(alpha: 0.15)
+                                : Colors.transparent,
+                            foregroundColor: AppTheme.infoBlue,
+                            side: BorderSide(
+                              color: _currentCategory == BattalionStaffService.matabCategory
+                                  ? AppTheme.infoBlue
+                                  : AppTheme.infoBlue.withValues(alpha: 0.5),
                             ),
-                            icon: Icon(
-                              _currentCategory == BattalionStaffService.matabCategory
-                                  ? LucideIcons.checkCircle2
-                                  : LucideIcons.stethoscope,
-                              size: 16,
-                            ),
-                            label: Text(
-                              _currentCategory == BattalionStaffService.matabCategory
-                                  ? 'משובץ למסדר מט"ב (לחץ להסרה)'
-                                  : 'שבץ למסדר מט"ב היום',
-                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-                            ),
-                            onPressed: _toggleMatabQueue,
+                            shape: const RoundedRectangleBorder(borderRadius: AppTheme.radiusPill),
                           ),
-                        ],
-                      ),
-                      const SizedBox(height: AppTheme.spacing48),
-                    ],
+                          icon: Icon(
+                            _currentCategory == BattalionStaffService.matabCategory
+                                ? LucideIcons.checkCircle2
+                                : LucideIcons.stethoscope,
+                            size: 16,
+                          ),
+                          label: Text(
+                            _currentCategory == BattalionStaffService.matabCategory
+                                ? 'משובץ למסדר מט"ב (לחץ להסרה)'
+                                : 'שבץ למסדר מט"ב היום',
+                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                          ),
+                          onPressed: _toggleMatabQueue,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: AppTheme.spacing48),
 
                     // Image Viewer (Supports multiple photos with complaint tags)
                     if (widget.medicalCase.photos.isNotEmpty) ...[
@@ -777,24 +942,7 @@ class _MedicalCaseDetailScreenState extends ConsumerState<MedicalCaseDetailScree
                     HopalCard(
                       padding: const EdgeInsets.symmetric(horizontal: AppTheme.spacing24, vertical: AppTheme.spacing32),
                       child: HopalTimeline(
-                        events: [
-                          HopalTimelineEvent(
-                            title: 'פניה נפתחה',
-                            time: DateFormatter.formatRelative(widget.medicalCase.createdDate),
-                            actor: 'מערכת',
-                            icon: LucideIcons.filePlus2,
-                            isLast: _currentStatus != 'COMPLETED',
-                          ),
-                          if (_currentStatus == 'COMPLETED')
-                            HopalTimelineEvent(
-                              title: 'התיק נסגר רפואית',
-                              time: DateFormatter.formatRelative(widget.medicalCase.closedDate ?? DateTime.now().toIso8601String()),
-                              actor: 'רופא / חופ"ל',
-                              icon: LucideIcons.checkCircle2,
-                              iconColor: AppTheme.successGreen,
-                              isLast: true,
-                            ),
-                        ],
+                        events: _buildTimelineEvents(),
                       ),
                     ),
 
@@ -814,6 +962,74 @@ class _MedicalCaseDetailScreenState extends ConsumerState<MedicalCaseDetailScree
         );
       },
     );
+  }
+
+  List<HopalTimelineEvent> _buildTimelineEvents() {
+    String creatorActor = 'חופ"ל / חובש';
+    final followUps = <Map<String, String>>[];
+
+    for (final rawLine in _currentDescription.split('\n')) {
+      final line = rawLine.trim();
+      if (line.startsWith('🩺 תועד ע"י:')) {
+        creatorActor = line.replaceFirst('🩺 תועד ע"י:', '').trim();
+      } else if (line.startsWith('📌 [')) {
+        final closeBracket = line.indexOf(']:');
+        if (closeBracket != -1) {
+          final meta = line.substring(line.indexOf('[') + 1, closeBracket);
+          final content = line.substring(closeBracket + 2).trim();
+          final parts = meta.split('•');
+          final timeStr = parts.first.trim();
+          final actorStr = parts.length > 1 ? parts.last.trim() : 'חופ"ל';
+          followUps.add({
+            'title': content,
+            'time': timeStr,
+            'actor': actorStr,
+          });
+        }
+      }
+    }
+
+    final events = <HopalTimelineEvent>[
+      HopalTimelineEvent(
+        title: 'פניה נפתחה',
+        time: DateFormatter.formatRelative(widget.medicalCase.createdDate),
+        actor: creatorActor,
+        icon: LucideIcons.filePlus2,
+        isLast: followUps.isEmpty && _currentStatus != 'COMPLETED',
+      ),
+    ];
+
+    for (int i = 0; i < followUps.length; i++) {
+      final f = followUps[i];
+      final isLastEvent = (i == followUps.length - 1) && _currentStatus != 'COMPLETED';
+      events.add(
+        HopalTimelineEvent(
+          title: f['title'] ?? 'עדכון מעקב',
+          time: f['time'] ?? '',
+          actor: f['actor'] ?? 'חופ"ל',
+          icon: LucideIcons.clipboardCheck,
+          iconColor: AppTheme.infoBlue,
+          isLast: isLastEvent,
+        ),
+      );
+    }
+
+    if (_currentStatus == 'COMPLETED') {
+      events.add(
+        HopalTimelineEvent(
+          title: 'התיק נסגר רפואית',
+          time: DateFormatter.formatRelative(
+            widget.medicalCase.closedDate ?? DateTime.now().toIso8601String(),
+          ),
+          actor: 'רופא / חופ"ל',
+          icon: LucideIcons.checkCircle2,
+          iconColor: AppTheme.successGreen,
+          isLast: true,
+        ),
+      );
+    }
+
+    return events;
   }
 
   Widget _buildOutcomeBadge() {
