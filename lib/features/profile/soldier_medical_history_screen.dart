@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:chopel_app/theme/app_theme.dart';
 import 'package:chopel_app/theme/components/hopal_card.dart';
@@ -9,6 +11,9 @@ import 'package:chopel_app/theme/components/hopal_button.dart';
 import 'package:chopel_app/theme/components/hopal_status_badge.dart';
 import 'package:chopel_app/theme/components/hopal_empty_state.dart';
 import 'package:chopel_app/theme/components/hopal_feedback.dart';
+import 'package:chopel_app/theme/components/hopal_text_field.dart';
+import 'package:chopel_app/core/services/battalion_staff_service.dart';
+import 'package:chopel_app/core/utils/app_error_helper.dart';
 import 'package:chopel_app/core/utils/platform_image.dart';
 import 'package:chopel_app/core/utils/date_formatter.dart';
 import 'package:chopel_app/core/utils/platoon_helper.dart';
@@ -50,6 +55,191 @@ class _SoldierMedicalHistoryScreenState extends ConsumerState<SoldierMedicalHist
       context,
       MaterialPageRoute(
         builder: (_) => MedicalCaseDetailScreen(medicalCase: medicalCase),
+      ),
+    );
+  }
+
+  Future<void> _shareSoldierMedicalSummary(
+    Soldier soldier,
+    List<MedicalCase> soldierCases,
+  ) async {
+    final sb = StringBuffer();
+    sb.writeln('📁 *סיכום תיק רפואי אישי – ${soldier.name}*');
+    final pnText = (soldier.personalNumber != null && soldier.personalNumber!.isNotEmpty)
+        ? 'מ.א: ${soldier.personalNumber}'
+        : 'מ.א: לא הוזן';
+    final pltText = (soldier.platoon != null && soldier.platoon!.trim().isNotEmpty)
+        ? PlatoonHelper.formatDisplay(soldier.platoon)
+        : 'ללא מחלקה';
+    sb.writeln('🪪 $pnText | 🛡️ $pltText');
+    if (soldier.phoneNumber != null && soldier.phoneNumber!.trim().isNotEmpty) {
+      sb.writeln('📞 טלפון: ${soldier.phoneNumber}');
+    }
+    if (soldier.hasAllergies) {
+      sb.writeln('🚨 *רגישויות / אלרגיות:* ${soldier.allergies}');
+    } else {
+      sb.writeln('🛡️ *רגישויות:* ללא רגישות ידועה');
+    }
+    sb.writeln('────────────────────');
+
+    final activeList = soldierCases
+        .where((c) => c.status != 'COMPLETED' && c.status != 'CLOSED' && c.status != 'טופל')
+        .toList();
+    final historyList = soldierCases
+        .where((c) => c.status == 'COMPLETED' || c.status == 'CLOSED' || c.status == 'טופל')
+        .toList();
+
+    if (activeList.isNotEmpty) {
+      sb.writeln('🩺 *פניות פעילות / במעקב (${activeList.length}):*');
+      for (final c in activeList) {
+        final dateStr = DateFormatter.formatShortDate(c.createdDate);
+        final exBadge = BattalionStaffService.extractExemptionBadge(c);
+        final exTag = exBadge != null ? ' [$exBadge]' : '';
+        sb.writeln('• [$dateStr]$exTag: ${(c.description ?? '').trim()}');
+      }
+      sb.writeln('');
+    } else {
+      sb.writeln('✅ *פניות פעילות:* אין פניות פתוחות כרגע.');
+      sb.writeln('');
+    }
+
+    if (historyList.isNotEmpty) {
+      sb.writeln('📜 *היסטוריית טיפולים קודמים (${historyList.length}):*');
+      for (final c in historyList.take(5)) {
+        final dateStr = DateFormatter.formatShortDate(c.createdDate);
+        final firstLine = (c.description ?? '').split('\n').first.trim();
+        sb.writeln('• [$dateStr]: $firstLine');
+      }
+    }
+    sb.writeln('────────────────────');
+    sb.writeln('הופק מאפליקציית חופ"ל.');
+
+    await SharePlus.instance.share(ShareParams(text: sb.toString()));
+  }
+
+  void _showEditSoldierDialog(Soldier soldier) {
+    final nameController = TextEditingController(text: soldier.name);
+    final pnController = TextEditingController(text: soldier.personalNumber ?? '');
+    final phoneController = TextEditingController(text: soldier.phoneNumber ?? '');
+    final platoonController = TextEditingController(
+      text: soldier.platoon != null ? PlatoonHelper.formatDisplay(soldier.platoon) : '',
+    );
+    final allergiesController = TextEditingController(text: soldier.allergies ?? '');
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: AppTheme.backgroundSecondary,
+        title: Text(
+          'עריכת פרטי חייל ורגישויות',
+          style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.bold),
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              HopalTextField(controller: nameController, hint: 'שם מלא', icon: LucideIcons.user),
+              const SizedBox(height: AppTheme.spacing12),
+              HopalTextField(
+                controller: pnController,
+                hint: 'מספר אישי',
+                icon: LucideIcons.hash,
+                keyboardType: TextInputType.number,
+              ),
+              const SizedBox(height: AppTheme.spacing12),
+              HopalTextField(
+                controller: phoneController,
+                hint: 'טלפון נייד',
+                icon: LucideIcons.phone,
+                keyboardType: TextInputType.phone,
+              ),
+              const SizedBox(height: AppTheme.spacing12),
+              HopalTextField(
+                controller: platoonController,
+                hint: 'מחלקה (מחלקה 1 / מפלג / מסופחים)',
+                icon: LucideIcons.users,
+              ),
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: PlatoonHelper.quickSelectPlatoons.map((plt) {
+                  return ActionChip(
+                    label: Text(plt, style: const TextStyle(fontSize: 11)),
+                    backgroundColor: AppTheme.backgroundTertiary,
+                    onPressed: () => platoonController.text = plt,
+                  );
+                }).toList(),
+              ),
+              const SizedBox(height: AppTheme.spacing12),
+              HopalTextField(
+                controller: allergiesController,
+                hint: 'אלרגיות / רגישויות (G6PD, פניצילין, אופטלגין...)',
+                icon: LucideIcons.alertTriangle,
+              ),
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 6,
+                children: ['G6PD', 'פניצילין', 'אופטלגין', 'NSAID'].map((alg) {
+                  return ActionChip(
+                    label: Text(alg, style: const TextStyle(fontSize: 11)),
+                    backgroundColor: AppTheme.backgroundTertiary,
+                    onPressed: () {
+                      final current = allergiesController.text.trim();
+                      allergiesController.text = current.isEmpty ? alg : '$current, $alg';
+                    },
+                  );
+                }).toList(),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: Text('ביטול', style: TextStyle(color: AppTheme.textSecondary)),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: AppTheme.primaryGreen,
+              foregroundColor: AppTheme.onPrimaryGreen,
+            ),
+            onPressed: () async {
+              final rawName = nameController.text.trim();
+              if (rawName.isEmpty) return;
+              String? orNull(String v) => v.trim().isEmpty ? null : v.trim();
+              final rawPn = orNull(pnController.text.replaceAll(RegExp(r'\D'), ''));
+              final rawPlatoon = orNull(platoonController.text);
+              final normalizedPlatoon = rawPlatoon != null ? PlatoonHelper.normalize(rawPlatoon) : null;
+              final rawAllergies = orNull(allergiesController.text);
+
+              final data = <String, dynamic>{
+                'name': rawName,
+                'personal_number': rawPn,
+                'phone_number': orNull(phoneController.text),
+                'platoon': normalizedPlatoon,
+                'allergies': rawAllergies,
+              };
+
+              try {
+                await Supabase.instance.client.from('soldiers').update(data).eq('id', soldier.id);
+                if (dialogContext.mounted) Navigator.pop(dialogContext);
+                if (mounted) {
+                  ref.invalidate(soldiersProvider);
+                  HopalFeedback.showSuccess(context, 'פרטי החייל עודכנו בהצלחה');
+                }
+              } catch (e) {
+                if (mounted) {
+                  HopalFeedback.showError(
+                    context,
+                    AppErrorHelper.toHebrew(e, fallback: 'שגיאה בעדכון פרטי החייל'),
+                  );
+                }
+              }
+            },
+            child: const Text('שמור שינויים', style: TextStyle(fontWeight: FontWeight.bold)),
+          ),
+        ],
       ),
     );
   }
@@ -167,6 +357,16 @@ class _SoldierMedicalHistoryScreenState extends ConsumerState<SoldierMedicalHist
           onPressed: () => Navigator.pop(context),
         ),
         actions: [
+          IconButton(
+            icon: Icon(LucideIcons.userPen, color: AppTheme.textPrimary, size: 20),
+            tooltip: 'עריכת פרטי חייל ורגישויות',
+            onPressed: () => _showEditSoldierDialog(freshSoldier),
+          ),
+          IconButton(
+            icon: Icon(LucideIcons.share2, color: AppTheme.infoBlue, size: 20),
+            tooltip: 'שתף סיכום תיק רפואי אישי (WhatsApp)',
+            onPressed: () => _shareSoldierMedicalSummary(freshSoldier, soldierCases),
+          ),
           IconButton(
             icon: Icon(LucideIcons.filePlus2, color: AppTheme.primaryGreen),
             tooltip: 'פנייה חדשה',

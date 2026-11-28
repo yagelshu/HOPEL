@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:uuid/uuid.dart';
 import 'package:chopel_app/core/auth/auth_service.dart';
 import 'package:chopel_app/core/models/note_model.dart';
@@ -12,6 +14,7 @@ import 'package:chopel_app/theme/components/hopal_button.dart';
 import 'package:chopel_app/theme/components/hopal_card.dart';
 import 'package:chopel_app/theme/components/hopal_empty_state.dart';
 import 'package:chopel_app/theme/components/hopal_feedback.dart';
+import 'package:chopel_app/theme/components/hopal_search_bar.dart';
 import 'package:chopel_app/theme/components/hopal_text_field.dart';
 
 class NotesScreen extends StatefulWidget {
@@ -24,9 +27,47 @@ class NotesScreen extends StatefulWidget {
 class _NotesScreenState extends State<NotesScreen> with SingleTickerProviderStateMixin {
   final _repository = NotesRepository();
   late final TabController _tabController;
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
   List<Note> _notes = [];
   bool _isLoading = true;
   bool _isFromCache = false;
+
+  static const List<Map<String, String>> _tacticalTemplates = [
+    {
+      'label': '📻 תדרים ואותות קריאה',
+      'content': '📻 *תדרים ואותות קריאה בגזרה:*\n'
+          '• תדר פלוגתי ראשי: \n'
+          '• תדר רפואה / תאג"ד גדודי: \n'
+          '• אות קריאה חופ"ל: \n'
+          '• אות קריאה תאג"ד / מט"ב: \n'
+          '• ערוץ חירום לפינוי מוסק/רכוב: ',
+    },
+    {
+      'label': '📋 נוהל מסדר חולים',
+      'content': '📋 *נוהל מסדר חולים פלוגתי:*\n'
+          '• מסדר חופ"ל בוקר: 07:30 במרפאה הפלוגתית\n'
+          '• מסדר חופ"ל ערב: 19:30\n'
+          '• חובשי מחלקות: יש להעביר שמות חיילים למסדר מט"ב עד השעה 08:30 באפליקציה.\n'
+          '• כל ניפוק תרופה או ציוד חובה לתעד בפנייה באפליקציה.',
+    },
+    {
+      'label': '🚑 נקודות חבירה ופינוי',
+      'content': '🚑 *נקודות חבירה ופינוי בגזרה:*\n'
+          '• נקודת חבירה אמבולנס / תאג"ד (ש.ג / ציר): \n'
+          '• מנחת מסוקים גזרתי (נ.צ / שם מנחת): \n'
+          '• בית חולים קולט ראשי: \n'
+          '• טלפון חמ"ל גדודי: ',
+    },
+    {
+      'label': '⏰ תורנות חובשים',
+      'content': '⏰ *סבב תורנות וכוננות חובשים:*\n'
+          '• חובש כונן מוצב (בוקר): \n'
+          '• חובש כונן מוצב (לילה): \n'
+          '• חובש סיור / כיתת כוננות: \n'
+          '• דגשים למשמרת: ווידוא כשירות וסט וארגז חופ"ל.',
+    },
+  ];
 
   @override
   void initState() {
@@ -40,6 +81,7 @@ class _NotesScreenState extends State<NotesScreen> with SingleTickerProviderStat
 
   @override
   void dispose() {
+    _searchController.dispose();
     _tabController.dispose();
     super.dispose();
   }
@@ -85,17 +127,52 @@ class _NotesScreenState extends State<NotesScreen> with SingleTickerProviderStat
       title: isEditing ? 'עריכת הערה' : 'הוספת הערה חדשה',
       child: StatefulBuilder(
         builder: (sheetContext, setModalState) {
-          return Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              HopalTextField(
-                controller: textController,
-                hint: isPrivate
-                    ? 'כתוב תזכורת, מעקב אישי או נקודה להמשך...'
-                    : 'כתוב הודעת חפיפה, הנחיה או עדכון לכל חובשי הפלוגה...',
-                maxLines: 5,
-              ),
+          return SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (!isEditing) ...[
+                  Text(
+                    'תבניות שטח מהירות (לחיצה להוספה):',
+                    style: TextStyle(
+                      color: AppTheme.textSecondary,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: _tacticalTemplates.map((tpl) {
+                      return ActionChip(
+                        label: Text(
+                          tpl['label']!,
+                          style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600),
+                        ),
+                        backgroundColor: AppTheme.backgroundSecondary,
+                        side: BorderSide(color: AppTheme.primaryGreen.withValues(alpha: 0.35)),
+                        onPressed: () {
+                          final current = textController.text.trim();
+                          final tplText = tpl['content']!;
+                          textController.text = current.isEmpty ? tplText : '$current\n\n$tplText';
+                          textController.selection = TextSelection.fromPosition(
+                            TextPosition(offset: textController.text.length),
+                          );
+                        },
+                      );
+                    }).toList(),
+                  ),
+                  const SizedBox(height: 12),
+                ],
+                HopalTextField(
+                  controller: textController,
+                  hint: isPrivate
+                      ? 'כתוב תזכורת, מעקב אישי או נקודה להמשך...'
+                      : 'כתוב הודעת חפיפה, תדרים, הנחיה או עדכון לכל חובשי הפלוגה...',
+                  maxLines: 5,
+                ),
               if (isCompanyMedic) ...[
                 const SizedBox(height: AppTheme.spacing16),
                 Container(
@@ -214,7 +291,8 @@ class _NotesScreenState extends State<NotesScreen> with SingleTickerProviderStat
                 },
               ),
             ],
-          );
+          ),
+        );
         },
       ),
     );
@@ -276,8 +354,12 @@ class _NotesScreenState extends State<NotesScreen> with SingleTickerProviderStat
 
   @override
   Widget build(BuildContext context) {
-    final privateNotes = _notes.where((n) => n.isPrivate).toList();
-    final sharedNotes = _notes.where((n) => !n.isPrivate).toList();
+    final query = _searchQuery.trim().toLowerCase();
+    final filteredAll = query.isEmpty
+        ? _notes
+        : _notes.where((n) => n.content.toLowerCase().contains(query)).toList();
+    final privateNotes = filteredAll.where((n) => n.isPrivate).toList();
+    final sharedNotes = filteredAll.where((n) => !n.isPrivate).toList();
     final isCompanyMedic = AuthService().isCompanyMedic;
     final isSharedTab = _tabController.index == 1;
     final showFab = !isSharedTab || isCompanyMedic;
@@ -314,6 +396,15 @@ class _NotesScreenState extends State<NotesScreen> with SingleTickerProviderStat
       ),
       body: Column(
         children: [
+          if (_notes.length >= 2)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(AppTheme.spacing16, AppTheme.spacing12, AppTheme.spacing16, 4),
+              child: HopalSearchBar(
+                controller: _searchController,
+                placeholder: 'חיפוש ביומן ובהודעות (תדרים, נהלים, חפיפה...)',
+                onChanged: (val) => setState(() => _searchQuery = val),
+              ),
+            ),
           if (_isFromCache)
             Container(
               width: double.infinity,
@@ -449,6 +540,27 @@ class _NotesScreenState extends State<NotesScreen> with SingleTickerProviderStat
                           Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
+                              IconButton(
+                                tooltip: 'העתק טקסט',
+                                icon: Icon(LucideIcons.copy, color: AppTheme.textSecondary, size: 16),
+                                onPressed: () async {
+                                  await Clipboard.setData(ClipboardData(text: note.content));
+                                  if (context.mounted) {
+                                    HopalFeedback.showSuccess(context, 'ההערה הועתקה ללוח');
+                                  }
+                                },
+                                constraints: const BoxConstraints(),
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              ),
+                              IconButton(
+                                tooltip: 'שתף בוואטסאפ',
+                                icon: Icon(LucideIcons.share2, color: AppTheme.primaryGreen, size: 16),
+                                onPressed: () async {
+                                  await SharePlus.instance.share(ShareParams(text: note.content));
+                                },
+                                constraints: const BoxConstraints(),
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              ),
                               if (isOwner)
                                 IconButton(
                                   tooltip: 'ערוך הערה',

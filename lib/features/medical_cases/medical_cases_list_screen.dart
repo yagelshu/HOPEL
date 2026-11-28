@@ -15,6 +15,7 @@ import 'package:chopel_app/features/medical_cases/medical_case_create_screen.dar
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:chopel_app/theme/components/hopal_shimmer.dart';
 import 'package:chopel_app/core/utils/date_formatter.dart';
+import 'package:chopel_app/core/auth/auth_service.dart';
 import 'package:chopel_app/core/services/battalion_staff_service.dart';
 import 'package:chopel_app/core/services/csv_export_service.dart';
 import 'package:chopel_app/core/utils/doctor_consult_helper.dart';
@@ -22,6 +23,7 @@ import 'package:chopel_app/core/utils/platoon_helper.dart';
 import 'package:chopel_app/features/dashboard/providers.dart';
 import 'package:chopel_app/features/dashboard/widgets/matab_queue_card.dart';
 import 'package:chopel_app/theme/components/hopal_feedback.dart';
+import 'package:share_plus/share_plus.dart';
 
 class MedicalCasesListScreen extends ConsumerStatefulWidget {
   const MedicalCasesListScreen({super.key});
@@ -31,7 +33,7 @@ class MedicalCasesListScreen extends ConsumerStatefulWidget {
 }
 
 class _MedicalCasesListScreenState extends ConsumerState<MedicalCasesListScreen> {
-  String _filter = 'ALL'; // ALL, MATAB_QUEUE, COMPLETED
+  String _filter = 'ALL'; // ALL, MATAB_QUEUE, EXEMPTIONS, COMPLETED
   String _selectedPlatoon = 'הכל';
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
@@ -52,12 +54,15 @@ class _MedicalCasesListScreenState extends ConsumerState<MedicalCasesListScreen>
             alwaysIncludeAttached: true,
           );
           final matabQueueCount = cases.where(BattalionStaffService.isCaseInMatabQueue).length;
+          final exemptionsCount = cases.where(BattalionStaffService.hasActiveExemption).length;
 
           List<MedicalCase> filteredCases = cases;
           if (_filter == 'REQUIRES_ATTENTION') {
             filteredCases = cases.where((c) => c.status == 'REQUIRES_ATTENTION').toList();
           } else if (_filter == 'MATAB_QUEUE') {
             filteredCases = cases.where(BattalionStaffService.isCaseInMatabQueue).toList();
+          } else if (_filter == 'EXEMPTIONS') {
+            filteredCases = cases.where(BattalionStaffService.hasActiveExemption).toList();
           } else if (_filter == 'COMPLETED') {
             filteredCases = cases.where((c) => c.status == 'COMPLETED').toList();
           } else {
@@ -147,11 +152,39 @@ class _MedicalCasesListScreenState extends ConsumerState<MedicalCasesListScreen>
                             onChanged: (val) => setState(() => _searchQuery = val.toLowerCase()),
                           ),
                         ),
-                        _buildFilterChips(matabQueueCount, platoons),
+                        _buildFilterChips(matabQueueCount, exemptionsCount, platoons),
                       ],
                     ),
                   ),
                 ),
+                if (_filter == 'EXEMPTIONS' || (exemptionsCount > 0 && _filter == 'ALL'))
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(AppTheme.spacing16, AppTheme.spacing12, AppTheme.spacing16, 0),
+                      child: OutlinedButton.icon(
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: AppTheme.warningAmber,
+                          side: BorderSide(color: AppTheme.warningAmber.withValues(alpha: 0.5)),
+                          backgroundColor: AppTheme.warningAmber.withValues(alpha: 0.08),
+                          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 14),
+                          shape: RoundedRectangleBorder(borderRadius: AppTheme.radiusMd),
+                        ),
+                        icon: const Icon(LucideIcons.shieldAlert, size: 17),
+                        label: Text(
+                          'שלח מצבת פטורים, בתים וגימלים למ"פ / רס"פ ($exemptionsCount)',
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                        ),
+                        onPressed: () async {
+                          final report = BattalionStaffService.buildActiveExemptionsReport(
+                            cases: cases,
+                            soldiers: soldiers,
+                            unitName: AuthService().currentUser?.unitName,
+                          );
+                          await SharePlus.instance.share(ShareParams(text: report));
+                        },
+                      ),
+                    ),
+                  ),
                 if (filteredCases.isEmpty)
                   const SliverFillRemaining(
                     hasScrollBody: false,
@@ -212,7 +245,7 @@ class _MedicalCasesListScreenState extends ConsumerState<MedicalCasesListScreen>
     return 50; 
   }
 
-  Widget _buildFilterChips(int matabQueueCount, List<String> platoons) {
+  Widget _buildFilterChips(int matabQueueCount, int exemptionsCount, List<String> platoons) {
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       padding: const EdgeInsets.symmetric(horizontal: AppTheme.spacing16, vertical: AppTheme.spacing8),
@@ -223,6 +256,11 @@ class _MedicalCasesListScreenState extends ConsumerState<MedicalCasesListScreen>
           _buildChip(
             matabQueueCount > 0 ? 'מסדר מט"ב ($matabQueueCount)' : 'מסדר מט"ב',
             'MATAB_QUEUE',
+          ),
+          const SizedBox(width: AppTheme.spacing8),
+          _buildChip(
+            exemptionsCount > 0 ? 'פטורים / ב\' / ג\' ($exemptionsCount)' : 'פטורים / ב\' / ג\'',
+            'EXEMPTIONS',
           ),
           const SizedBox(width: AppTheme.spacing8),
           _buildChip('היסטוריה', 'COMPLETED'),
@@ -308,6 +346,7 @@ class _MedicalCasesListScreenState extends ConsumerState<MedicalCasesListScreen>
     final formattedDate = DateFormatter.formatRelative(mCase.createdDate);
     final isOpen = mCase.status != 'COMPLETED' && mCase.status != 'CLOSED';
     final isInMatabQueue = BattalionStaffService.isCaseInMatabQueue(mCase);
+    final exemptionBadge = BattalionStaffService.extractExemptionBadge(mCase);
 
     Widget cardContent = HopalCard(
       borderColor: borderColor,
@@ -392,6 +431,32 @@ class _MedicalCasesListScreenState extends ConsumerState<MedicalCasesListScreen>
               const SizedBox(width: AppTheme.spacing4),
               Text('נפתח: $formattedDate', style: TextStyle(color: AppTheme.militaryOlive, fontSize: 12)),
               const Spacer(),
+              if (exemptionBadge != null) ...[
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: AppTheme.warningAmber.withValues(alpha: 0.14),
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(color: AppTheme.warningAmber.withValues(alpha: 0.4)),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(LucideIcons.shieldAlert, size: 12, color: AppTheme.warningAmber),
+                      const SizedBox(width: 4),
+                      Text(
+                        exemptionBadge,
+                        style: TextStyle(
+                          color: AppTheme.warningAmber,
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                if (isInMatabQueue) const SizedBox(width: 6),
+              ],
               if (isInMatabQueue)
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
@@ -454,6 +519,27 @@ class _MedicalCasesListScreenState extends ConsumerState<MedicalCasesListScreen>
                     },
                   ),
                 ),
+                if (isInMatabQueue)
+                  Flexible(
+                    child: TextButton.icon(
+                      style: TextButton.styleFrom(
+                        foregroundColor: AppTheme.warningAmber,
+                        visualDensity: VisualDensity.compact,
+                      ),
+                      icon: const Icon(LucideIcons.clipboardCheck, size: 15),
+                      label: const Text(
+                        'סיכום מט"ב',
+                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      onPressed: () => MatabQueueCard.showDoctorDecisionSheet(
+                        context,
+                        ref: ref,
+                        medicalCase: mCase,
+                        soldier: soldier,
+                      ),
+                    ),
+                  ),
                 Flexible(
                   child: TextButton.icon(
                     style: TextButton.styleFrom(

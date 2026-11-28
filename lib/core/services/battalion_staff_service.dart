@@ -375,20 +375,156 @@ class BattalionStaffService {
   }
 
   // ---------------------------------------------------------------------------
-  // Matab Queue ("מסדר מט"ב / לבדיקת רופא היום")
+  // Matab Queue ("מסדר מט"ב / לבדיקת רופא היום") & Active Exemptions ("פטורים / ב' / ג'")
   // ---------------------------------------------------------------------------
   static const String matabCategory = 'בדיקת מט"ב';
+  static const String exemptionCategory = 'פטור / ימי מנוחה';
 
   /// Returns true if [medicalCase] is open and marked as waiting for Matab/Doctor examination.
   static bool isCaseInMatabQueue(MedicalCase medicalCase) {
-    if (medicalCase.status == 'COMPLETED') return false;
+    if (medicalCase.status == 'COMPLETED' || medicalCase.status == 'CLOSED') return false;
     final cat = (medicalCase.category ?? '').trim();
     final desc = (medicalCase.description ?? '').trim();
-    return cat == matabCategory ||
-        cat == 'בדיקת רופא' ||
-        desc.contains('בקשת תור לרופא') ||
+    if (cat == matabCategory || cat == 'בדיקת רופא') return true;
+    // If category was explicitly moved to another clinical category after Matab summary, it is no longer waiting in queue
+    if (desc.contains('סיכום מט"ב]:')) return false;
+    return desc.contains('בקשת תור לרופא') ||
         desc.contains('ממתין למט"ב') ||
         desc.contains('בדיקת מט"ב');
+  }
+
+  /// Formats a timestamped clinical follow-up line recording a Matab doctor/paramedic decision.
+  static String formatMatabDecisionStamp({
+    required String decision,
+    int? exemptionDays,
+    String? notes,
+    DateTime? now,
+  }) {
+    final ts = (now ?? DateTime.now()).toLocal();
+    final dd = ts.day.toString().padLeft(2, '0');
+    final mm = ts.month.toString().padLeft(2, '0');
+    final hh = ts.hour.toString().padLeft(2, '0');
+    final min = ts.minute.toString().padLeft(2, '0');
+
+    final parts = <String>['החלטת רופא/מט"ב: $decision'];
+    if (exemptionDays != null && exemptionDays > 0) {
+      final expiry = ts.add(Duration(days: exemptionDays));
+      final expDd = expiry.day.toString().padLeft(2, '0');
+      final expMm = expiry.month.toString().padLeft(2, '0');
+      parts.add('⏳ תוקף פטור עד: $expDd/$expMm/${expiry.year} ($exemptionDays ימים)');
+    }
+    if (notes != null && notes.trim().isNotEmpty) {
+      parts.add('הנחיות: ${notes.trim()}');
+    }
+
+    return '📌 [$dd/$mm $hh:$min • סיכום מט"ב]: ${parts.join(' | ')}';
+  }
+
+  /// Strips Matab queue waiting tags from a description once the soldier has been examined.
+  static String stripMatabQueueTags(String? description) {
+    if (description == null || description.isEmpty) return '';
+    return description
+        .replaceAll('[בדיקת מט"ב]', '')
+        .replaceAll('[בקשת תור לרופא]', '')
+        .replaceAll('[ממתין למט"ב]', '')
+        .trim();
+  }
+
+  /// Returns true if [medicalCase] is open and has an active medical exemption, Betim (ב'), or Gimelim (ג').
+  static bool hasActiveExemption(MedicalCase medicalCase, {DateTime? now}) {
+    if (medicalCase.status == 'COMPLETED' || medicalCase.status == 'CLOSED') return false;
+    final cat = (medicalCase.category ?? '').trim();
+    final desc = (medicalCase.description ?? '').trim();
+
+    final hasKeyword = cat == exemptionCategory ||
+        desc.contains("ימי ב'") ||
+        desc.contains('ימי ב ') ||
+        desc.contains("ימי ג'") ||
+        desc.contains('ימי ג ') ||
+        desc.contains('פטור') ||
+        desc.contains('מנוחה במוצב') ||
+        desc.contains('מנוחה בבית') ||
+        desc.contains('תוקף פטור עד:');
+
+    if (!hasKeyword) return false;
+
+    // If an explicit expiry date "תוקף פטור עד: DD/MM/YYYY" exists, check if it has expired
+    final match = RegExp(r'תוקף פטור עד:\s*(\d{2})/(\d{2})/(\d{4})').firstMatch(desc);
+    if (match != null) {
+      final day = int.tryParse(match.group(1) ?? '');
+      final month = int.tryParse(match.group(2) ?? '');
+      final year = int.tryParse(match.group(3) ?? '');
+      if (day != null && month != null && year != null) {
+        final refNow = (now ?? DateTime.now()).toLocal();
+        final expiryEndOfDay = DateTime(year, month, day, 23, 59, 59);
+        if (refNow.isAfter(expiryEndOfDay)) {
+          return false;
+        }
+      }
+    }
+    return true;
+  }
+
+  /// Extracts a short, human-readable exemption badge for case cards (e.g. "ימי ב' • עד 30/11").
+  static String? extractExemptionBadge(MedicalCase medicalCase, {DateTime? now}) {
+    if (!hasActiveExemption(medicalCase, now: now)) return null;
+    final desc = (medicalCase.description ?? '');
+
+    String type = 'פטור פעיל';
+    if (desc.contains("ימי ג'") || desc.contains('מנוחה בבית')) {
+      type = "ימי ג' (בית)";
+    } else if (desc.contains("ימי ב'") || desc.contains('מנוחה במוצב')) {
+      type = "ימי ב' (מוצב)";
+    } else if (desc.contains('פטור ממאמץ') || desc.contains('משקלים')) {
+      type = 'פטור מאמץ/משקלים';
+    } else if (desc.contains('פטור נעליים') || desc.contains('עמידה')) {
+      type = 'פטור נעליים/עמידה';
+    }
+
+    final match = RegExp(r'תוקף פטור עד:\s*(\d{2}/\d{2})/\d{4}').firstMatch(desc);
+    if (match != null) {
+      return '$type • עד ${match.group(1)}';
+    }
+    return type;
+  }
+
+  /// Builds a ready-to-share WhatsApp report of all active exemptions / Betim / Gimelim for commanders (מ"פ / רס"פ / מ"מים).
+  static String buildActiveExemptionsReport({
+    required List<MedicalCase> cases,
+    required List<Soldier> soldiers,
+    String? unitName,
+    DateTime? now,
+  }) {
+    final activeExemptions = cases.where((c) => hasActiveExemption(c, now: now)).toList();
+    final soldierMap = {for (final s in soldiers) s.id: s};
+    final ts = (now ?? DateTime.now()).toLocal();
+    final dateStr = '${ts.day.toString().padLeft(2, '0')}/${ts.month.toString().padLeft(2, '0')}/${ts.year}';
+    final headerUnit = (unitName != null && unitName.trim().isNotEmpty) ? ' - $unitName' : '';
+
+    final sb = StringBuffer();
+    sb.writeln('🛡️ *מצבת פטורים, בתים (ב\') וגימלים (ג\') פעילים$headerUnit*');
+    sb.writeln('📅 *נכון לתאריך:* $dateStr | *סה"כ חיילים בפטור/מנוחה:* ${activeExemptions.length}');
+    sb.writeln('────────────────────');
+
+    if (activeExemptions.isEmpty) {
+      sb.writeln('✅ אין כרגע חיילים בפטור פעיל, ימי ב\' או ימי ג\'.');
+      return sb.toString();
+    }
+
+    for (int i = 0; i < activeExemptions.length; i++) {
+      final c = activeExemptions[i];
+      final s = soldierMap[c.soldierId];
+      final name = s?.name ?? 'חייל';
+      final platoon = (s?.platoon != null && s!.platoon!.trim().isNotEmpty)
+          ? ' (${PlatoonHelper.formatDisplay(s.platoon)})'
+          : '';
+      final badge = extractExemptionBadge(c, now: now) ?? 'פטור פעיל';
+      sb.writeln('${i + 1}. *$name*$platoon — *$badge*');
+    }
+
+    sb.writeln('────────────────────');
+    sb.writeln('הופק מאפליקציית חופ"ל.');
+    return sb.toString();
   }
 
   /// Builds a structured WhatsApp report of all soldiers waiting for Matab examination today.

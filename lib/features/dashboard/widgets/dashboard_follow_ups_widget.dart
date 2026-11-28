@@ -1,20 +1,23 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:chopel_app/core/auth/auth_service.dart';
 import 'package:chopel_app/core/services/follow_up_reminder_service.dart';
+import 'package:chopel_app/features/medical_cases/providers.dart';
+import 'package:chopel_app/models/medical_case.dart';
 import 'package:chopel_app/theme/app_theme.dart';
 import 'package:chopel_app/theme/components/hopal_card.dart';
 import 'package:chopel_app/theme/components/hopal_feedback.dart';
 
-class DashboardFollowUpsWidget extends StatefulWidget {
+class DashboardFollowUpsWidget extends ConsumerStatefulWidget {
   const DashboardFollowUpsWidget({super.key});
 
   @override
-  State<DashboardFollowUpsWidget> createState() => _DashboardFollowUpsWidgetState();
+  ConsumerState<DashboardFollowUpsWidget> createState() => _DashboardFollowUpsWidgetState();
 }
 
-class _DashboardFollowUpsWidgetState extends State<DashboardFollowUpsWidget> {
+class _DashboardFollowUpsWidgetState extends ConsumerState<DashboardFollowUpsWidget> {
   List<FollowUpReminder> _pendingReminders = [];
   bool _isLoading = true;
 
@@ -32,6 +35,46 @@ class _DashboardFollowUpsWidgetState extends State<DashboardFollowUpsWidget> {
         _isLoading = false;
       });
     }
+  }
+
+  Future<void> _appendFollowUpToMedicalCase(
+    FollowUpReminder reminder,
+    String measuredVal,
+  ) async {
+    try {
+      final cases = ref.read(medicalCasesProvider).value ?? const <MedicalCase>[];
+      MedicalCase? targetCase;
+      if (reminder.caseId.isNotEmpty) {
+        targetCase = cases.where((c) => c.id == reminder.caseId).firstOrNull;
+      }
+      targetCase ??= cases
+          .where((c) =>
+              c.soldierId == reminder.soldierId &&
+              c.status != 'COMPLETED' &&
+              c.status != 'CLOSED')
+          .firstOrNull;
+
+      if (targetCase == null) return;
+
+      final now = DateTime.now().toLocal();
+      final dd = now.day.toString().padLeft(2, '0');
+      final mm = now.month.toString().padLeft(2, '0');
+      final hh = now.hour.toString().padLeft(2, '0');
+      final min = now.minute.toString().padLeft(2, '0');
+      final medicName = AuthService().effectiveUserName;
+
+      final entry = '📌 [$dd/$mm $hh:$min • $medicName]: ${reminder.type} — $measuredVal';
+      final prevDesc = (targetCase.description ?? '').trim();
+      final nextDesc = prevDesc.isEmpty ? entry : '$prevDesc\n$entry';
+
+      final map = targetCase.toMap();
+      map['description'] = nextDesc;
+      map['updated_date'] = DateTime.now().toIso8601String();
+
+      await ref
+          .read(medicalCasesProvider.notifier)
+          .upsertCaseOptimistically(MedicalCase.fromMap(map));
+    } catch (_) {}
   }
 
   Future<void> _quickComplete(FollowUpReminder reminder) async {
@@ -57,6 +100,11 @@ class _DashboardFollowUpsWidgetState extends State<DashboardFollowUpsWidget> {
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
               ),
             ),
+            const SizedBox(height: 6),
+            Text(
+              'הנתון יתועד אוטומטית גם בציר הזמן של התיק הרפואי של החייל.',
+              style: TextStyle(color: AppTheme.textMuted, fontSize: 11),
+            ),
           ],
         ),
         actions: [
@@ -68,13 +116,15 @@ class _DashboardFollowUpsWidgetState extends State<DashboardFollowUpsWidget> {
             style: FilledButton.styleFrom(backgroundColor: AppTheme.primaryGreen),
             onPressed: () async {
               Navigator.pop(ctx);
+              final val = controller.text.trim().isEmpty ? 'בוצע ותקין' : controller.text.trim();
               await FollowUpReminderService.completeReminder(
                 reminder.id,
-                measuredValue: controller.text.trim().isEmpty ? 'בוצע' : controller.text.trim(),
+                measuredValue: val,
               );
+              await _appendFollowUpToMedicalCase(reminder, val);
               await _load();
               if (mounted) {
-                HopalFeedback.showSuccess(context, 'המעקב סומן כבוצע');
+                HopalFeedback.showSuccess(context, 'המעקב סומן כבוצע ותועד בתיק החייל');
               }
             },
             child: const Text('סמן כבוצע'),
