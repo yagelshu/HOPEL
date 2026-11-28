@@ -343,6 +343,8 @@ class _MedicalCaseDetailScreenState extends ConsumerState<MedicalCaseDetailScree
     final picked = await InventoryDispenseHelper.showPickerSheet(
       context,
       allEquipment: allEquipment,
+      soldierName: _soldier?.name ?? _soldierName,
+      soldierAllergies: _soldier?.allergies,
     );
     if (picked == null || picked.isEmpty || !mounted) return;
 

@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:chopel_app/core/ai/medical_copilot_service.dart';
 import 'package:chopel_app/core/auth/auth_service.dart';
+import 'package:chopel_app/core/utils/equipment_photo_catalog.dart';
+import 'package:chopel_app/core/utils/platform_image.dart';
 import 'package:chopel_app/models/equipment.dart';
 import 'package:chopel_app/theme/app_theme.dart';
 import 'package:chopel_app/theme/components/hopal_button.dart';
+import 'package:chopel_app/theme/components/hopal_feedback.dart';
 
 class DispensedItem {
   final String equipmentId;
@@ -34,10 +38,49 @@ class InventoryDispenseHelper {
     return '💊 נופק מהמלאי: $parts';
   }
 
+  /// Checks if [itemName] is contraindicated for a soldier with [soldierAllergies].
+  /// Returns a clear Hebrew warning string if blocked, or `null` if safe to dispense.
+  static String? getAllergyBlockReason(String itemName, String? soldierAllergies) {
+    final cleanAlg = (soldierAllergies ?? '').trim();
+    if (cleanAlg.isEmpty) return null;
+
+    final check = MedicalCopilotService.checkAllergyConflicts(
+      allergies: cleanAlg,
+      recommendedMedications: [itemName],
+    );
+    if (check.safeMedications.isEmpty && check.warnings.isNotEmpty) {
+      return check.warnings.first;
+    }
+
+    final lowerItem = itemName.toLowerCase();
+    final lowerAlg = cleanAlg.toLowerCase();
+
+    if ((lowerAlg.contains('g6pd') || lowerAlg.contains('פול') || lowerAlg.contains('אופטלגין')) &&
+        (lowerItem.contains('אופטלגין') || lowerItem.contains('dipyrone'))) {
+      return 'אסור לניפוק לחייל עם רגישות G6PD / אופטלגין!';
+    }
+    if ((lowerAlg.contains('אקמול') || lowerAlg.contains('פראצטמול') || lowerAlg.contains('פרצטמול')) &&
+        (lowerItem.contains('אקמול') || lowerItem.contains('פראצטמול'))) {
+      return 'אסור לניפוק לחייל עם רגישות לאקמול / פראצטמול!';
+    }
+    if ((lowerAlg.contains('פניצילין') || lowerAlg.contains('מוקסיפן')) &&
+        (lowerItem.contains('פניצילין') || lowerItem.contains('מוקסיפן') || lowerItem.contains('אוגמנטין'))) {
+      return 'אסור לניפוק לחייל עם אלרגיה לפניצילין!';
+    }
+    if ((lowerAlg.contains('nsaid') || lowerAlg.contains('נורופן') || lowerAlg.contains('איבופרופן')) &&
+        (lowerItem.contains('נורופן') || lowerItem.contains('אדוויל') || lowerItem.contains('איבופרופן') || lowerItem.contains('וולטרן'))) {
+      return 'אסור לניפוק לחייל עם רגישות ל-NSAID!';
+    }
+
+    return null;
+  }
+
   static Future<List<DispensedItem>?> showPickerSheet(
     BuildContext context, {
     required List<Equipment> allEquipment,
     List<DispensedItem> initialSelection = const [],
+    String? soldierName,
+    String? soldierAllergies,
   }) async {
     final currentUserId = AuthService().effectiveUserId ?? AuthService().currentUser?.id ?? 'hopal';
     final isCompanyMedic = AuthService().isCompanyMedic;
@@ -57,6 +100,7 @@ class InventoryDispenseHelper {
     String searchQuery = '';
     String scopeFilter = isCompanyMedic ? 'box' : 'vest'; // 'box' | 'vest' | 'all'
     final searchController = TextEditingController();
+    final hasAllergies = soldierAllergies != null && soldierAllergies.trim().isNotEmpty;
 
     return showModalBottomSheet<List<DispensedItem>>(
       context: context,
@@ -90,7 +134,7 @@ class InventoryDispenseHelper {
             final totalSelectedItems = selectedCounts.values.where((v) => v > 0).length;
 
             return Container(
-              height: MediaQuery.of(sheetCtx).size.height * 0.78,
+              height: MediaQuery.of(sheetCtx).size.height * 0.80,
               padding: EdgeInsets.only(
                 top: AppTheme.spacing16,
                 left: AppTheme.spacing16,
@@ -120,11 +164,34 @@ class InventoryDispenseHelper {
                       ),
                     ],
                   ),
-                  Text(
-                    'בחר פריטים שנופקו לחייל. הכמות תופחת אוטומטית מהמלאי ותירשם בתיק הפנייה:',
-                    style: TextStyle(color: AppTheme.textSecondary, fontSize: 12.5),
-                  ),
-                  const SizedBox(height: 12),
+                  if (hasAllergies) ...[
+                    const SizedBox(height: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: AppTheme.criticalRed.withValues(alpha: 0.15),
+                        borderRadius: AppTheme.radiusMd,
+                        border: Border.all(color: AppTheme.criticalRed.withValues(alpha: 0.5)),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(LucideIcons.shieldAlert, color: AppTheme.criticalRed, size: 18),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'רגישות מתועדת${soldierName != null ? ' ($soldierName)' : ''}: $soldierAllergies • תרופות אסורות נחסמו אוטומטית',
+                              style: TextStyle(
+                                color: AppTheme.criticalRed,
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 8),
                   if (isCompanyMedic)
                     Row(
                       children: [
@@ -191,20 +258,58 @@ class InventoryDispenseHelper {
                               final isSelected = count > 0;
                               final sourceStr = eq.isCompanyBox ? 'ארגז חופ"ל' : 'הווסט שלי';
                               final outOfStock = eq.quantity <= 0;
+                              final blockReason = getAllergyBlockReason(eq.name, soldierAllergies);
+                              final isBlockedByAllergy = blockReason != null;
+                              final photoPath = eq.imagePath ?? EquipmentPhotoCatalog.resolveBuiltInPhoto(eq.name);
 
                               return Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                                 decoration: BoxDecoration(
-                                  color: isSelected
-                                      ? AppTheme.primaryGreen.withValues(alpha: 0.14)
-                                      : AppTheme.backgroundPrimary,
+                                  color: isBlockedByAllergy
+                                      ? AppTheme.criticalRed.withValues(alpha: 0.12)
+                                      : isSelected
+                                          ? AppTheme.primaryGreen.withValues(alpha: 0.14)
+                                          : AppTheme.backgroundPrimary,
                                   borderRadius: AppTheme.radiusMd,
                                   border: Border.all(
-                                    color: isSelected ? AppTheme.primaryGreen : AppTheme.borderSubtle,
+                                    color: isBlockedByAllergy
+                                        ? AppTheme.criticalRed.withValues(alpha: 0.65)
+                                        : isSelected
+                                            ? AppTheme.primaryGreen
+                                            : AppTheme.borderSubtle,
                                   ),
                                 ),
                                 child: Row(
                                   children: [
+                                    Container(
+                                      width: 38,
+                                      height: 38,
+                                      padding: photoPath != null ? const EdgeInsets.all(2) : EdgeInsets.zero,
+                                      decoration: BoxDecoration(
+                                        color: photoPath != null ? Colors.white : AppTheme.backgroundSecondary,
+                                        borderRadius: BorderRadius.circular(6),
+                                        border: Border.all(color: AppTheme.borderSubtle),
+                                      ),
+                                      child: photoPath != null
+                                          ? ClipRRect(
+                                              borderRadius: BorderRadius.circular(5),
+                                              child: Image(
+                                                image: resolveLocalOrWebImage(photoPath),
+                                                fit: BoxFit.contain,
+                                                errorBuilder: (_, __, ___) => Icon(
+                                                  LucideIcons.pill,
+                                                  size: 18,
+                                                  color: AppTheme.textSecondary,
+                                                ),
+                                              ),
+                                            )
+                                          : Icon(
+                                              eq.itemType == 'מתכלה' ? LucideIcons.pill : LucideIcons.briefcase,
+                                              size: 18,
+                                              color: AppTheme.textSecondary,
+                                            ),
+                                    ),
+                                    const SizedBox(width: 10),
                                     Expanded(
                                       child: Column(
                                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -212,75 +317,96 @@ class InventoryDispenseHelper {
                                           Text(
                                             eq.name,
                                             style: TextStyle(
-                                              color: outOfStock ? AppTheme.textMuted : AppTheme.textPrimary,
+                                              color: isBlockedByAllergy
+                                                  ? AppTheme.criticalRed
+                                                  : (outOfStock ? AppTheme.textMuted : AppTheme.textPrimary),
                                               fontWeight: FontWeight.bold,
-                                              fontSize: 14,
+                                              fontSize: 13.5,
                                             ),
                                           ),
                                           const SizedBox(height: 2),
-                                          Text(
-                                            '$sourceStr • במלאי: ${eq.quantity}${isSelected ? ' (יישאר: ${(eq.quantity - count).clamp(0, 9999)})' : ''}',
-                                            style: TextStyle(
-                                              color: outOfStock
-                                                  ? AppTheme.criticalRed
-                                                  : (isSelected ? AppTheme.primaryGreen : AppTheme.textSecondary),
-                                              fontSize: 12,
-                                              fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                                          if (isBlockedByAllergy)
+                                            Text(
+                                              '⛔ $blockReason',
+                                              style: TextStyle(
+                                                color: AppTheme.criticalRed,
+                                                fontSize: 11.5,
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                            )
+                                          else
+                                            Text(
+                                              '$sourceStr • במלאי: ${eq.quantity}${isSelected ? ' (יישאר: ${(eq.quantity - count).clamp(0, 9999)})' : ''}',
+                                              style: TextStyle(
+                                                color: outOfStock
+                                                    ? AppTheme.criticalRed
+                                                    : (isSelected ? AppTheme.primaryGreen : AppTheme.textSecondary),
+                                                fontSize: 12,
+                                                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                                              ),
                                             ),
-                                          ),
                                         ],
                                       ),
                                     ),
-                                    Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        if (isSelected) ...[
-                                          IconButton(
-                                            visualDensity: VisualDensity.compact,
-                                            icon: Icon(LucideIcons.minusCircle, color: AppTheme.criticalRed, size: 20),
-                                            onPressed: () {
-                                              setModalState(() {
-                                                if (count <= 1) {
-                                                  selectedCounts.remove(eq.id);
-                                                } else {
-                                                  selectedCounts[eq.id] = count - 1;
-                                                }
-                                              });
-                                            },
-                                          ),
-                                          Container(
-                                            constraints: const BoxConstraints(minWidth: 26),
-                                            alignment: Alignment.center,
-                                            child: Text(
-                                              '$count',
-                                              style: TextStyle(
-                                                color: AppTheme.textPrimary,
-                                                fontWeight: FontWeight.bold,
-                                                fontSize: 15,
+                                    if (isBlockedByAllergy)
+                                      IconButton(
+                                        visualDensity: VisualDensity.compact,
+                                        icon: Icon(LucideIcons.shieldAlert, color: AppTheme.criticalRed, size: 22),
+                                        onPressed: () {
+                                          HopalFeedback.showError(sheetCtx, blockReason);
+                                        },
+                                      )
+                                    else
+                                      Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          if (isSelected) ...[
+                                            IconButton(
+                                              visualDensity: VisualDensity.compact,
+                                              icon: Icon(LucideIcons.minusCircle, color: AppTheme.criticalRed, size: 20),
+                                              onPressed: () {
+                                                setModalState(() {
+                                                  if (count <= 1) {
+                                                    selectedCounts.remove(eq.id);
+                                                  } else {
+                                                    selectedCounts[eq.id] = count - 1;
+                                                  }
+                                                });
+                                              },
+                                            ),
+                                            Container(
+                                              constraints: const BoxConstraints(minWidth: 26),
+                                              alignment: Alignment.center,
+                                              child: Text(
+                                                '$count',
+                                                style: TextStyle(
+                                                  color: AppTheme.textPrimary,
+                                                  fontWeight: FontWeight.bold,
+                                                  fontSize: 15,
+                                                ),
                                               ),
                                             ),
+                                          ],
+                                          IconButton(
+                                            visualDensity: VisualDensity.compact,
+                                            icon: Icon(
+                                              LucideIcons.plusCircle,
+                                              color: outOfStock ? AppTheme.textMuted : AppTheme.primaryGreen,
+                                              size: 22,
+                                            ),
+                                            onPressed: outOfStock
+                                                ? null
+                                                : () {
+                                                    setModalState(() {
+                                                      final next = (count + 1).clamp(0, eq.quantity);
+                                                      if (next > 0) {
+                                                        selectedCounts[eq.id] = next;
+                                                      }
+                                                    });
+                                                  },
                                           ),
                                         ],
-                                        IconButton(
-                                          visualDensity: VisualDensity.compact,
-                                          icon: Icon(
-                                            LucideIcons.plusCircle,
-                                            color: outOfStock ? AppTheme.textMuted : AppTheme.primaryGreen,
-                                            size: 22,
-                                          ),
-                                          onPressed: outOfStock
-                                              ? null
-                                              : () {
-                                                  setModalState(() {
-                                                    final next = (count + 1).clamp(0, eq.quantity);
-                                                    if (next > 0) {
-                                                      selectedCounts[eq.id] = next;
-                                                    }
-                                                  });
-                                                },
-                                        ),
-                                      ],
-                                    ),
+                                      ),
                                   ],
                                 ),
                               );
@@ -353,4 +479,3 @@ class InventoryDispenseHelper {
     );
   }
 }
-

@@ -402,5 +402,41 @@ void main() {
         'assets/images/eq_hartmann_solution.png',
       );
     });
+
+    test('InventoryDispenseHelper blocks contraindicated medications based on soldier allergies', () {
+      expect(
+        InventoryDispenseHelper.getAllergyBlockReason('כדורי אופטלגין', 'חסר G6PD'),
+        isNotNull,
+      );
+      expect(
+        InventoryDispenseHelper.getAllergyBlockReason('כדורי אקמול רגילים (500 מג)', 'חסר G6PD'),
+        isNull,
+      );
+      expect(
+        InventoryDispenseHelper.getAllergyBlockReason('מוקסיפן 500 מ"ג', 'רגישות לפניצילין'),
+        isNotNull,
+      );
+      expect(
+        InventoryDispenseHelper.getAllergyBlockReason('נורופן / איבופרופן', 'NSAID'),
+        isNotNull,
+      );
+      expect(
+        InventoryDispenseHelper.getAllergyBlockReason('כדורי אקמול רגילים (500 מג)', 'אלרגיה לאקמול'),
+        isNotNull,
+      );
+    });
+
+    test('RedFlagsGuideScreen stays strictly within IDF field medic scope without hospital diagnoses', () {
+      for (final topic in RedFlagsGuideScreen.topics) {
+        final combined = [
+          topic.title,
+          topic.subtitle,
+          ...topic.redFlags,
+          ...topic.mandatoryChecks,
+          topic.immediateAction,
+        ].join(' ');
+        expect(combined.contains('תסביב אשך'), isFalse);
+      }
+    });
   });
 }

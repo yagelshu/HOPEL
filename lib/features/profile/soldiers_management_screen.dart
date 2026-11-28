@@ -10,9 +10,12 @@ import 'package:chopel_app/theme/components/hopal_text_field.dart';
 import 'package:chopel_app/theme/components/hopal_feedback.dart';
 import 'package:chopel_app/core/utils/app_error_helper.dart';
 import 'package:chopel_app/core/utils/platoon_helper.dart';
+import 'package:chopel_app/core/services/battalion_staff_service.dart';
 import 'package:chopel_app/core/services/csv_export_service.dart';
 import 'package:chopel_app/core/auth/auth_service.dart';
+import 'package:chopel_app/models/medical_case.dart';
 import 'package:chopel_app/models/soldier.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:chopel_app/features/medical_cases/medical_case_create_screen.dart';
 import 'package:chopel_app/features/medical_cases/providers.dart';
 import 'package:chopel_app/features/profile/soldiers_import_screen.dart';
@@ -40,6 +43,50 @@ class _SoldiersManagementScreenState extends ConsumerState<SoldiersManagementScr
     final noPlatoon = s.platoon == null || s.platoon!.trim().isEmpty;
     final noPhone = s.phoneNumber == null || s.phoneNumber!.trim().isEmpty;
     return noPn || noPlatoon || noPhone;
+  }
+
+  Future<void> _sharePlatoonMedicalBriefing({
+    required String platoonName,
+    required List<Soldier> platoonSoldiers,
+    required List<MedicalCase> allCases,
+  }) async {
+    final soldierIds = {for (final s in platoonSoldiers) s.id};
+    final openCases = allCases
+        .where((c) => soldierIds.contains(c.soldierId) && c.status != 'COMPLETED' && c.status != 'CLOSED')
+        .toList();
+    final allergySoldiers = platoonSoldiers.where((s) => s.hasAllergies).toList();
+    final soldierMap = {for (final s in platoonSoldiers) s.id: s};
+
+    final sb = StringBuffer();
+    sb.writeln('🪖 *תמונת מצב רפואית – $platoonName*');
+    sb.writeln('👥 *סה"כ חיילים במסגרת:* ${platoonSoldiers.length}');
+    sb.writeln('────────────────────');
+
+    if (openCases.isEmpty) {
+      sb.writeln('✅ *פניות פתוחות / מעקבים:* אין פניות רפואיות פתוחות.');
+    } else {
+      sb.writeln('🩺 *פניות פתוחות / במעקב (${openCases.length}):*');
+      for (final c in openCases) {
+        final s = soldierMap[c.soldierId];
+        final inMatab = BattalionStaffService.isCaseInMatabQueue(c) ? ' [במסדר מט"ב]' : '';
+        final cleanDesc = (c.description ?? 'במעקב').split('\n').first.trim();
+        sb.writeln('• *${s?.name ?? 'חייל'}*$inMatab: $cleanDesc');
+      }
+    }
+
+    sb.writeln('');
+    if (allergySoldiers.isEmpty) {
+      sb.writeln('🛡️ *רגישויות ואלרגיות ידועות:* אין.');
+    } else {
+      sb.writeln('🚨 *רגישויות ואלרגיות קריטיות להכרת החובש (${allergySoldiers.length}):*');
+      for (final s in allergySoldiers) {
+        sb.writeln('• *${s.name}*: ${s.allergies}');
+      }
+    }
+    sb.writeln('────────────────────');
+    sb.writeln('הופק מאפליקציית חופ"ל.');
+
+    await SharePlus.instance.share(ShareParams(text: sb.toString()));
   }
 
   @override
@@ -537,6 +584,31 @@ class _SoldiersManagementScreenState extends ConsumerState<SoldiersManagementScr
                             );
                           }),
                         ],
+                      ),
+                    ),
+                  if (_selectedPlatoon != 'הכל' && soldiers.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(AppTheme.spacing16, 8, AppTheme.spacing16, 0),
+                      child: OutlinedButton.icon(
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: AppTheme.infoBlue,
+                          side: BorderSide(color: AppTheme.infoBlue.withValues(alpha: 0.5)),
+                          shape: const RoundedRectangleBorder(borderRadius: AppTheme.radiusMd),
+                          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+                        ),
+                        icon: const Icon(LucideIcons.share2, size: 15),
+                        label: Text(
+                          'סיכום רפואי מחלקתי לוואטסאפ – $_selectedPlatoon (${soldiers.length} חיילים)',
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12.5),
+                        ),
+                        onPressed: () {
+                          final cases = ref.read(medicalCasesProvider).value ?? const [];
+                          _sharePlatoonMedicalBriefing(
+                            platoonName: _selectedPlatoon,
+                            platoonSoldiers: soldiers,
+                            allCases: cases,
+                          );
+                        },
                       ),
                     ),
                   Expanded(

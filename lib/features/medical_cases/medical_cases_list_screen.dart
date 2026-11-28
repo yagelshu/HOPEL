@@ -431,7 +431,7 @@ class _MedicalCasesListScreenState extends ConsumerState<MedicalCasesListScreen>
                       foregroundColor: isInMatabQueue ? AppTheme.primaryGreen : AppTheme.textSecondary,
                       visualDensity: VisualDensity.compact,
                     ),
-                    icon: const Icon(LucideIcons.stethoscope, size: 15),
+                    icon: Icon(LucideIcons.stethoscope, size: 15),
                     label: Text(
                       isInMatabQueue ? 'במסדר מט"ב ✓' : 'שבץ למט"ב',
                       style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),

@@ -44,6 +44,10 @@ class MedicalCaseCreateScreen extends ConsumerStatefulWidget {
 class _MedicalCaseCreateScreenState extends ConsumerState<MedicalCaseCreateScreen> {
   String? _selectedSoldierId;
   final _descController = TextEditingController();
+  final _tempController = TextEditingController();
+  final _hrController = TextEditingController();
+  final _bpController = TextEditingController();
+  final _spo2Controller = TextEditingController();
 
   String _selectedOutcome = 'COMPLETED';
   String _selectedCategory = 'שגרת מרפאה';
@@ -165,7 +169,66 @@ class _MedicalCaseCreateScreenState extends ConsumerState<MedicalCaseCreateScree
   void dispose() {
     _descController.removeListener(_saveDraft);
     _descController.dispose();
+    _tempController.dispose();
+    _hrController.dispose();
+    _bpController.dispose();
+    _spo2Controller.dispose();
     super.dispose();
+  }
+
+  List<String> _computeVitalWarnings() {
+    final warnings = <String>[];
+    final temp = double.tryParse(_tempController.text.trim());
+    if (temp != null) {
+      if (temp >= 38.0) warnings.add('חום גבוה (${temp.toStringAsFixed(1)}°C)');
+      if (temp < 35.0) warnings.add('תת-חום (${temp.toStringAsFixed(1)}°C)');
+    }
+    final hr = int.tryParse(_hrController.text.trim());
+    if (hr != null) {
+      if (hr > 100) warnings.add('דופק מהיר ($hr BPM)');
+      if (hr < 50) warnings.add('דופק איטי ($hr BPM)');
+    }
+    final spo2 = int.tryParse(_spo2Controller.text.trim());
+    if (spo2 != null && spo2 < 95) {
+      warnings.add('סטורציה נמוכה ($spo2%)');
+    }
+    final bpText = _bpController.text.trim();
+    if (bpText.contains('/')) {
+      final sys = int.tryParse(bpText.split('/').first.trim());
+      if (sys != null) {
+        if (sys < 90) warnings.add('ל"ד סיסטולי נמוך ($bpText)');
+        if (sys >= 140) warnings.add('ל"ד גבוה ($bpText)');
+      }
+    }
+    return warnings;
+  }
+
+  String _formatVitalsSummary() {
+    final parts = <String>[];
+    final temp = _tempController.text.trim();
+    if (temp.isNotEmpty) {
+      final tVal = double.tryParse(temp);
+      final flag = (tVal != null && (tVal >= 38.0 || tVal < 35.0)) ? ' ⚠️' : '';
+      parts.add('חום $temp°C$flag');
+    }
+    final hr = _hrController.text.trim();
+    if (hr.isNotEmpty) {
+      final hVal = int.tryParse(hr);
+      final flag = (hVal != null && (hVal > 100 || hVal < 50)) ? ' ⚠️' : '';
+      parts.add('דופק $hr$flag');
+    }
+    final bp = _bpController.text.trim();
+    if (bp.isNotEmpty) {
+      parts.add('ל"ד $bp');
+    }
+    final spo2 = _spo2Controller.text.trim();
+    if (spo2.isNotEmpty) {
+      final sVal = int.tryParse(spo2);
+      final flag = (sVal != null && sVal < 95) ? ' ⚠️' : '';
+      parts.add('סטורציה $spo2%$flag');
+    }
+    if (parts.isEmpty) return '';
+    return '📊 מדדים: ${parts.join(' | ')}';
   }
 
   final List<String> _quickTags = [
@@ -980,10 +1043,14 @@ class _MedicalCaseCreateScreenState extends ConsumerState<MedicalCaseCreateScree
 
   Future<void> _openDispensePicker() async {
     final allEquipment = ref.read(equipmentProvider).value ?? [];
+    final soldiers = ref.read(soldiersProvider).value ?? [];
+    final selectedSoldier = soldiers.where((s) => s.id == _selectedSoldierId).firstOrNull;
     final picked = await InventoryDispenseHelper.showPickerSheet(
       context,
       allEquipment: allEquipment,
       initialSelection: _dispensedItems,
+      soldierName: selectedSoldier?.name,
+      soldierAllergies: selectedSoldier?.allergies,
     );
     if (picked != null && mounted) {
       setState(() {
@@ -1016,6 +1083,10 @@ class _MedicalCaseCreateScreenState extends ConsumerState<MedicalCaseCreateScree
     setState(() => _isSaving = true);
 
     String finalDescription = _descController.text.trim();
+    final vitalsLine = _formatVitalsSummary();
+    if (vitalsLine.isNotEmpty && !finalDescription.contains(vitalsLine)) {
+      finalDescription = '$finalDescription\n$vitalsLine';
+    }
     final dispensedLine = InventoryDispenseHelper.formatDispensedSummary(_dispensedItems);
     if (dispensedLine.isNotEmpty && !finalDescription.contains(dispensedLine)) {
       finalDescription = '$finalDescription\n$dispensedLine';
@@ -1427,6 +1498,146 @@ class _MedicalCaseCreateScreenState extends ConsumerState<MedicalCaseCreateScree
                       controller: _descController,
                       hint: 'תיאור מילולי חופשי (אופציונלי)...',
                       icon: LucideIcons.fileText,
+                    ),
+                    const SizedBox(height: AppTheme.spacing16),
+                    Row(
+                      children: [
+                        Icon(LucideIcons.activity, size: 15, color: AppTheme.primaryGreen),
+                        const SizedBox(width: 6),
+                        Text(
+                          'מדדים חיוניים מהירים (אופציונלי – מזהה חריגה אוטומטית):',
+                          style: TextStyle(
+                            color: AppTheme.textSecondary,
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: _tempController,
+                            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                            style: TextStyle(color: AppTheme.textPrimary, fontSize: 13),
+                            onChanged: (_) => setState(() {}),
+                            decoration: InputDecoration(
+                              labelText: 'חום °C',
+                              hintText: '36.8',
+                              isDense: true,
+                              filled: true,
+                              fillColor: AppTheme.backgroundSecondary,
+                              border: const OutlineInputBorder(borderRadius: AppTheme.radiusSm),
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: TextField(
+                            controller: _hrController,
+                            keyboardType: TextInputType.number,
+                            style: TextStyle(color: AppTheme.textPrimary, fontSize: 13),
+                            onChanged: (_) => setState(() {}),
+                            decoration: InputDecoration(
+                              labelText: 'דופק',
+                              hintText: '75',
+                              isDense: true,
+                              filled: true,
+                              fillColor: AppTheme.backgroundSecondary,
+                              border: const OutlineInputBorder(borderRadius: AppTheme.radiusSm),
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: TextField(
+                            controller: _bpController,
+                            keyboardType: TextInputType.datetime,
+                            style: TextStyle(color: AppTheme.textPrimary, fontSize: 13),
+                            onChanged: (_) => setState(() {}),
+                            decoration: InputDecoration(
+                              labelText: 'ל"ד',
+                              hintText: '120/80',
+                              isDense: true,
+                              filled: true,
+                              fillColor: AppTheme.backgroundSecondary,
+                              border: const OutlineInputBorder(borderRadius: AppTheme.radiusSm),
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: TextField(
+                            controller: _spo2Controller,
+                            keyboardType: TextInputType.number,
+                            style: TextStyle(color: AppTheme.textPrimary, fontSize: 13),
+                            onChanged: (_) => setState(() {}),
+                            decoration: InputDecoration(
+                              labelText: 'סטורציה %',
+                              hintText: '98',
+                              isDense: true,
+                              filled: true,
+                              fillColor: AppTheme.backgroundSecondary,
+                              border: const OutlineInputBorder(borderRadius: AppTheme.radiusSm),
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    Builder(
+                      builder: (context) {
+                        final vitalWarnings = _computeVitalWarnings();
+                        if (vitalWarnings.isEmpty) return const SizedBox.shrink();
+                        return Padding(
+                          padding: const EdgeInsets.only(top: 8),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                            decoration: BoxDecoration(
+                              color: AppTheme.criticalRed.withValues(alpha: 0.14),
+                              borderRadius: AppTheme.radiusMd,
+                              border: Border.all(color: AppTheme.criticalRed.withValues(alpha: 0.5)),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(LucideIcons.alertTriangle, size: 16, color: AppTheme.criticalRed),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    'מדד חריג: ${vitalWarnings.join(', ')}',
+                                    style: TextStyle(
+                                      color: AppTheme.criticalRed,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                                if (!_addToMatabQueue)
+                                  TextButton(
+                                    style: TextButton.styleFrom(
+                                      visualDensity: VisualDensity.compact,
+                                      foregroundColor: AppTheme.primaryGreen,
+                                    ),
+                                    onPressed: () {
+                                      setState(() {
+                                        _selectedOutcome = 'REQUIRES_ATTENTION';
+                                        _selectedSeverity = 'דחוף';
+                                        _addToMatabQueue = true;
+                                        _selectedCategory = BattalionStaffService.matabCategory;
+                                      });
+                                    },
+                                    child: const Text('שבץ למט"ב', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                                  ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
                     ),
                     const SizedBox(height: AppTheme.spacing16),
                     if (_photos.isEmpty)

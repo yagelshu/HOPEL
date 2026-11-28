@@ -552,6 +552,55 @@ class EquipmentNotifier extends AsyncNotifier<List<Equipment>> {
 
     return true;
   }
+
+  /// Adds a new equipment item across multiple medic vest categories simultaneously in 0ms.
+  Future<int> addItemToAllMedicVests(
+    Equipment templateItem,
+    List<String> targetVestCategories,
+  ) async {
+    final categories = targetVestCategories.toSet();
+    categories.add(templateItem.category);
+    final currentList = List<Equipment>.from(state.value ?? const []);
+    final newItems = <Equipment>[];
+
+    for (final cat in categories) {
+      final alreadyHas = currentList.any(
+        (e) => e.category == cat && e.name.trim() == templateItem.name.trim(),
+      );
+      if (alreadyHas) continue;
+      final copy = Equipment(
+        id: cat == templateItem.category ? templateItem.id : const Uuid().v4(),
+        unitId: templateItem.unitId,
+        name: templateItem.name,
+        category: cat,
+        itemType: templateItem.itemType,
+        quantity: templateItem.quantity,
+        minimumRequired: templateItem.minimumRequired,
+        status: templateItem.status,
+        imagePath: templateItem.imagePath,
+      );
+      currentList.add(copy);
+      newItems.add(copy);
+    }
+
+    if (newItems.isEmpty) return 0;
+
+    currentList.sort((a, b) => a.name.compareTo(b.name));
+    state = AsyncValue.data(currentList);
+    final unitId = templateItem.unitId ?? AuthService().currentUser?.unitId;
+    if (unitId != null) {
+      await _persistLocalCache(unitId, currentList);
+    }
+    ref.invalidate(dashboardMetricsProvider);
+
+    try {
+      await Supabase.instance.client
+          .from('equipment')
+          .upsert(newItems.map((e) => e.toSupabaseMap()).toList());
+    } catch (_) {}
+
+    return newItems.length;
+  }
 }
 
 final equipmentProvider = AsyncNotifierProvider<EquipmentNotifier, List<Equipment>>(() {

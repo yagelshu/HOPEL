@@ -148,6 +148,7 @@ class _EquipmentListScreenState extends ConsumerState<EquipmentListScreen> {
 
     String itemType = item?.itemType ?? 'מתכלה';
     String? imagePath = item?.imagePath ?? (item != null ? EquipmentPhotoCatalog.resolveBuiltInPhoto(item.name) : null);
+    bool addToAllVests = false;
     bool isSaving = false;
 
     HopalBottomSheet.show(
@@ -391,6 +392,38 @@ class _EquipmentListScreenState extends ConsumerState<EquipmentListScreen> {
                     if (val != null) setModalState(() => itemType = val);
                   },
                 ),
+                if (!isEditing && scopes.where((s) => s.key != 'box').length > 1) ...[
+                  const SizedBox(height: AppTheme.spacing12),
+                  Container(
+                    decoration: BoxDecoration(
+                      color: addToAllVests
+                          ? AppTheme.primaryGreen.withValues(alpha: 0.14)
+                          : AppTheme.backgroundSecondary,
+                      borderRadius: AppTheme.radiusMd,
+                      border: Border.all(
+                        color: addToAllVests ? AppTheme.primaryGreen : AppTheme.borderSubtle,
+                      ),
+                    ),
+                    child: SwitchListTile(
+                      dense: true,
+                      activeTrackColor: AppTheme.primaryGreen,
+                      title: Text(
+                        'הוסף פריט זה לכל וסטי החובשים בפלוגה',
+                        style: TextStyle(
+                          color: AppTheme.textPrimary,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 13,
+                        ),
+                      ),
+                      subtitle: Text(
+                        'יוסיף את הפריט במקביל לכל ${scopes.where((s) => s.key != 'box').length} הווסטים הפעילים',
+                        style: TextStyle(color: AppTheme.textSecondary, fontSize: 11.5),
+                      ),
+                      value: addToAllVests,
+                      onChanged: (val) => setModalState(() => addToAllVests = val),
+                    ),
+                  ),
+                ],
                 const SizedBox(height: AppTheme.spacing24),
                 Row(
                   children: [
@@ -494,10 +527,27 @@ class _EquipmentListScreenState extends ConsumerState<EquipmentListScreen> {
 
                           setModalState(() => isSaving = true);
                           try {
-                            await ref.read(equipmentProvider.notifier).upsertItem(savedItem);
-                            if (sheetCtx.mounted) Navigator.pop(sheetCtx);
-                            if (context.mounted) {
-                              HopalFeedback.showSuccess(context, 'השינויים נשמרו בהצלחה');
+                            if (!isEditing && addToAllVests) {
+                              final vestCategories = scopes
+                                  .where((s) => s.key != 'box')
+                                  .map((s) => s.targetCategory)
+                                  .toList();
+                              final addedCount = await ref
+                                  .read(equipmentProvider.notifier)
+                                  .addItemToAllMedicVests(savedItem, vestCategories);
+                              if (sheetCtx.mounted) Navigator.pop(sheetCtx);
+                              if (context.mounted) {
+                                HopalFeedback.showSuccess(
+                                  context,
+                                  'הפריט נוסף ל-$addedCount וסטים בפלוגה!',
+                                );
+                              }
+                            } else {
+                              await ref.read(equipmentProvider.notifier).upsertItem(savedItem);
+                              if (sheetCtx.mounted) Navigator.pop(sheetCtx);
+                              if (context.mounted) {
+                                HopalFeedback.showSuccess(context, 'השינויים נשמרו בהצלחה');
+                              }
                             }
                           } catch (e) {
                             if (sheetCtx.mounted) setModalState(() => isSaving = false);
